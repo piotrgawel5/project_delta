@@ -3,3 +3,23 @@
 @import 'tailwindcss/utilities.css';
 
 @import 'nativewind/theme';
+
+@theme {
+  --font-brand: 'Poppins-Bold';
+  --font-sans: 'Inter-Regular';
+
+  /* Add a tight tracking for that high-fashion look */
+  --tracking-tightest: -0.05em;
+}
+body {
+  font-family: var(--font-sans);
+}
+.text-font-brand {
+  font-family: var(--font-brand);
+}
+.text-font-sans {
+  font-family: var(--font-sans);
+}
+.tracking-tightest {
+  letter-spacing: var(--tracking-tightest);
+}
