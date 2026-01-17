@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "@simplewebauthn/server": "https://esm.sh/@simplewebauthn/server@9.0.3?target=deno",
+    "@simplewebauthn/typescript-types": "https://esm.sh/@simplewebauthn/typescript-types@7.0.0?target=deno",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.3?target=deno",
+    "jose": "https://deno.land/x/jose@v4.14.4/index.ts"
+  }
+}

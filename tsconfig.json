@@ -4,16 +4,13 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "app/*"
-      ]
+      "@/*": ["app/*"],
+      "@modules/*": ["modules/*"],
+      "@lib/*": ["lib/*"],
+      "@const/*": ["constants/*"],
+      "@components/*": ["components/*"],
+      "@store/*": ["store/*"]
     }
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts",
-    "nativewind-env.d.ts"
-  ]
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts", "nativewind-env.d.ts"]
 }
