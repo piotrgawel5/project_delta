@@ -30,6 +30,7 @@ interface AuthState {
   ) => Promise<{ success: boolean; error?: string }>;
   signInWithPasskey: () => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   initialize: () => Promise<void>;
   checkSession: () => Promise<void>;
   checkPasskeySupport: () => Promise<void>;
@@ -228,6 +229,43 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ loading: true });
     await supabase.auth.signOut();
     set({ user: null, session: null, loading: false });
+  },
+
+  deleteAccount: async () => {
+    try {
+      set({ loading: true });
+
+      const { user } = get();
+      if (!user) {
+        set({ loading: false });
+        return { success: false, error: "No user logged in" };
+      }
+
+      // Delete user profile data first
+      await supabase
+        .from("user_profiles")
+        .delete()
+        .eq("user_id", user.id);
+
+      // Delete passkey credentials
+      await supabase
+        .from("passkey_credentials")
+        .delete()
+        .eq("user_id", user.id);
+
+      // Sign out (actual user deletion would require admin API or edge function)
+      await supabase.auth.signOut();
+
+      set({ user: null, session: null, loading: false });
+      return { success: true };
+    } catch (error: any) {
+      console.error("Delete account error:", error);
+      set({ loading: false });
+      return {
+        success: false,
+        error: error.message || "Failed to delete account",
+      };
+    }
   },
 }));
 

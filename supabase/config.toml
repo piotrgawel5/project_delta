@@ -1,11 +1,19 @@
-
 [functions.passkey-register-options]
 enabled = true
-verify_jwt = true
-import_map = "./functions/passkey-register-options/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+verify_jwt = false
 entrypoint = "./functions/passkey-register-options/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/passkey-register-options/*.html" ]
+
+[functions.passkey-register-verify]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/passkey-register-verify/index.ts"
+
+[functions.passkey-login-options]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/passkey-login-options/index.ts"
+
+[functions.passkey-login-verify]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/passkey-login-verify/index.ts"

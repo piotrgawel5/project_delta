@@ -1,4 +1,4 @@
-// app/account/index.tsx
+// app/(tabs)/account.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -17,9 +17,13 @@ import { useAuthStore } from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
 import { useDialog } from '@components/ui/Dialog';
 import EditProfileModal from '@components/profile/EditProfileModal';
+import Constants from 'expo-constants';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ACCENT = '#30D158';
+
+// Get version from app.json via Constants
+const APP_VERSION = Constants.expoConfig?.version || '0.1';
 
 export default function AccountScreen() {
   const { user, session, signOut, createAccountWithPasskey, loading: authLoading } = useAuthStore();
@@ -39,7 +43,6 @@ export default function AccountScreen() {
   useEffect(() => {
     if (user) {
       fetchProfile(user.id);
-      // Check passkey from credentials table
       checkHasPasskey(user.id).then((result) => {
         setHasPasskey(result);
         setCheckingPasskey(false);
@@ -48,8 +51,6 @@ export default function AccountScreen() {
   }, [user]);
 
   const loading = authLoading || profileLoading;
-
-  // Determine auth method
   const authMethod = profile?.primary_auth_method || 'password';
 
   const handleSignOut = async () => {
@@ -68,21 +69,12 @@ export default function AccountScreen() {
 
     const result = await createAccountWithPasskey(user.email);
     if (result.success) {
-      // Keep original auth method but mark that user now has passkey
       await updateAuthMethod(user.id, profile?.primary_auth_method || 'password', true);
       setHasPasskey(true);
       await showSuccess('Passkey Added', 'You can now use biometric login!');
     } else {
       await showError('Error', result.error || 'Failed to add passkey');
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
   };
 
   const getGreeting = () => {
@@ -124,7 +116,7 @@ export default function AccountScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Animated Background */}
+      {/* Background */}
       <View style={styles.backgroundGradient}>
         <LinearGradient
           colors={['rgba(48, 209, 88, 0.12)', 'rgba(48, 209, 88, 0.03)', 'transparent']}
@@ -266,7 +258,6 @@ export default function AccountScreen() {
             </View>
           )}
 
-          {/* Add Passkey */}
           {!checkingPasskey && !hasPasskey && (
             <Pressable
               style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
@@ -291,7 +282,7 @@ export default function AccountScreen() {
           <Text style={styles.signOutText}>Sign Out</Text>
         </Pressable>
 
-        <Text style={styles.version}>Delta v1.0.0</Text>
+        <Text style={styles.version}>Delta v{APP_VERSION}</Text>
       </ScrollView>
 
       {/* Edit Profile Modal */}
@@ -299,7 +290,6 @@ export default function AccountScreen() {
         visible={showEditModal}
         onClose={() => {
           setShowEditModal(false);
-          // Refresh passkey status
           if (user) {
             checkHasPasskey(user.id).then(setHasPasskey);
           }
@@ -338,7 +328,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingBottom: 140,
   },
   header: {
     alignItems: 'center',
@@ -383,7 +373,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
     backgroundColor: 'rgba(28, 28, 30, 0.8)',
-    borderRadius: 16,
+    borderRadius: 28,
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderWidth: 1,
@@ -416,7 +406,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: 'rgba(48, 209, 88, 0.12)',
-    borderRadius: 14,
+    borderRadius: 24,
     height: 48,
     marginBottom: 20,
     borderWidth: 1,
@@ -433,7 +423,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: 'rgba(28, 28, 30, 0.8)',
-    borderRadius: 20,
+    borderRadius: 28,
     padding: 20,
     marginBottom: 16,
     borderWidth: 1,

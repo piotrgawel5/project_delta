@@ -106,6 +106,7 @@ Deno.serve(async (req: Request) => {
       .insert({
         challenge,
         email,
+        user_id: existingUser?.id,
       });
 
     if (challengeError) {

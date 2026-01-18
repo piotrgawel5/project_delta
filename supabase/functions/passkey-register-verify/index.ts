@@ -24,9 +24,12 @@ Deno.serve(async (req: Request) => {
   try {
     const { email, credential } = await req.json();
 
-    console.log("Received registration verify request for:", email);
+    console.log("=== PASSKEY REGISTER VERIFY START ===");
+    console.log("Email:", email);
+    console.log("Credential ID:", credential?.id);
 
     if (!email || !credential) {
+      console.log("ERROR: Missing email or credential");
       return new Response(
         JSON.stringify({ error: "Email and credential are required" }),
         {
@@ -43,6 +46,7 @@ Deno.serve(async (req: Request) => {
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
     // Get stored challenge
+    console.log("Looking up challenge for email:", email);
     const { data: challengeRecord, error: challengeError } = await supabaseAdmin
       .from("passkey_challenges")
       .select("*")
@@ -51,10 +55,18 @@ Deno.serve(async (req: Request) => {
       .limit(1)
       .single();
 
+    console.log("Challenge lookup result:", {
+      challengeRecord,
+      challengeError,
+    });
+
     if (challengeError || !challengeRecord) {
       console.error("Challenge lookup error:", challengeError);
       return new Response(
-        JSON.stringify({ error: "Challenge not found or expired" }),
+        JSON.stringify({
+          error: "Challenge not found or expired",
+          details: challengeError?.message,
+        }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -63,13 +75,18 @@ Deno.serve(async (req: Request) => {
     }
 
     // Verify the challenge matches from clientDataJSON
+    console.log("Decoding clientDataJSON...");
     const clientDataJSON = JSON.parse(
       new TextDecoder().decode(
         base64URLDecode(credential.response.clientDataJSON),
       ),
     );
 
+    console.log("Client challenge:", clientDataJSON.challenge);
+    console.log("Stored challenge:", challengeRecord.challenge);
+
     if (clientDataJSON.challenge !== challengeRecord.challenge) {
+      console.log("ERROR: Challenge mismatch");
       return new Response(
         JSON.stringify({ error: "Challenge mismatch" }),
         {
@@ -79,20 +96,25 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    console.log("Challenge verified successfully");
+
     // Create or get user - store password for session creation
     let userId: string;
     let userPassword: string = crypto.randomUUID();
 
+    console.log("Checking for existing user...");
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
     const existingUser = existingUsers?.users?.find((u) => u.email === email);
 
     if (existingUser) {
+      console.log("Found existing user:", existingUser.id);
       userId = existingUser.id;
       // Update password so we can sign in
       await supabaseAdmin.auth.admin.updateUserById(userId, {
         password: userPassword,
       });
     } else {
+      console.log("Creating new user...");
       const { data: newUser, error: createError } = await supabaseAdmin.auth
         .admin.createUser({
           email,
@@ -103,7 +125,10 @@ Deno.serve(async (req: Request) => {
       if (createError || !newUser.user) {
         console.error("User creation error:", createError);
         return new Response(
-          JSON.stringify({ error: "Failed to create account" }),
+          JSON.stringify({
+            error: "Failed to create account",
+            details: createError?.message,
+          }),
           {
             status: 400,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -111,12 +136,14 @@ Deno.serve(async (req: Request) => {
         );
       }
       userId = newUser.user.id;
+      console.log("Created new user:", userId);
     }
 
     // Store credential
     const credentialId = credential.id;
 
     // Check if credential already exists
+    console.log("Checking for existing credential...");
     const { data: existingCred } = await supabaseAdmin
       .from("passkey_credentials")
       .select("id")
@@ -124,6 +151,7 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (!existingCred) {
+      console.log("Storing new credential...");
       const { error: credError } = await supabaseAdmin
         .from("passkey_credentials")
         .insert({
@@ -139,16 +167,23 @@ Deno.serve(async (req: Request) => {
       if (credError) {
         console.error("Credential insert error:", credError);
         return new Response(
-          JSON.stringify({ error: "Failed to store passkey" }),
+          JSON.stringify({
+            error: "Failed to store passkey",
+            details: credError?.message,
+          }),
           {
             status: 400,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           },
         );
       }
+      console.log("Credential stored successfully");
+    } else {
+      console.log("Credential already exists, skipping insert");
     }
 
     // Delete used challenge
+    console.log("Deleting used challenge...");
     await supabaseAdmin
       .from("passkey_challenges")
       .delete()
@@ -156,6 +191,7 @@ Deno.serve(async (req: Request) => {
 
     // Create a real Supabase session by signing in with password
     // Use a regular client (not admin) to get proper session tokens
+    console.log("Creating session...");
     const supabaseClient = createClient(
       supabaseUrl,
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
@@ -182,7 +218,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log("Session created successfully for user:", userId);
+    console.log("=== PASSKEY REGISTER VERIFY SUCCESS ===");
+    console.log("User ID:", userId);
 
     return new Response(
       JSON.stringify({
@@ -195,7 +232,8 @@ Deno.serve(async (req: Request) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error: unknown) {
-    console.error("passkey-register-verify error:", error);
+    console.error("=== PASSKEY REGISTER VERIFY ERROR ===");
+    console.error("Error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(
       JSON.stringify({ error: message }),

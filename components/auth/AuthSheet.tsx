@@ -19,6 +19,7 @@ import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
 import { signInWithGoogle } from '@lib/auth';
 import { useAuthStore } from '@store/authStore';
+import { useProfileStore } from '@store/profileStore';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
 const { height: WINDOW_HEIGHT } = Dimensions.get('window');
@@ -174,9 +175,31 @@ export default function AuthSheet({ setStarted }: Props) {
     setTimeout(() => setError(null), 3500);
   };
 
-  const handleSuccess = () => {
+  const handleSuccess = async (
+    authMethod: 'password' | 'google' | 'passkey' = 'password',
+    isNewUser: boolean = false
+  ) => {
     setAuthStatus('Welcome! 🎉');
-    setTimeout(() => {
+
+    // Small delay for visual feedback, then route to loading screen
+    setTimeout(async () => {
+      // Store the auth method for new users
+      if (isNewUser) {
+        const { user } = useAuthStore.getState();
+        if (user) {
+          // Create initial profile with auth method
+          const { supabase } = await import('@lib/supabase');
+          await supabase.from('user_profiles').upsert(
+            {
+              user_id: user.id,
+              primary_auth_method: authMethod,
+              has_passkey: authMethod === 'passkey',
+            },
+            { onConflict: 'user_id' }
+          );
+        }
+      }
+
       Animated.timing(translateY, {
         toValue: HEIGHTS[mode] + 50,
         duration: 220,
@@ -184,7 +207,7 @@ export default function AuthSheet({ setStarted }: Props) {
         useNativeDriver: true,
       }).start(() => {
         setStarted(false);
-        router.replace('/account');
+        router.replace('/loading');
       });
     }, 400);
   };
@@ -196,7 +219,7 @@ export default function AuthSheet({ setStarted }: Props) {
     setAuthStatus('Connecting to Google...');
     try {
       const ok = await signInWithGoogle(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID!);
-      if (ok) handleSuccess();
+      if (ok) handleSuccess('google', true);
       else setMode('choose');
     } catch (err: any) {
       if (!err.message?.includes('cancelled')) showError('Google sign-in failed');
@@ -221,7 +244,7 @@ export default function AuthSheet({ setStarted }: Props) {
           setMode('choose');
         }
       } else {
-        handleSuccess();
+        handleSuccess('passkey', false); // Existing user logging in
       }
     } finally {
       setLoading(false);
@@ -244,7 +267,7 @@ export default function AuthSheet({ setStarted }: Props) {
         showError(err.message || 'Invalid credentials');
         setMode('email_login');
       } else {
-        handleSuccess();
+        handleSuccess('password', false); // Existing user logging in
       }
     } finally {
       setLoading(false);
@@ -275,7 +298,7 @@ export default function AuthSheet({ setStarted }: Props) {
         showError(err.message || 'Signup failed');
         setMode('email_signup');
       } else {
-        handleSuccess();
+        handleSuccess('password', true); // New user
       }
     } finally {
       setLoading(false);
@@ -297,7 +320,7 @@ export default function AuthSheet({ setStarted }: Props) {
         if (result.error !== 'cancelled') showError(result.error || 'Failed');
         setMode('passkey_signup');
       } else {
-        handleSuccess();
+        handleSuccess('passkey', true); // New user with passkey
       }
     } finally {
       setLoading(false);
