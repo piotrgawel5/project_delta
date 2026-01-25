@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "android": {
+    "modules": ["expo.modules.healthconnect.HealthConnectModule"]
+  },
+  "apple": {
+    "modules": ["HealthConnectModule"]
+  }
+}

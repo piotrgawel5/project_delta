@@ -1,0 +1,16 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["app/*"],
+      "@modules/*": ["modules/*"],
+      "@lib/*": ["apps/mobile/lib/*"],
+      "@components/*": ["components/*"],
+      "@store/*": ["store/*"],
+      "@project-delta/shared": ["../../packages/shared/src/index.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts", "nativewind-env.d.ts"]
+}

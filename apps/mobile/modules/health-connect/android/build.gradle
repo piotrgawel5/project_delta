@@ -1,0 +1,35 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+group = 'expo.modules.healthconnect'
+version = '1.0.0'
+
+android {
+  compileSdk 36
+  namespace "expo.modules.healthconnect"
+
+  defaultConfig {
+    minSdkVersion 26  // Health Connect requires API 26+
+    targetSdk 36
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+}
+
+dependencies {
+  implementation project(':expo-modules-core')
+  implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
+  
+  // Health Connect SDK
+  implementation "androidx.health.connect:connect-client:1.1.0-alpha10"
+  
+  // Coroutines for async operations
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+}
