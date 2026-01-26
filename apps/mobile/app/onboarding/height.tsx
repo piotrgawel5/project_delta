@@ -16,7 +16,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ACCENT = '#30D158';
 
-const HEIGHT_RANGES = {
+const HEIGHT_RANGES: Record<HeightUnit, { min: number; max: number; default: number }> = {
   cm: { min: 100, max: 250, default: 170 },
   ft: { min: 3, max: 8, default: 5 },
 };

@@ -49,7 +49,7 @@ import {
   generateWeeklySummary,
   generateMonthlySummary,
   formatHoursShort,
-} from 'apps/mobile/lib/sleepAnalysis';
+} from '@lib/sleepAnalysis';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 

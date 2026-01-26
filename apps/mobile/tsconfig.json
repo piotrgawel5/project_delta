@@ -6,7 +6,7 @@
     "paths": {
       "@/*": ["app/*"],
       "@modules/*": ["modules/*"],
-      "@lib/*": ["apps/mobile/lib/*"],
+      "@lib/*": ["lib/*"],
       "@components/*": ["components/*"],
       "@store/*": ["store/*"],
       "@project-delta/shared": ["../../packages/shared/src/index.ts"]

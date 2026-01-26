@@ -43,7 +43,7 @@ export default function AccountScreen() {
   useEffect(() => {
     if (user) {
       fetchProfile(user.id);
-      checkHasPasskey(user.id).then((result) => {
+      checkHasPasskey(user.id).then((result: boolean) => {
         setHasPasskey(result);
         setCheckingPasskey(false);
       });
@@ -207,7 +207,7 @@ export default function AccountScreen() {
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Goal</Text>
               <Text style={styles.detailValue}>
-                {profile.goal.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                {profile.goal.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
               </Text>
             </View>
           )}
@@ -216,7 +216,9 @@ export default function AccountScreen() {
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Activity Level</Text>
               <Text style={styles.detailValue}>
-                {profile.activity_level.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                {profile.activity_level
+                  .replace(/_/g, ' ')
+                  .replace(/\b\w/g, (l: string) => l.toUpperCase())}
               </Text>
             </View>
           )}
@@ -227,7 +229,9 @@ export default function AccountScreen() {
               <Text style={styles.detailValue}>
                 {profile.preferred_sport
                   .split(',')
-                  .map((s) => s.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()))
+                  .map((s: string) =>
+                    s.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+                  )
                   .join(', ')}
               </Text>
             </View>

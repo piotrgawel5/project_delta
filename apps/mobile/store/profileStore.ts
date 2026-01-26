@@ -2,7 +2,98 @@ import { create } from "zustand";
 import { api } from "@lib/api"; // Updated import
 
 export type WeightUnit = "kg" | "lbs";
-// ... (types remain the same)
+export type HeightUnit = "cm" | "ft";
+
+export type ActivityLevel =
+    | "sedentary"
+    | "light"
+    | "moderate"
+    | "active"
+    | "very_active";
+
+export type Goal =
+    | "lose_weight"
+    | "maintain"
+    | "build_muscle"
+    | "improve_endurance"
+    | "stay_healthy";
+
+export type Sex = "male" | "female";
+
+export type AuthMethod = "password" | "google" | "apple" | "passkey";
+
+export interface UserProfile {
+    id: string;
+    username?: string;
+    full_name?: string;
+    avatar_url?: string;
+    email?: string;
+
+    // Onboarding Data
+    sex?: Sex;
+    date_of_birth?: string; // matched to usage
+    birth_date?: string; // keeping just in case
+    height?: number; // keeping just in case
+    height_value?: number; // matched to usage
+    height_inches?: number; // matched to usage
+    height_unit?: HeightUnit;
+    weight?: number; // keeping just in case
+    weight_value?: number; // matched to usage
+    weight_unit?: WeightUnit;
+    activity_level?: ActivityLevel;
+    goal?: Goal;
+    preferred_sport?: string; // matched to usage
+
+    // System
+    onboarding_completed?: boolean;
+    has_passkey?: boolean;
+    primary_auth_method?: AuthMethod;
+    username_changed_at?: string;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface ProfileState {
+    profile: UserProfile | null;
+    loading: boolean;
+    currentStep: number;
+    totalSteps: number;
+    formData: Partial<UserProfile>;
+
+    setFormField: (key: keyof UserProfile, value: any) => void;
+    nextStep: () => void;
+    prevStep: () => void;
+    setStep: (step: number) => void;
+
+    fetchProfile: (userId: string) => Promise<UserProfile | null>;
+    saveProfile: (
+        userId: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+    completeOnboarding: (
+        userId: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+    hasCompletedOnboarding: () => boolean;
+    reset: () => void;
+
+    updateAuthMethod: (
+        userId: string,
+        method: AuthMethod,
+        hasPasskey?: boolean,
+    ) => Promise<{ success: boolean; error?: string }>;
+    uploadAvatar: (
+        userId: string,
+        imageUri: string,
+    ) => Promise<{ success: boolean; avatarUrl?: string; error?: string }>;
+    checkHasPasskey: (userId: string) => Promise<boolean>;
+    deletePasskey: (
+        userId: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+    updateUsername: (
+        userId: string,
+        username: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+    canChangeUsername: () => boolean;
+}
 
 export const useProfileStore = create<ProfileState>((set, get) => ({
     // ... (state init remains same)

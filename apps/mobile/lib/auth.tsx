@@ -31,18 +31,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export const useAuth = () => useContext(AuthContext);
 
+// apps/mobile/lib/auth.tsx
+import { api } from '@lib/api';
+
 export async function signInWithGoogle(webClientID: string) {
+  console.log('[Google SignIn] Starting, webClientID:', webClientID ? 'present' : 'MISSING');
+
   if (!webClientID) throw new Error('Missing Google Web Client ID');
 
+  console.log('[Google SignIn] Calling native signInWithGoogleAutoSelect...');
   const { idToken } = await CredentialAuth.signInWithGoogleAutoSelect(webClientID, false);
+  console.log('[Google SignIn] Got idToken:', idToken ? 'present' : 'MISSING');
+
   if (!idToken) throw new Error('No ID token returned');
 
-  const { error } = await supabase.auth.signInWithIdToken({
-    provider: 'google',
-    token: idToken,
-  } as any);
+  console.log('[Google SignIn] Calling API /auth/google/login...');
+  // Call API instead of Supabase directly
+  const response = await api.post('/auth/google/login', { idToken });
+  console.log('[Google SignIn] API response:', response?.user ? 'has user' : 'no user');
 
-  if (error) throw error;
+  if (response.user) {
+    if (response.access_token && response.refresh_token) {
+      console.log('[Google SignIn] Setting Supabase session...');
+      await supabase.auth.setSession({
+        access_token: response.access_token,
+        refresh_token: response.refresh_token,
+      });
+      console.log('[Google SignIn] Session set successfully');
+    }
+  }
+
+  console.log('[Google SignIn] Complete!');
   return true;
 }
 

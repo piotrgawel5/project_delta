@@ -77,8 +77,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // If 401 or network error, assume logged out
         set({ user: null, session: null, loading: false, initialized: true });
       }
-
-      AppState.addEventListener("change", handleAppStateChange);
     } catch (error) {
       console.error("Auth initialization error:", error);
       set({ loading: false, initialized: true });

@@ -129,6 +129,27 @@ export class AuthController {
         }
     }
 
+    async loginGoogle(req: Request, res: Response) {
+        try {
+            const { idToken } = req.body;
+            const session = await authService.signInWithIdToken(idToken);
+
+            if (session) {
+                this.setCookies(res, session);
+                res.json({
+                    user: session.user,
+                    access_token: session.access_token,
+                    refresh_token: session.refresh_token,
+                });
+            } else {
+                res.status(401).json({ error: "Google auth failed" });
+            }
+        } catch (error: any) {
+            logger.error("loginGoogle error", error);
+            res.status(400).json({ error: error.message });
+        }
+    }
+
     async logout(req: Request, res: Response) {
         try {
             const token = req.cookies["sb-access-token"];

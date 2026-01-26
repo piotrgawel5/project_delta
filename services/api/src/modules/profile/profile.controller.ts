@@ -45,7 +45,10 @@ export class ProfileController {
 
             const { data, error } = await this.supabase
                 .from("user_profiles")
-                .upsert({ ...req.body, user_id: userId })
+                .upsert(
+                    { ...req.body, user_id: userId },
+                    { onConflict: "user_id" },
+                )
                 .select()
                 .single();
 

@@ -43,6 +43,11 @@ router.post(
     validate(emailAuthSchema),
     (req, res) => authController.signupEmail(req, res),
 );
+router.post(
+    "/google/login",
+    authLimiter,
+    (req, res) => authController.loginGoogle(req, res),
+);
 router.get("/me", requireAuth, (req, res) => authController.me(req, res));
 
 router.post("/logout", (req, res) => authController.logout(req, res));

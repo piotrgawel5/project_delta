@@ -148,14 +148,16 @@ function SleepTabIcon({
 
           {/* Animated Star */}
           <AnimatedG
-            style={{
-              transform: [
-                { translateX: starTranslateX as any },
-                { translateY: starTranslateY as any },
-                { scale: starScale as any },
-              ],
-              opacity: starOpacity,
-            }}>
+            {...({
+              style: {
+                transform: [
+                  { translateX: starTranslateX },
+                  { translateY: starTranslateY },
+                  { scale: starScale },
+                ],
+                opacity: starOpacity,
+              },
+            } as any)}>
             <Path
               d="M19 5l.5 1l1 .5l-1 .5l-.5 1l-.5-1l-1-.5l1-.5z"
               fill={focused ? '#FFD60A' : color}

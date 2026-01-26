@@ -56,6 +56,18 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError, initialized, session, user, profileChecked]);
 
+  // Timeout fallback: prevent infinite black screen if auth init hangs
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!appReady) {
+        console.warn('Auth initialization timeout - showing home screen');
+        setAppReady(true);
+      }
+    }, 5000); // 5 second timeout
+
+    return () => clearTimeout(timeout);
+  }, [appReady]);
+
   // Hide splash and route based on auth + profile state
   const onLayoutRootView = useCallback(async () => {
     if (appReady && !splashHidden) {
@@ -66,11 +78,20 @@ export default function RootLayout() {
 
       // Route based on auth and profile state
       if (session && user) {
-        // Use loading screen for smooth transition
-        router.replace('/loading');
+        // If profile is already cached, skip loading screen - go directly to destination
+        if (profile) {
+          if (profile.onboarding_completed) {
+            router.replace('/(tabs)/nutrition');
+          } else {
+            router.replace('/onboarding/username');
+          }
+        } else {
+          // No cached profile - need to fetch it via loading screen
+          router.replace('/loading');
+        }
       }
     }
-  }, [appReady, splashHidden, session, user]);
+  }, [appReady, splashHidden, session, user, profile]);
 
   // Keep splash visible until ready
   if (!appReady) {

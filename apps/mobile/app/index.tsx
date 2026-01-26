@@ -1,10 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StatusBar, Text, Pressable, Animated, StyleSheet, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import AuthSheet from '../components/auth/AuthSheet';
-import { supabase } from 'apps/mobile/lib/supabase';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const ACCENT = '#30D158';
@@ -17,10 +15,6 @@ export default function IndexScreen() {
   const logoAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const { data: listener } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (session) router.replace('/account');
-    });
-
     // Staggered entrance animation
     Animated.sequence([
       Animated.timing(logoAnim, {
@@ -42,8 +36,6 @@ export default function IndexScreen() {
         }),
       ]),
     ]).start();
-
-    return () => listener.subscription.unsubscribe();
   }, []);
 
   return (

@@ -1,6 +1,5 @@
-// store/sleepStore.ts
 import { create } from "zustand";
-import { supabase } from "apps/mobile/lib/supabase";
+import { supabase } from "../lib/supabase";
 import { AppState, AppStateStatus, Platform } from "react-native";
 import {
     calculateSleepQuality,
@@ -20,11 +19,11 @@ import {
     shouldFetchFromHealthConnect,
     shouldSync,
     upsertCacheRecord,
-} from "apps/mobile/lib/sleepCache";
+} from "../lib/sleepCache";
 import {
     calculateQualityFromDuration,
     estimateSleepStages,
-} from "apps/mobile/lib/sleepCalculations";
+} from "../lib/sleepCalculations";
 import { useProfileStore, UserProfile } from "./profileStore";
 import { api } from "@lib/api";
 
@@ -137,7 +136,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
             if (cached.length > 0) {
                 // Convert cached records to SleepData format
                 const weeklyHistory: SleepData[] = cached.slice(0, 7).map((
-                    r,
+                    r: CachedSleepRecord,
                 ) => ({
                     id: r.id || `local-${r.date}`,
                     user_id: r.user_id,
@@ -350,7 +349,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
             );
 
             // Prepare batch upsert data
-            const records = pending.map((r) => ({
+            const records = pending.map((r: CachedSleepRecord) => ({
                 user_id: r.user_id,
                 date: r.date,
                 start_time: r.start_time,
@@ -376,7 +375,9 @@ export const useSleepStore = create<SleepState>((set, get) => ({
             }
 
             // Mark all as synced
-            await markRecordsSynced(pending.map((r) => r.date));
+            await markRecordsSynced(
+                pending.map((r: CachedSleepRecord) => r.date),
+            );
             set({ lastSyncTime: Date.now() });
             console.log(
                 `[SleepStore] Successfully synced ${pending.length} records via API`,

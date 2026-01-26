@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
-import { signInWithGoogle } from 'apps/mobile/lib/auth';
+import { signInWithGoogle } from '@lib/auth';
 import { useAuthStore } from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
@@ -188,15 +188,12 @@ export default function AuthSheet({ setStarted }: Props) {
         const { user } = useAuthStore.getState();
         if (user) {
           // Create initial profile with auth method
-          const { supabase } = await import('apps/mobile/lib/supabase');
-          await supabase.from('user_profiles').upsert(
-            {
-              user_id: user.id,
-              primary_auth_method: authMethod,
-              has_passkey: authMethod === 'passkey',
-            },
-            { onConflict: 'user_id' }
-          );
+          const { api } = await import('@lib/api');
+          await api.post(`/api/profile/${user.id}`, {
+            user_id: user.id,
+            primary_auth_method: authMethod,
+            has_passkey: authMethod === 'passkey',
+          });
         }
       }
 
