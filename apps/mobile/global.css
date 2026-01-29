@@ -13,14 +13,22 @@
   --color-border: #2c2c2e;
 
   --color-active: #30d158;
-  --color-recovery: #3E42A9
+  --color-recovery: #3e42a9;
   --color-critical: #ff453a;
+
+  /* Outsiders Palette */
+  --color-accent-magenta: #ff2d92;
+  --color-accent-cyan: #00d4ff;
+  --color-accent-purple: #bf5af2;
+  --color-gradient-start: #30d158;
+  --color-gradient-end: #0a2f1c;
 
   --color-text-primary: #ffffff;
   --color-text-muted: #8e8e93;
 
   /* ===== RADIUS ===== */
-  --radius-xl: 20px;
+  --radius-xl: 24px;
+  --radius-pill: 9999px;
 
   /* ===== TYPOGRAPHY ===== */
   --font-brand: 'Poppins-Bold';

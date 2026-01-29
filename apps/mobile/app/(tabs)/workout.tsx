@@ -13,10 +13,10 @@ export default function WorkoutScreen() {
       {/* Background */}
       <View style={styles.backgroundGradient}>
         <LinearGradient
-          colors={['rgba(48, 209, 88, 0.1)', 'transparent']}
+          colors={['rgba(48, 209, 88, 0.25)', 'rgba(10, 47, 28, 0.15)', 'transparent']}
           style={styles.gradientOrb}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0.8 }}
         />
       </View>
 

@@ -56,6 +56,7 @@ export interface UserProfile {
 export interface ProfileState {
     profile: UserProfile | null;
     loading: boolean;
+    error: string | null;
     currentStep: number;
     totalSteps: number;
     formData: Partial<UserProfile>;
@@ -99,6 +100,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     // ... (state init remains same)
     profile: null,
     loading: false,
+    error: null,
     currentStep: 1,
     totalSteps: 9,
     formData: {},
@@ -126,14 +128,20 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     },
 
     fetchProfile: async (userId: string) => {
-        set({ loading: true });
+        set({ loading: true, error: null });
         try {
-            const data = await api.get(`/api/profile/${userId}`);
-            set({ profile: data, loading: false });
-            return data;
-        } catch (err) {
+            const response = await api.get(`/api/profile/${userId}`);
+            // response is { success: true, data: UserProfile }
+            const profileData = response.data;
+
+            set({ profile: profileData, loading: false });
+            return profileData;
+        } catch (err: any) {
             console.error("fetchProfile error:", err);
-            set({ loading: false });
+            set({
+                loading: false,
+                error: err.message || "Failed to fetch profile",
+            });
             return null;
         }
     },

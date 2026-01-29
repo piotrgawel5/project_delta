@@ -1,6 +1,6 @@
 // app/loading.tsx - Transition screen after auth
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Animated, Easing, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useAuthStore } from '@store/authStore';
@@ -11,7 +11,7 @@ const ACCENT = '#30D158';
 
 export default function LoadingScreen() {
   const { user, session } = useAuthStore();
-  const { fetchProfile, profile, loading } = useProfileStore();
+  const { fetchProfile, profile, loading, error } = useProfileStore();
 
   // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -73,12 +73,29 @@ export default function LoadingScreen() {
       }
 
       // Fetch profile
-      await fetchProfile(user.id);
+      const result = await fetchProfile(user.id);
+
+      const { error: fetchError } = useProfileStore.getState();
+
+      if (fetchError && !result) {
+        // If error occurred and no profile returned, DO NOT redirect to onboarding
+        // Stay here (or show retry UI - for now just console log and maybe redirect home?)
+        console.warn('Profile fetch failed:', fetchError);
+        // Ideally we show a retry button in the UI, but for now let's just NOT redirect to Onboarding
+        // Maybe redirect to home or stay on loading?
+        // Let's try to reload?
+        // For now, if we fail, we assume it might be a temporary network glitch.
+        // But the user reported *sometimes* it happens.
+        // If we don't redirect, they get stuck on loading.
+        // Let's alert? But we can't alert easily on splash.
+        // Minimal fix: Don't assume Onboarding if result is null due to error.
+        return;
+      }
 
       // Small delay for smooth transition
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // Get updated profile
+      // Get updated profile (result contains it)
       const currentProfile = useProfileStore.getState().profile;
 
       // Fade out before navigating
@@ -90,6 +107,8 @@ export default function LoadingScreen() {
         if (currentProfile?.onboarding_completed) {
           router.replace('/(tabs)/nutrition');
         } else {
+          // Double check: if we have NO profile and NO error, it's a new user.
+          // If we had an error, we returned early above.
           router.replace('/onboarding/username');
         }
       });
@@ -138,8 +157,24 @@ export default function LoadingScreen() {
           </View>
         </Animated.View>
 
-        <Text style={styles.title}>Just a moment...</Text>
-        <Text style={styles.subtitle}>Setting up your experience</Text>
+        <Text style={styles.title}>
+          {loading ? 'Setting up...' : error ? 'Connection Error' : 'Just a moment...'}
+        </Text>
+        <Text style={styles.subtitle}>
+          {error ? 'Please check your internet' : 'Setting up your experience'}
+        </Text>
+        {error && (
+          <Pressable
+            onPress={() => fetchProfile(user!.id)}
+            style={{
+              marginTop: 20,
+              padding: 10,
+              backgroundColor: 'rgba(255,255,255,0.1)',
+              borderRadius: 8,
+            }}>
+            <Text style={{ color: '#fff' }}>Retry</Text>
+          </Pressable>
+        )}
       </Animated.View>
     </View>
   );

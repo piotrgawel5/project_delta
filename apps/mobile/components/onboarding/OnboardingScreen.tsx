@@ -154,9 +154,9 @@ export default function OnboardingScreen({
           ]}>
           <LinearGradient
             colors={[
-              'rgba(48, 209, 88, 0.25)',
-              'rgba(48, 209, 88, 0.08)',
-              'rgba(48, 209, 88, 0.02)',
+              'rgba(48, 209, 88, 0.20)',
+              'rgba(10, 47, 28, 0.12)',
+              'rgba(10, 47, 28, 0.04)',
               'transparent',
             ]}
             locations={[0, 0.3, 0.6, 1]}
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
   continueButton: {
     backgroundColor: ACCENT,
     height: 60,
-    borderRadius: 16,
+    borderRadius: 30,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

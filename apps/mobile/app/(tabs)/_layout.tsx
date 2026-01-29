@@ -239,10 +239,12 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 10,
     backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   blurBackground: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(20, 20, 22, 0.7)',
+    backgroundColor: 'rgba(20, 20, 22, 0.75)',
   },
   tabsContent: {
     flexDirection: 'row',

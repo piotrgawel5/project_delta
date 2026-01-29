@@ -13,7 +13,10 @@ import {
   Alert,
   PanResponder,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import MaskedView from '@react-native-masked-view/masked-view';
 import { router } from 'expo-router';
 import Animated, {
   FadeIn,
@@ -30,8 +33,11 @@ import Animated, {
   runOnJS,
   Easing,
   interpolate,
+  useAnimatedScrollHandler,
+  Extrapolation,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/authStore';
 import { useSleepStore } from '@store/sleepStore';
 import Svg, {
@@ -57,24 +63,30 @@ const BG_PRIMARY = '#000000';
 const RECOVERY = '#6366F1'; // Indigo blue matching reference
 const RECOVERY_LIGHT = '#818CF8';
 
+// Outsiders-style gradient colors
+const OUTSIDERS_GRADIENT_START = '#6B21A8'; // Deep purple
+const OUTSIDERS_GRADIENT_MID = '#7C3AED'; // Violet
+const OUTSIDERS_GRADIENT_END = '#A855F7'; // Light purple/magenta
+
 const RING_COLORS = {
   move: '#FF2D55',
   exercise: '#30D158',
   stand: '#00C7BE',
 };
 
+// Outsiders-style sleep phase colors
 const PHASE_COLORS = {
-  deep: '#5856D6',
-  light: '#FF9500',
-  rem: '#FF2D55',
-  awake: '#FFD60A',
+  deep: '#00D4FF', // Cyan
+  light: '#9333EA', // Purple
+  rem: '#EC4899', // Pink
+  awake: '#FBBF24', // Yellow/Orange
 };
 
 // Premium accent colors
-const ACCENT_PURPLE = '#6366F1';
+const ACCENT_PURPLE = '#7C3AED';
 const ACCENT_GREEN = '#34D399';
 const ACCENT_YELLOW = '#FBBF24';
-const ACCENT_PINK = '#F472B6';
+const ACCENT_PINK = '#EC4899';
 const ACCENT_BLUE = '#38BDF8';
 
 const AI_HINTS = [
@@ -90,6 +102,18 @@ type ViewMode = 'Day' | 'Week' | 'Month';
 
 export default function SleepScreen() {
   const { user } = useAuthStore();
+  const insets = useSafeAreaInsets();
+  const scrollY = useSharedValue(0);
+
+  const scrollHandler = useAnimatedScrollHandler((event) => {
+    scrollY.value = event.contentOffset.y;
+  });
+
+  const headerBlurStyle = useAnimatedStyle(() => {
+    return {
+      opacity: interpolate(scrollY.value, [0, 50], [0, 1], Extrapolation.CLAMP),
+    };
+  });
   const {
     isConnected,
     isAvailable: isAvailableOnDevice,
@@ -329,34 +353,26 @@ export default function SleepScreen() {
     transform: [{ translateX: chartSwipeX.value * 0.3 }],
   }));
 
-  // Fitness Rings
-  const renderFitnessRings = () => {
-    const size = SCREEN_WIDTH - 40;
-    const cx = size / 2;
-    const cy = size / 2;
-    const strokeWidth = 20;
+  // Outsiders UI: Sleep Rating Logic
+  const getSleepRating = (quality: number) => {
+    if (quality >= 85) return { label: 'Excellent', color: '#fff' }; // White text for Excellent
+    if (quality >= 70) return { label: 'Good', color: '#fff' };
+    if (quality >= 50) return { label: 'Fair', color: '#fff' };
+    return { label: 'Poor', color: '#fff' };
+  };
 
-    const rings = [
-      {
-        key: 'duration',
-        color: RING_COLORS.move,
-        percentage: Math.min(((selectedDay?.durationHours || 0) / 8) * 100, 100),
-        radius: 135,
-      },
-      {
-        key: 'quality',
-        color: RING_COLORS.exercise,
-        percentage: selectedDay?.quality || 0,
-        radius: 110,
-      },
-      {
-        key: 'recovery',
-        color: RING_COLORS.stand,
-        percentage: stages.deep + stages.rem,
-        radius: 85,
-      },
-    ];
+  const getSleepDescription = (quality: number) => {
+    if (quality >= 85)
+      return 'Your sleep duration last night was above your goal, providing optimal restorative sleep for complete recovery. You barely stirred awake last night - great stuff.';
+    if (quality >= 70)
+      return 'You had a good night of sleep. A solid balance of deep and REM sleep to help you feel refreshed.';
+    if (quality >= 50)
+      return 'Your sleep was okay, but you might feel a bit groggy. Try to aim for more consistency.';
+    return 'You might need some extra caffeine today. Your sleep quality was lower than usual.';
+  };
 
+  const renderSleepRating = () => {
+    // Determine animation direction
     const entering =
       dayAnimDirection === 'left'
         ? SlideInRight.duration(300)
@@ -366,105 +382,27 @@ export default function SleepScreen() {
             ? FadeIn.delay(200).duration(600)
             : undefined;
 
+    const rating = getSleepRating(selectedDay?.quality || 0);
+    const description = getSleepDescription(selectedDay?.quality || 0);
+
     return (
       <GestureDetector gesture={chartPanGesture}>
-        <Animated.View entering={entering} style={[styles.ringsContainer, chartSwipeStyle]}>
+        <Animated.View entering={entering} style={[styles.ratingContainer, chartSwipeStyle]}>
           <Pressable
             onPress={() => selectedDay?.durationHours && router.push('/sleep-analysis' as any)}>
-            <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-              <Defs>
-                <SvgLinearGradient id="moveGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <Stop offset="0%" stopColor="#FF2D55" />
-                  <Stop offset="100%" stopColor="#FF6B8A" />
-                </SvgLinearGradient>
-                <SvgLinearGradient id="exerciseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <Stop offset="0%" stopColor="#30D158" />
-                  <Stop offset="100%" stopColor="#5AE17E" />
-                </SvgLinearGradient>
-                <SvgLinearGradient id="standGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <Stop offset="0%" stopColor="#00C7BE" />
-                  <Stop offset="100%" stopColor="#4DD8D2" />
-                </SvgLinearGradient>
-              </Defs>
-
-              {rings.map((ring, idx) => {
-                const circ = 2 * Math.PI * ring.radius;
-                const dash = `${(ring.percentage / 100) * circ} ${circ}`;
-                const gradId = idx === 0 ? 'moveGrad' : idx === 1 ? 'exerciseGrad' : 'standGrad';
-                return (
-                  <G key={ring.key}>
-                    <Circle
-                      cx={cx}
-                      cy={cy}
-                      r={ring.radius}
-                      stroke="rgba(255,255,255,0.04)"
-                      strokeWidth={strokeWidth}
-                      fill="transparent"
-                    />
-                    <Circle
-                      cx={cx}
-                      cy={cy}
-                      r={ring.radius}
-                      stroke={`url(#${gradId})`}
-                      strokeWidth={strokeWidth}
-                      fill="transparent"
-                      strokeDasharray={dash}
-                      strokeLinecap="round"
-                      transform={`rotate(-90 ${cx} ${cy})`}
-                    />
-                  </G>
-                );
-              })}
-
-              <SvgText
-                x={cx}
-                y={cy - 12}
-                fill="#fff"
-                fontSize="40"
-                fontWeight="700"
-                textAnchor="middle">
-                {formatDuration(selectedDay?.durationHours || 0).split(' ')[0]}
-              </SvgText>
-              <SvgText
-                x={cx}
-                y={cy + 18}
-                fill="rgba(255,255,255,0.5)"
-                fontSize="14"
-                textAnchor="middle">
-                Sleep Duration
-              </SvgText>
-            </Svg>
+            <View style={styles.ratingHeader}>
+              <View style={styles.backButtonPlaceholder} />
+            </View>
+            <Text style={styles.ratingTitle}>{rating.label}</Text>
+            <Text style={styles.ratingDate}>{selectedDay?.fullDate || 'Today'}</Text>
+            <Text style={styles.ratingDescription}>{description}</Text>
           </Pressable>
         </Animated.View>
       </GestureDetector>
     );
   };
 
-  const renderRingLegend = () => (
-    <Animated.View
-      entering={enteredFromNav ? FadeInDown.delay(300).duration(400) : undefined}
-      style={styles.legendContainer}>
-      {[
-        {
-          color: RING_COLORS.move,
-          label: 'Duration',
-          value: formatDuration(selectedDay?.durationHours || 0),
-        },
-        { color: RING_COLORS.exercise, label: 'Quality', value: `${selectedDay?.quality || 0}%` },
-        { color: RING_COLORS.stand, label: 'Recovery', value: `${stages.deep + stages.rem}%` },
-      ].map((item) => (
-        <View key={item.label} style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-          <View>
-            <Text style={styles.legendLabel}>{item.label}</Text>
-            <Text style={styles.legendValue}>{item.value}</Text>
-          </View>
-        </View>
-      ))}
-    </Animated.View>
-  );
-
-  const renderStats = () => {
+  const renderOutsidersMetrics = () => {
     const entering = dayAnimDirection
       ? dayAnimDirection === 'left'
         ? SlideInRight.duration(250)
@@ -472,19 +410,311 @@ export default function SleepScreen() {
       : enteredFromNav
         ? FadeInDown.delay(400).duration(400)
         : undefined;
+
+    // Calculate Restorative Sleep (Deep + REM)
+    const restorativeMin = (stages.deep || 0) + (stages.rem || 0);
+    const restorativeHours = Math.floor(restorativeMin / 60);
+    const restorativeMinsReduced = Math.round(restorativeMin % 60);
+
+    // Format start/end times
+    const bedtime = selectedDay?.startTime ? new Date(selectedDay.startTime) : null;
+    const waketime = selectedDay?.endTime ? new Date(selectedDay.endTime) : null;
+
+    const formatTimeOnly = (date: Date | null) => {
+      if (!date) return '--:--';
+      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    };
+
+    const getAmPm = (date: Date | null) => {
+      if (!date) return '';
+      return date.getHours() >= 12 ? 'PM' : 'AM';
+    };
+
     return (
-      <Animated.View entering={entering} style={styles.statsGrid}>
-        {[
-          { label: 'Total time', value: formatDuration(selectedDay?.durationHours || 0) },
-          { label: 'Bedtime', value: formatTime(selectedDay?.startTime) },
-          { label: 'Quality', value: `${selectedDay?.quality || 0}%` },
-          { label: 'Wake up', value: formatTime(selectedDay?.endTime) },
-        ].map((stat) => (
-          <View key={stat.label} style={styles.statCard}>
-            <Text style={styles.statLabel}>{stat.label}</Text>
-            <Text style={styles.statValue}>{stat.value}</Text>
+      <Animated.View entering={entering} style={styles.metricsContainer}>
+        {/* Top Row: Duration & Restorative */}
+        <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.metricsRowTop}>
+          {/* Sleep Duration */}
+          <View style={styles.outsiderMetricCard}>
+            <View style={styles.metricLabelRow}>
+              <Text style={styles.metricLabelText}>Sleep Duration</Text>
+              <Ionicons name="information-circle-outline" size={14} color="rgba(255,255,255,0.4)" />
+            </View>
+            <Text style={styles.metricBigValue}>
+              {Math.floor(selectedDay?.durationHours || 0)}
+              <Text style={styles.metricSmallUnit}>h </Text>
+              {Math.round(((selectedDay?.durationHours || 0) % 1) * 60)}
+              <Text style={styles.metricSmallUnit}>m</Text>
+            </Text>
+            {/* Hardcoded check for demo - ideally compare to goal */}
+            <View style={styles.metricStatusRow}>
+              <Ionicons name="checkmark-circle" size={14} color={ACCENT_GREEN} />
+              <Text style={styles.metricStatusText}>ABOVE NORMAL</Text>
+            </View>
           </View>
-        ))}
+
+          {/* Restorative Sleep */}
+          <View style={styles.outsiderMetricCard}>
+            <View style={styles.metricLabelRow}>
+              <Text style={styles.metricLabelText}>Restorative Sleep</Text>
+              <Ionicons name="information-circle-outline" size={14} color="rgba(255,255,255,0.4)" />
+            </View>
+            <Text style={styles.metricBigValue}>
+              {restorativeHours}
+              <Text style={styles.metricSmallUnit}>h </Text>
+              {restorativeMinsReduced}
+              <Text style={styles.metricSmallUnit}>m</Text>
+            </Text>
+            <View style={styles.metricStatusRow}>
+              <Ionicons name="checkmark-circle" size={14} color={ACCENT_GREEN} />
+              <Text style={styles.metricStatusText}>ABOVE NORMAL</Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* Bottom Row: Bedtime & Wake Up */}
+        <Animated.View
+          entering={FadeInDown.delay(200).duration(600)}
+          style={styles.metricsRowBottom}>
+          {/* Fell Asleep */}
+          <View style={styles.outsiderMetricCard}>
+            <View style={styles.metricLabelRow}>
+              <Text style={styles.metricLabelText}>Fell Asleep At</Text>
+            </View>
+            <View style={styles.timeValueRow}>
+              <Text style={styles.metricTimeValue}>
+                {formatTimeOnly(bedtime).replace(/ [AP]M/, '')}
+              </Text>
+              <Text style={styles.metricAmPm}>{getAmPm(bedtime)}</Text>
+            </View>
+            <View style={styles.metricStatusRow}>
+              <Ionicons name="checkmark-circle" size={14} color={ACCENT_GREEN} />
+              <Text style={styles.metricStatusText}>EARLIER THAN USUAL</Text>
+            </View>
+          </View>
+
+          {/* Woke Up */}
+          <View style={styles.outsiderMetricCard}>
+            <View style={styles.metricLabelRow}>
+              <Text style={styles.metricLabelText}>Woke Up At</Text>
+            </View>
+            <View style={styles.timeValueRow}>
+              <Text style={styles.metricTimeValue}>
+                {formatTimeOnly(waketime).replace(/ [AP]M/, '')}
+              </Text>
+              <Text style={styles.metricAmPm}>{getAmPm(waketime)}</Text>
+            </View>
+            <View style={styles.metricStatusRow}>
+              <Ionicons name="checkmark-circle" size={14} color={ACCENT_GREEN} />
+              <Text style={styles.metricStatusText}>AS USUAL</Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* Sleep Stages Timeline */}
+        {/* Sleep Stages Timeline */}
+        <Animated.View
+          entering={FadeInDown.delay(300).duration(500)}
+          style={styles.timelineContainer}>
+          <View style={styles.timelineHeaderRow}>
+            <Text style={styles.timelineTitle}>Sleep Stages</Text>
+            <Ionicons name="information-circle-outline" size={16} color="rgba(255,255,255,0.4)" />
+          </View>
+
+          <View style={styles.timelineChart}>
+            {/* Simulated timeline blocks */}
+            {/* We create a visual representation using flex blocks and colors */}
+            <View style={styles.timelineTrack}>
+              {/* Time Grid Lines (Every hour approx) */}
+              {Array.from({ length: 9 }).map((_, i) => (
+                <View key={i} style={[styles.timelineGridLine, { left: `${i * 12.5}%` }]} />
+              ))}
+
+              {/* Granular Sleep Blocks (Simulated Hypnogram) */}
+              {/* Awake (Beginning) */}
+              <View
+                style={[
+                  styles.timelineBlock,
+                  {
+                    left: '0%',
+                    width: '5%',
+                    bottom: '60%',
+                    height: '30%',
+                    backgroundColor: PHASE_COLORS.awake,
+                  },
+                ]}
+              />
+
+              {/* Cycle 1 */}
+              <View
+                style={[
+                  styles.timelineBlock,
+                  {
+                    left: '5%',
+                    width: '15%',
+                    bottom: '30%',
+                    height: '30%',
+                    backgroundColor: PHASE_COLORS.light,
+                    shadowColor: PHASE_COLORS.light,
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.timelineBlock,
+                  {
+                    left: '20%',
+                    width: '10%',
+                    bottom: '0%',
+                    height: '30%',
+                    backgroundColor: PHASE_COLORS.deep,
+                    shadowColor: PHASE_COLORS.deep,
+                  },
+                ]}
+              />
+
+              {/* Cycle 2 */}
+              <View
+                style={[
+                  styles.timelineBlock,
+                  {
+                    left: '30%',
+                    width: '12%',
+                    bottom: '30%',
+                    height: '30%',
+                    backgroundColor: PHASE_COLORS.light,
+                    shadowColor: PHASE_COLORS.light,
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.timelineBlock,
+                  {
+                    left: '42%',
+                    width: '12%',
+                    bottom: '0%',
+                    height: '30%',
+                    backgroundColor: PHASE_COLORS.deep,
+                    shadowColor: PHASE_COLORS.deep,
+                  },
+                ]}
+              />
+
+              {/* Cycle 3 (REM start) */}
+              <View
+                style={[
+                  styles.timelineBlock,
+                  {
+                    left: '54%',
+                    width: '10%',
+                    bottom: '30%',
+                    height: '30%',
+                    backgroundColor: PHASE_COLORS.light,
+                    shadowColor: PHASE_COLORS.light,
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.timelineBlock,
+                  {
+                    left: '64%',
+                    width: '10%',
+                    top: '0%',
+                    height: '30%',
+                    backgroundColor: PHASE_COLORS.rem,
+                    shadowColor: PHASE_COLORS.rem,
+                  },
+                ]}
+              />
+
+              {/* Cycle 4 (More REM) */}
+              <View
+                style={[
+                  styles.timelineBlock,
+                  {
+                    left: '74%',
+                    width: '10%',
+                    bottom: '30%',
+                    height: '30%',
+                    backgroundColor: PHASE_COLORS.light,
+                    shadowColor: PHASE_COLORS.light,
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.timelineBlock,
+                  {
+                    left: '84%',
+                    width: '11%',
+                    top: '0%',
+                    height: '30%',
+                    backgroundColor: PHASE_COLORS.rem,
+                    shadowColor: PHASE_COLORS.rem,
+                  },
+                ]}
+              />
+
+              {/* Awake (End) */}
+              <View
+                style={[
+                  styles.timelineBlock,
+                  {
+                    left: '95%',
+                    width: '5%',
+                    bottom: '60%',
+                    height: '30%',
+                    backgroundColor: PHASE_COLORS.awake,
+                    shadowColor: PHASE_COLORS.awake,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+
+          <View style={styles.timelineLabels}>
+            <Text style={styles.timelineTimeLabel}>{formatTimeOnly(bedtime)}</Text>
+            <Text style={styles.timelineTimeLabel}>{formatTimeOnly(waketime)}</Text>
+          </View>
+
+          {/* Detailed Sleep Stage Breakdown */}
+          <View style={styles.stageStatsContainer}>
+            <Text style={styles.sectionTitle}>Sleep Stages</Text>
+            <View style={styles.stageStatsGrid}>
+              {[
+                { label: 'Deep', color: PHASE_COLORS.deep, percent: '18%', time: '1h 32m' },
+                { label: 'REM', color: PHASE_COLORS.rem, percent: '24%', time: '2h 15m' },
+                { label: 'Light', color: PHASE_COLORS.light, percent: '52%', time: '5h 12m' },
+                { label: 'Awake', color: PHASE_COLORS.awake, percent: '6%', time: '41m' },
+              ].map((stage, i) => (
+                <View key={i} style={styles.stageStatCard}>
+                  <View style={styles.stageStatHeader}>
+                    <View
+                      style={[
+                        styles.stageDot,
+                        { backgroundColor: stage.color, shadowColor: stage.color },
+                      ]}
+                    />
+                    <Text style={styles.stageLabel}>{stage.label}</Text>
+                  </View>
+                  <Text style={styles.stageTime}>{stage.time}</Text>
+                  <Text style={styles.stagePercent}>{stage.percent}</Text>
+                  {/* Tiny bar */}
+                  <View style={styles.stageBarBg}>
+                    <View
+                      style={[
+                        styles.stageBarFill,
+                        { backgroundColor: stage.color, width: stage.percent as any },
+                      ]}
+                    />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        </Animated.View>
       </Animated.View>
     );
   };
@@ -498,14 +728,16 @@ export default function SleepScreen() {
       <Animated.View style={[styles.insightGlowBorder, insightGlowStyle]} />
       <View style={styles.insightCard}>
         <LinearGradient
-          colors={['rgba(99, 102, 241, 0.3)', 'rgba(99, 102, 241, 0.08)']}
+          colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
           style={styles.insightGradient}>
           <View style={styles.insightHeader}>
             <View style={styles.insightBadge}>
-              <View style={styles.insightBadgeDot} />
-              <Text style={styles.insightBadgeText}>AI INSIGHT</Text>
+              <View style={[styles.insightBadgeDot, { backgroundColor: ACCENT_PURPLE }]} />
+              <Text style={styles.insightBadgeText}>SLEEP INTELLIGENCE</Text>
             </View>
-            <Text style={styles.insightPro}>PRO</Text>
+            <View style={styles.proBadge}>
+              <Text style={styles.proBadgeText}>PRO</Text>
+            </View>
           </View>
           <Text style={styles.insightTitle}>{AI_HINTS[0].title}</Text>
           <Text style={styles.insightMessage}>{AI_HINTS[0].message}</Text>
@@ -516,7 +748,7 @@ export default function SleepScreen() {
 
   const renderWeeklyChart = () => (
     <Animated.View
-      entering={enteredFromNav ? FadeInDown.delay(600).duration(400) : undefined}
+      entering={enteredFromNav ? FadeInDown.delay(400).duration(600) : undefined}
       style={styles.weeklyCard}>
       <Text style={styles.cardTitle}>This Week</Text>
       <View style={styles.weeklyBars}>
@@ -580,7 +812,7 @@ export default function SleepScreen() {
   const renderWeekView = () => (
     <Animated.View entering={FadeIn.duration(400)}>
       {/* Weekly Summary Card */}
-      <View style={styles.summaryCard}>
+      <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.summaryCard}>
         <LinearGradient
           colors={['rgba(99,102,241,0.15)', 'transparent']}
           style={styles.summaryGradient}
@@ -636,10 +868,10 @@ export default function SleepScreen() {
             <Text style={styles.summaryStatLabel}>Consistency</Text>
           </View>
         </View>
-      </View>
+      </Animated.View>
 
       {/* Weekly Bar Chart */}
-      <View style={styles.weeklyCard}>
+      <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.weeklyCard}>
         <Text style={styles.cardTitle}>Daily Breakdown</Text>
         <View style={styles.weeklyBars}>
           {weeklyData.map((day, idx) => {
@@ -666,10 +898,10 @@ export default function SleepScreen() {
             );
           })}
         </View>
-      </View>
+      </Animated.View>
 
       {/* AI Analysis Card */}
-      <View style={styles.analysisCard}>
+      <Animated.View entering={FadeInDown.delay(300).duration(500)} style={styles.analysisCard}>
         <LinearGradient
           colors={['rgba(99,102,241,0.12)', 'transparent']}
           style={styles.analysisGradient}
@@ -704,7 +936,7 @@ export default function SleepScreen() {
             </View>
           ))}
         </View>
-      </View>
+      </Animated.View>
     </Animated.View>
   );
 
@@ -726,7 +958,7 @@ export default function SleepScreen() {
   const renderMonthView = () => (
     <Animated.View entering={FadeIn.duration(400)}>
       {/* Monthly Summary Card */}
-      <View style={styles.summaryCard}>
+      <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.summaryCard}>
         <LinearGradient
           colors={['rgba(52,211,153,0.12)', 'transparent']}
           style={styles.summaryGradient}
@@ -776,10 +1008,10 @@ export default function SleepScreen() {
             <Text style={styles.summaryStatLabel}>Consistency</Text>
           </View>
         </View>
-      </View>
+      </Animated.View>
 
       {/* Sleep Metrics Card */}
-      <View style={styles.metricsRow}>
+      <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.metricsRow}>
         <View style={styles.metricCard}>
           <LinearGradient
             colors={[`${ACCENT_BLUE}15`, 'transparent']}
@@ -811,10 +1043,10 @@ export default function SleepScreen() {
           <Text style={styles.metricValue}>{monthlySummary.avgRemPercent}%</Text>
           <Text style={styles.metricLabel}>Avg REM</Text>
         </View>
-      </View>
+      </Animated.View>
 
       {/* AI Analysis Card */}
-      <View style={styles.analysisCard}>
+      <Animated.View entering={FadeInDown.delay(300).duration(500)} style={styles.analysisCard}>
         <LinearGradient
           colors={['rgba(52,211,153,0.1)', 'transparent']}
           style={styles.analysisGradient}
@@ -849,7 +1081,7 @@ export default function SleepScreen() {
             </View>
           ))}
         </View>
-      </View>
+      </Animated.View>
     </Animated.View>
   );
 
@@ -958,102 +1190,100 @@ export default function SleepScreen() {
                   {/* Inner dark circle */}
                   <Circle cx={cx} cy={cy} r={radius - 15} fill="rgba(25,25,35,0.95)" />
 
-                  {/* Hour ticks */}
-                  {Array.from({ length: 24 }).map((_, i) => {
-                    const angle = ((i * 15 - 90) * Math.PI) / 180;
-                    const isMajor = i % 6 === 0;
-                    const inner = radius - (isMajor ? 18 : 10);
-                    const outer = radius - 3;
+                  {/* Hour ticks - minimalistic */}
+                  {[0, 6, 12, 18].map((h) => {
+                    const angle = ((h * 15 - 90) * Math.PI) / 180;
+                    const r = radius - 15; // Move ticks inside
                     return (
-                      <Line
-                        key={i}
-                        x1={cx + inner * Math.cos(angle)}
-                        y1={cy + inner * Math.sin(angle)}
-                        x2={cx + outer * Math.cos(angle)}
-                        y2={cy + outer * Math.sin(angle)}
-                        stroke={isMajor ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)'}
-                        strokeWidth={isMajor ? 2 : 1}
+                      <Circle
+                        key={h}
+                        cx={cx + r * Math.cos(angle)}
+                        cy={cy + r * Math.sin(angle)}
+                        r={2}
+                        fill="rgba(255,255,255,0.3)"
                       />
                     );
                   })}
 
-                  {/* Hour labels */}
-                  {[0, 6, 12, 18].map((h) => {
-                    const angle = ((h * 15 - 90) * Math.PI) / 180;
-                    const r = radius + 18;
-                    return (
-                      <SvgText
-                        key={h}
-                        x={cx + r * Math.cos(angle)}
-                        y={cy + r * Math.sin(angle) + 5}
-                        fill="rgba(255,255,255,0.7)"
-                        fontSize="13"
-                        fontWeight="600"
-                        textAnchor="middle">
-                        {h}
-                      </SvgText>
-                    );
-                  })}
-
-                  {/* Sleep arc */}
+                  {/* Sleep arc - Thicker & Neon */}
+                  {/* Glow effect (optional, simplified with double path) */}
                   <Path
                     d={`M ${bedX} ${bedY} A ${radius} ${radius} 0 ${largeArc} 1 ${wakeX} ${wakeY}`}
                     stroke={RECOVERY}
-                    strokeWidth="18"
+                    strokeWidth="38" // Thicker stroke
                     strokeLinecap="round"
                     fill="transparent"
-                    opacity={0.9}
+                    opacity={0.3} // Glow/Blur simulation layer
                   />
-
-                  {/* Dotted extension from bed handle */}
-                  <Circle cx={bedX} cy={bedY - 20} r="2" fill={RECOVERY} opacity={0.5} />
-                  <Circle cx={bedX + 5} cy={bedY - 35} r="2" fill={RECOVERY} opacity={0.4} />
-                  <Circle cx={bedX + 12} cy={bedY - 48} r="2" fill={RECOVERY} opacity={0.3} />
+                  <Path
+                    d={`M ${bedX} ${bedY} A ${radius} ${radius} 0 ${largeArc} 1 ${wakeX} ${wakeY}`}
+                    stroke={RECOVERY}
+                    strokeWidth="32" // Main stroke
+                    strokeLinecap="round"
+                    fill="transparent"
+                    opacity={1}
+                  />
                 </Svg>
 
                 {/* Center time display */}
                 <View style={styles.clockCenterDisplay}>
+                  <Text style={styles.clockCenterLabel}>SCHEDULE</Text>
                   <View style={styles.clockTimeRow}>
-                    <Svg width={20} height={20} viewBox="0 0 24 24">
-                      <Path
-                        d="M3 12h4l3-9 4 18 3-9h4"
-                        stroke="rgba(255,255,255,0.5)"
-                        strokeWidth="2"
-                        fill="none"
-                      />
-                    </Svg>
-                    <Text style={styles.clockCenterTime}>{bedtime.formatted}</Text>
+                    <Text style={styles.clockCenterTimeBig}>
+                      {bedtime.formatted.replace(' AM', '').replace(' PM', '')}
+                    </Text>
+                    <Text style={styles.clockCenterTimeSmall}>{bedtime.formatted.slice(-2)}</Text>
+                    <Text style={styles.clockCenterDash}>-</Text>
+                    <Text style={styles.clockCenterTimeBig}>
+                      {waketime.formatted.replace(' AM', '').replace(' PM', '')}
+                    </Text>
+                    <Text style={styles.clockCenterTimeSmall}>{waketime.formatted.slice(-2)}</Text>
                   </View>
-                  <View style={styles.clockTimeRow}>
-                    <Svg width={20} height={20} viewBox="0 0 24 24">
-                      <Circle cx="12" cy="12" r="4" fill="rgba(255,255,255,0.5)" />
-                    </Svg>
-                    <Text style={styles.clockCenterTime}>{waketime.formatted}</Text>
-                  </View>
+                  <Text style={styles.clockDurationText}>
+                    {recDuration.hours}h {recDuration.mins}m
+                  </Text>
                 </View>
 
-                {/* Bedtime handle */}
+                {/* Bedtime handle - Big & Glowy */}
                 <View
                   {...bedPan.panHandlers}
                   style={[
                     styles.clockHandle,
-                    { left: bedX + 40 - 20, top: bedY - 20, backgroundColor: RECOVERY },
+                    {
+                      left: bedX + 40 - 24,
+                      top: bedY - 24,
+                      backgroundColor: '#fff',
+                      width: 48,
+                      height: 48,
+                      borderRadius: 24,
+                      shadowColor: RECOVERY,
+                      shadowOpacity: 0.8,
+                      shadowRadius: 10,
+                      elevation: 5,
+                    },
                   ]}>
-                  <Svg width={18} height={18} viewBox="0 0 24 24">
-                    <Path d="M3 12h18M7 8h10v8H7z" stroke="#fff" strokeWidth="2" fill="none" />
-                  </Svg>
+                  <Ionicons name="moon" size={24} color={RECOVERY} />
                 </View>
 
-                {/* Wake handle */}
+                {/* Waketime handle - Big & Glowy */}
                 <View
                   {...wakePan.panHandlers}
                   style={[
                     styles.clockHandle,
-                    { left: wakeX + 40 - 20, top: wakeY - 20, backgroundColor: RECOVERY },
+                    {
+                      left: wakeX + 40 - 24,
+                      top: wakeY - 24,
+                      backgroundColor: '#fff',
+                      width: 48,
+                      height: 48,
+                      borderRadius: 24,
+                      shadowColor: RECOVERY,
+                      shadowOpacity: 0.8,
+                      shadowRadius: 10,
+                      elevation: 5,
+                    },
                   ]}>
-                  <Svg width={18} height={18} viewBox="0 0 24 24">
-                    <Circle cx="12" cy="12" r="5" fill="#fff" />
-                  </Svg>
+                  <Ionicons name="sunny" size={24} color={ACCENT_YELLOW} />
                 </View>
               </View>
 
@@ -1113,82 +1343,92 @@ export default function SleepScreen() {
         <View style={[StyleSheet.absoluteFill, { backgroundColor: BG_PRIMARY }]} />
 
         {/* OLED Edge Gradients */}
+        {/* Outsiders Full Gradient Background */}
         <LinearGradient
-          colors={['#1e1b4b', 'transparent']}
-          style={styles.gradientTopLeft}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-        <LinearGradient
-          colors={['#0c4a6e', 'transparent']}
-          style={styles.gradientBottomRight}
-          start={{ x: 1, y: 1 }}
-          end={{ x: 0, y: 0 }}
+          colors={[OUTSIDERS_GRADIENT_START, OUTSIDERS_GRADIENT_MID, 'rgba(0,0,0,0.8)']}
+          style={styles.fullGradient}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
         />
 
-        <ScrollView
+        <Animated.View
+          style={[
+            styles.stickyHeader,
+            { height: 120, paddingTop: 0 }, // Extended height for gradient fade
+            headerBlurStyle,
+          ]}>
+          <MaskedView
+            style={StyleSheet.absoluteFill}
+            maskElement={
+              <LinearGradient
+                colors={['black', 'black', 'black', 'transparent']}
+                locations={[0, 0.4, 0.7, 1]}
+                style={StyleSheet.absoluteFill}
+              />
+            }>
+            <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+          </MaskedView>
+        </Animated.View>
+
+        <Animated.ScrollView
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 60 }]}
           showsVerticalScrollIndicator={false}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={RECOVERY}
+              tintColor="#fff"
               colors={[RECOVERY]}
             />
           }>
           <Animated.View
             entering={enteredFromNav ? FadeIn.duration(300) : undefined}
             style={styles.header}>
-            <Text style={styles.title}>Sleep Analysis</Text>
-            {isConnected && (
-              <Pressable style={styles.addBtn} onPress={() => setShowRecordModal(true)}>
-                <Text style={styles.addBtnText}>+</Text>
+            <View style={styles.headerContent}>
+              <Pressable style={styles.addBtn} onPress={() => router.back()}>
+                <Ionicons name="chevron-back" size={24} color="#fff" />
               </Pressable>
-            )}
+              {/* Title is now part of the Rating component */}
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <Pressable style={styles.addBtn}>
+                  <Ionicons name="calendar-outline" size={20} color="#fff" />
+                </Pressable>
+                <Pressable
+                  style={styles.addBtn}
+                  onPress={() => {
+                    // "Edit" or "Options" action - here we use it as "Log/Edit Sleep" entry point
+                    setShowRecordModal(true);
+                  }}>
+                  <Ionicons name="options-outline" size={20} color="#fff" />
+                </Pressable>
+              </View>
+            </View>
           </Animated.View>
 
-          {renderViewToggle()}
+          {/* View Toggle - Hidden for Outsiders Day view to match reference clean look, but can be brought back or styled differently */}
+          {/* {renderViewToggle()} */}
 
-          {viewMode === 'Day' && renderDateNav()}
+          {/* Date Nav - Replaced by Rating Date */}
+          {/* {viewMode === 'Day' && renderDateNav()} */}
 
           {storeLoading ? (
             <Animated.View entering={FadeIn} style={styles.loadingContainer}>
               <Text style={styles.loadingText}>Loading...</Text>
             </Animated.View>
           ) : !isConnected ? (
-            <>
-              {renderEmptyState()}
-              {isConnected && (
-                <Pressable style={styles.recordBtn} onPress={() => setShowRecordModal(true)}>
-                  <LinearGradient
-                    colors={[RECOVERY, RECOVERY_LIGHT]}
-                    style={styles.recordBtnGradient}>
-                    <Text style={styles.recordBtnText}>Record Sleep</Text>
-                  </LinearGradient>
-                </Pressable>
-              )}
-            </>
+            <>{renderEmptyState()}</>
           ) : viewMode === 'Day' ? (
             !selectedDay?.durationHours ? (
-              <>
-                {renderEmptyState()}
-                <Pressable style={styles.recordBtn} onPress={() => setShowRecordModal(true)}>
-                  <LinearGradient
-                    colors={[RECOVERY, RECOVERY_LIGHT]}
-                    style={styles.recordBtnGradient}>
-                    <Text style={styles.recordBtnText}>Record Sleep</Text>
-                  </LinearGradient>
-                </Pressable>
-              </>
+              <>{renderEmptyState()}</>
             ) : (
               <>
-                {renderFitnessRings()}
-                {renderRingLegend()}
-                {renderStats()}
-                {renderAIInsight()}
-                {renderWeeklyChart()}
+                {renderSleepRating()}
+                {renderOutsidersMetrics()}
+                {/* {renderAIInsight()} - Maybe keep or remove based on new design cleanliness */}
+                {/* {renderWeeklyChart()} - Removed as timeline is now part of metrics */}
               </>
             )
           ) : viewMode === 'Week' ? (
@@ -1196,7 +1436,7 @@ export default function SleepScreen() {
           ) : (
             renderMonthView()
           )}
-        </ScrollView>
+        </Animated.ScrollView>
 
         {renderClockPicker()}
       </View>
@@ -1209,10 +1449,212 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1 },
   scrollContent: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 120 },
   header: {
+    paddingTop: 10,
+    marginBottom: 10,
+    paddingHorizontal: 0, // Reset horizontal padding for full gradient
+  },
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  stickyHeaderContent: {
+    paddingBottom: 10,
+  },
+  stickyHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    fontFamily: 'Inter-SemiBold',
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 20, // Push down below back button
+    paddingHorizontal: 20,
+    zIndex: 10,
+  },
+  headerIcons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // New Outsiders Styles
+  fullGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 400, // Large gradient background
+  },
+  ratingContainer: {
+    paddingHorizontal: 0,
+    marginBottom: 30,
+    marginTop: 10,
+  },
+  ratingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  backButtonPlaceholder: { width: 40 },
+  ratingTitle: {
+    fontSize: 48,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: -1,
+    fontFamily: 'Poppins-Bold',
+    marginBottom: 4,
+  },
+  ratingDate: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: 16,
+    fontFamily: 'Inter-Medium',
+  },
+  ratingDescription: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    lineHeight: 24,
+  },
+  metricsContainer: {
+    gap: 24,
+    marginBottom: 40,
+  },
+  metricsRowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  metricsRowBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  outsiderMetricCard: {
+    flex: 1,
+  },
+  metricLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  metricLabelText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  metricBigValue: {
+    fontSize: 38,
+    fontWeight: '800', // Bolder
+    color: '#fff',
+    fontFamily: 'Inter-Black', // Use heaviest font
+    marginBottom: 4,
+  },
+  metricSmallUnit: {
+    fontSize: 20,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.6)',
+  },
+  metricStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metricStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.8)',
+    letterSpacing: 0.5,
+  },
+  timeValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginBottom: 4,
+  },
+  metricTimeValue: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  metricAmPm: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '600',
+  },
+  timelineContainer: {
+    marginTop: 10,
     marginBottom: 20,
+  },
+  timelineHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 16,
+    paddingHorizontal: 0,
+  },
+  timelineTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: 'Inter-SemiBold',
+  },
+  timelineChart: {
+    height: 180, // Taller chart
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  timelineTrack: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    position: 'relative',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  timelineGridLine: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderStyle: 'dashed',
+  },
+  timelineBlock: {
+    position: 'absolute',
+    borderRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  timelineLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  timelineTimeLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
   },
   title: { fontSize: 28, fontWeight: '700', color: '#fff', fontFamily: 'Poppins-Bold' },
   addBtn: {
@@ -1317,6 +1759,17 @@ const styles = StyleSheet.create({
   },
   insightBadgeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFD60A' },
   insightBadgeText: { fontSize: 10, fontWeight: '700', color: '#fff', letterSpacing: 0.5 },
+  proBadge: {
+    backgroundColor: 'rgba(99, 102, 241, 0.3)',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  proBadgeText: {
+    color: RECOVERY_LIGHT,
+    fontSize: 10,
+    fontWeight: '700',
+  },
   insightPro: {
     fontSize: 10,
     fontWeight: '700',
@@ -1563,4 +2016,89 @@ const styles = StyleSheet.create({
   },
   metricValue: { fontSize: 28, fontWeight: '700', color: '#fff', marginTop: 10, marginBottom: 4 },
   metricLabel: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
+  clockCenterLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  clockCenterTimeBig: { fontSize: 24, fontWeight: '700', color: '#fff' },
+  clockCenterTimeSmall: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+    marginLeft: 2,
+    marginBottom: 4,
+  },
+  clockCenterDash: { fontSize: 20, color: 'rgba(255,255,255,0.4)', marginHorizontal: 8 },
+  clockDurationText: { fontSize: 16, color: RECOVERY, fontWeight: '600', marginTop: 4 },
+
+  // Stage Stats Styles
+  stageStatsContainer: {
+    marginTop: 24,
+    width: '100%',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 16,
+    fontFamily: 'Inter-SemiBold',
+  },
+  stageStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  stageStatCard: {
+    width: '48%',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  stageStatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  stageDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  stageLabel: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    fontFamily: 'Inter-Medium',
+  },
+  stageTime: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: 2,
+  },
+  stagePercent: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    marginBottom: 8,
+  },
+  stageBarBg: {
+    width: '100%',
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 2,
+  },
+  stageBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+
+  // Timeline Glow Logic embedded in style
 });
