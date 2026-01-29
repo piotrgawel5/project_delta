@@ -13,10 +13,10 @@ const CACHE_KEYS = {
     USER_PATTERNS: "@sleep_cache:user_patterns",
 } as const;
 
-// Sync cooldown (5 minutes)
-const SYNC_COOLDOWN_MS = 5 * 60 * 1000;
-// Fetch cooldown (2 minutes) - how often we re-fetch from Health Connect
-const FETCH_COOLDOWN_MS = 2 * 60 * 1000;
+// Sync cooldown (30 seconds for testing - change back to 5 * 60 * 1000 for production)
+const SYNC_COOLDOWN_MS = 30 * 1000;
+// Fetch cooldown (30 seconds for testing - change back to 2 * 60 * 1000 for production)
+const FETCH_COOLDOWN_MS = 30 * 1000;
 // Cache expiry (24 hours) - when to consider cache stale
 const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000;
 

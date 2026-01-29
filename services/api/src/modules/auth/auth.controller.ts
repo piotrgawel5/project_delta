@@ -6,9 +6,17 @@ import { config } from "../../config";
 const COOKIE_OPTIONS = {
     httpOnly: true,
     secure: config.nodeEnv === "production",
-    sameSite: "lax" as const, // 'strict' might be too strict for some mobile redirections, 'lax' is valid.
+    sameSite: "lax" as const,
     path: "/",
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+};
+
+// Separate options for clearCookie (without maxAge to avoid deprecation warning)
+const CLEAR_COOKIE_OPTIONS = {
+    httpOnly: true,
+    secure: config.nodeEnv === "production",
+    sameSite: "lax" as const,
+    path: "/",
 };
 
 export class AuthController {
@@ -160,8 +168,8 @@ export class AuthController {
             // ignore
         }
 
-        res.clearCookie("sb-access-token", COOKIE_OPTIONS);
-        res.clearCookie("sb-refresh-token", COOKIE_OPTIONS);
+        res.clearCookie("sb-access-token", CLEAR_COOKIE_OPTIONS);
+        res.clearCookie("sb-refresh-token", CLEAR_COOKIE_OPTIONS);
         res.json({ success: true });
     }
 

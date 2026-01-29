@@ -1,63 +1,90 @@
 import { Request, Response } from "express";
-import { createClient } from "@supabase/supabase-js";
-import { config } from "../../config";
+import { sleepService } from "./sleep.service";
+import { AppError } from "../../utils/AppError";
 import { logger } from "../../utils/logger";
 
 export class SleepController {
-    private supabase = createClient(
-        config.supabase.url!,
-        config.supabase.serviceRoleKey!,
-    );
-
     async getHistory(req: Request, res: Response) {
-        try {
-            const { userId } = req.params;
-            const requester = (req as any).user;
+        const { userId } = req.params;
+        const requester = (req as any).user;
 
-            if (requester.id !== userId) {
-                return res.status(403).json({
-                    error: "Unauthorized access to sleep data",
-                });
-            }
-
-            const { data, error } = await this.supabase
-                .from("sleep_logs")
-                .select("*")
-                .eq("user_id", userId)
-                .order("date", { ascending: false })
-                .limit(30);
-
-            if (error) throw error;
-            res.json(data);
-        } catch (error: any) {
-            logger.error("getSleepHistory error", error);
-            res.status(500).json({ error: error.message });
+        if (requester.id !== userId) {
+            throw AppError.forbidden("Unauthorized access to sleep data");
         }
+
+        const limit = req.query.limit
+            ? parseInt(req.query.limit as string, 10)
+            : 30;
+        const data = await sleepService.getHistory(userId, limit);
+
+        res.json({
+            success: true,
+            data,
+        });
     }
 
     async saveLog(req: Request, res: Response) {
-        try {
-            const { user_id } = req.body;
-            const requester = (req as any).user;
+        const { user_id } = req.body;
+        const requester = (req as any).user;
 
-            if (requester.id !== user_id) {
-                return res.status(403).json({
-                    error: "Unauthorized to save sleep log",
-                });
-            }
-
-            const { data, error } = await this.supabase
-                .from("sleep_logs")
-                .upsert(req.body)
-                .select()
-                .single();
-
-            if (error) throw error;
-            res.json(data);
-        } catch (error: any) {
-            logger.error("saveSleepLog error", error);
-            res.status(500).json({ error: error.message });
+        if (requester.id !== user_id) {
+            throw AppError.forbidden("Unauthorized to save sleep log");
         }
+
+        const data = await sleepService.saveLog(req.body);
+
+        logger.info("Sleep log saved", {
+            requestId: req.requestId,
+            userId: user_id,
+            date: req.body.date,
+        });
+
+        res.json({
+            success: true,
+            data,
+        });
+    }
+
+    async getLogByDate(req: Request, res: Response) {
+        const { userId, date } = req.params;
+        const requester = (req as any).user;
+
+        if (requester.id !== userId) {
+            throw AppError.forbidden("Unauthorized access to sleep data");
+        }
+
+        const data = await sleepService.getLogByDate(userId, date);
+
+        if (!data) {
+            throw AppError.notFound("Sleep log not found");
+        }
+
+        res.json({
+            success: true,
+            data,
+        });
+    }
+
+    async deleteLog(req: Request, res: Response) {
+        const { userId, date } = req.params;
+        const requester = (req as any).user;
+
+        if (requester.id !== userId) {
+            throw AppError.forbidden("Unauthorized to delete sleep log");
+        }
+
+        await sleepService.deleteLog(userId, date);
+
+        logger.info("Sleep log deleted", {
+            requestId: req.requestId,
+            userId,
+            date,
+        });
+
+        res.json({
+            success: true,
+            message: "Sleep log deleted successfully",
+        });
     }
 }
 

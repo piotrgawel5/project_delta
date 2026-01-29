@@ -1,10 +1,11 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { config } from "../../config";
 import { logger } from "../../utils/logger";
+import { AppError } from "../../utils/AppError";
 import crypto from "crypto";
 
-const RP_ID = process.env.PASSKEY_RP_ID || "piotrgawel5.github.io";
-const RP_NAME = process.env.PASSKEY_RP_NAME || "Project Delta";
+// Use centralized config for passkey settings
+const { rpId: RP_ID, rpName: RP_NAME } = config.passkey;
 
 // Helper utilities
 const base64URLEncode = (buffer: Buffer): string => {
@@ -30,8 +31,8 @@ export class AuthService {
 
     constructor() {
         this.supabaseAdmin = createClient(
-            config.supabase.url!,
-            config.supabase.serviceRoleKey!,
+            config.supabase.url,
+            config.supabase.serviceRoleKey,
         );
     }
 
@@ -195,8 +196,8 @@ export class AuthService {
 
         // Sign in to get session
         const supabaseAnon = createClient(
-            config.supabase.url!,
-            process.env.SUPABASE_ANON_KEY || "",
+            config.supabase.url,
+            config.supabase.anonKey,
         );
         const { data: signInData, error: signInError } = await supabaseAnon.auth
             .signInWithPassword({
@@ -295,8 +296,8 @@ export class AuthService {
         );
 
         const supabaseAnon = createClient(
-            config.supabase.url!,
-            process.env.SUPABASE_ANON_KEY || "",
+            config.supabase.url,
+            config.supabase.anonKey,
         );
         const { data: signInData, error: signInError } = await supabaseAnon.auth
             .signInWithPassword({
@@ -318,8 +319,8 @@ export class AuthService {
 
     async signInWithPassword(email: string, password: string) {
         const supabaseAnon = createClient(
-            config.supabase.url!,
-            process.env.SUPABASE_ANON_KEY || "",
+            config.supabase.url,
+            config.supabase.anonKey,
         );
         const { data, error } = await supabaseAnon.auth.signInWithPassword({
             email,
@@ -331,8 +332,8 @@ export class AuthService {
 
     async signUpWithPassword(email: string, password: string) {
         const supabaseAnon = createClient(
-            config.supabase.url!,
-            process.env.SUPABASE_ANON_KEY || "",
+            config.supabase.url,
+            config.supabase.anonKey,
         );
         // Using signUp only creates request, might wait for email confirmation.
         // If auto-confirm is on, it returns session.
@@ -346,8 +347,8 @@ export class AuthService {
 
     async signInWithIdToken(token: string) {
         const supabaseAnon = createClient(
-            config.supabase.url!,
-            process.env.SUPABASE_ANON_KEY || "",
+            config.supabase.url,
+            config.supabase.anonKey,
         );
         const { data, error } = await supabaseAnon.auth.signInWithIdToken({
             provider: "google",

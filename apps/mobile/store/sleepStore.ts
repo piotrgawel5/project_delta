@@ -65,6 +65,12 @@ interface SleepState {
     refreshData: (userId: string) => Promise<void>;
     loadCachedData: () => Promise<void>;
     syncPendingRecords: (userId: string) => Promise<void>;
+    // NEW: Force save a manual sleep entry directly to database
+    forceSaveManualSleep: (
+        userId: string,
+        startTime: string,
+        endTime: string,
+    ) => Promise<boolean>;
 }
 
 export const useSleepStore = create<SleepState>((set, get) => ({
@@ -399,6 +405,70 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         await get().checkHealthConnectStatus();
         if (get().isConnected) {
             await get().fetchSleepData(userId);
+        }
+    },
+
+    /**
+     * Force save a manual sleep entry directly to database
+     * Bypasses all cooldowns for immediate sync
+     */
+    forceSaveManualSleep: async (
+        userId: string,
+        startTime: string,
+        endTime: string,
+    ): Promise<boolean> => {
+        if (!userId) return false;
+
+        try {
+            const profile = useProfileStore.getState().profile;
+            const startDate = new Date(startTime);
+            const endDate = new Date(endTime);
+            const date = endDate.toISOString().split("T")[0];
+            const durationMs = endDate.getTime() - startDate.getTime();
+            const durationMinutes = Math.round(durationMs / 60000);
+
+            // Estimate sleep stages based on duration and profile
+            const estimated = estimateSleepStages(durationMinutes, profile);
+            const qualityScore = calculateQualityFromDuration(
+                durationMinutes,
+                profile,
+            );
+
+            const sleepRecord = {
+                user_id: userId,
+                date,
+                start_time: startTime,
+                end_time: endTime,
+                duration_minutes: durationMinutes,
+                quality_score: qualityScore,
+                deep_sleep_minutes: estimated.deep,
+                rem_sleep_minutes: estimated.rem,
+                light_sleep_minutes: estimated.light,
+                awake_minutes: estimated.awake,
+                data_source: "manual_entry",
+                synced_at: new Date().toISOString(),
+            };
+
+            console.log("[SleepStore] Force saving manual sleep:", sleepRecord);
+
+            // Directly call API (bypass cooldown)
+            await api.post("/api/sleep/log", sleepRecord);
+
+            // Update local cache
+            await upsertCacheRecord(sleepRecord, false); // false = already synced
+            await markRecordsSynced([date]);
+
+            // Reload cached data to update UI
+            await get().loadCachedData();
+
+            console.log("[SleepStore] Manual sleep saved successfully");
+            return true;
+        } catch (error) {
+            console.error(
+                "[SleepStore] Error force saving manual sleep:",
+                error,
+            );
+            return false;
         }
     },
 }));

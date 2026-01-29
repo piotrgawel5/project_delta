@@ -258,7 +258,6 @@ export default function SleepScreen() {
     if (!user?.id) return;
     setSaving(true);
     try {
-      const { writeSleepSession } = await import('../../modules/health-connect');
       const now = new Date();
       const bedtime = angleToTime(bedtimeAngle);
       const waketime = angleToTime(wakeAngle);
@@ -271,13 +270,35 @@ export default function SleepScreen() {
       wakeDate.setHours(waketime.hours, waketime.minutes, 0, 0);
       if (wakeDate <= bedDate) wakeDate.setDate(wakeDate.getDate() + 1);
 
-      await writeSleepSession(bedDate.toISOString(), wakeDate.toISOString(), 'Manual entry');
-      await fetchSleepData(user.id);
-      setShowRecordModal(false);
-      Alert.alert('Success', 'Sleep session saved!');
+      const startTime = bedDate.toISOString();
+      const endTime = wakeDate.toISOString();
+
+      // Try to write to Health Connect (non-blocking - continue even if fails)
+      try {
+        const { writeSleepSession } = await import('../../modules/health-connect');
+        await writeSleepSession(startTime, endTime, 'Manual entry');
+        console.log('[Sleep] Written to Health Connect');
+      } catch (hcError) {
+        console.warn('[Sleep] Health Connect write failed (continuing):', hcError);
+      }
+
+      // Force save directly to database (bypasses cooldown)
+      const { forceSaveManualSleep } = useSleepStore.getState();
+      const success = await forceSaveManualSleep(user.id, startTime, endTime);
+
+      if (success) {
+        setShowRecordModal(false);
+        const duration = calculateDurationFromAngles();
+        Alert.alert(
+          'Sleep Recorded! 🌙',
+          `${duration.hours}h ${duration.mins}m saved to your sleep history.`
+        );
+      } else {
+        Alert.alert('Error', 'Failed to save sleep record. Please try again.');
+      }
     } catch (error) {
       console.error('Save error:', error);
-      Alert.alert('Error', 'Failed to save. Please rebuild the app after native code changes.');
+      Alert.alert('Error', 'Failed to save sleep record.');
     } finally {
       setSaving(false);
     }
