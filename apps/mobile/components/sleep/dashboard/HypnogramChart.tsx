@@ -1,6 +1,17 @@
 import React, { useMemo, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Dimensions, Text } from 'react-native';
-import Svg, { Rect, Line, Defs, LinearGradient, Stop, Path } from 'react-native-svg';
+import Svg, {
+  Rect,
+  Line,
+  Defs,
+  LinearGradient,
+  Stop,
+  Path,
+  Filter,
+  FeGaussianBlur,
+  FeMerge,
+  FeMergeNode,
+} from 'react-native-svg';
 import Animated, {
   useSharedValue,
   useAnimatedProps,
@@ -99,25 +110,48 @@ const HypnogramBlock = React.memo(
     const endX = getX(stage.endTime);
     const w = Math.max(endX - x, 4);
     const y = getY(stage.stage);
+    const glowPadding = 4;
+    const glowWidth = w + glowPadding * 2;
+    const glowHeight = barHeight + glowPadding * 2;
+    const cornerRadius = 8;
 
-    const animatedProps = useAnimatedProps(() => {
+    const animatedMainProps = useAnimatedProps(() => {
       const delay = index * 30;
       const progress = Math.max(0, Math.min(1, (animProgress.value * 1000 - delay) / 400));
       return { opacity: progress, width: w * progress };
     });
 
+    const animatedGlowProps = useAnimatedProps(() => {
+      const delay = index * 30;
+      const progress = Math.max(0, Math.min(1, (animProgress.value * 1000 - delay) / 400));
+      return { opacity: 0.35 * progress, width: glowWidth * progress };
+    });
+
     return (
-      <AnimatedRect
-        x={x}
-        y={y}
-        height={barHeight}
-        fill={`url(#grad-${stage.stage})`}
-        stroke={`url(#grad-stroke-${stage.stage})`}
-        strokeWidth={4}
-        rx={6}
-        ry={6}
-        animatedProps={animatedProps}
-      />
+      <>
+        <AnimatedRect
+          x={x - glowPadding}
+          y={y - glowPadding}
+          height={glowHeight}
+          fill={STAGE_COLORS[stage.stage].primary}
+          rx={cornerRadius + 2}
+          ry={cornerRadius + 2}
+          filter="url(#glow)"
+          animatedProps={animatedGlowProps}
+        />
+        <AnimatedRect
+          x={x}
+          y={y}
+          height={barHeight}
+          fill={`url(#grad-${stage.stage})`}
+          stroke={`url(#grad-stroke-${stage.stage})`}
+          strokeWidth={2}
+          strokeOpacity={0.55}
+          rx={cornerRadius}
+          ry={cornerRadius}
+          animatedProps={animatedMainProps}
+        />
+      </>
     );
   }
 );
@@ -138,8 +172,8 @@ const HypnogramConnector = React.memo(
     const connectorWidth = 4;
 
     // Block visual properties
-    const blockRadius = 6;
-    const blockStroke = 4;
+    const blockRadius = 8;
+    const blockStroke = 2;
 
     const yPrev = getY(prev.stage);
     const yCurr = getY(current.stage);
@@ -367,6 +401,13 @@ export const HypnogramChart: React.FC<HypnogramChartProps> = ({
       <Animated.View style={[styles.container, { height }]} entering={FadeIn.duration(300)}>
         <Svg width={chartWidth} height={height}>
           <Defs>
+            <Filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+              <FeGaussianBlur stdDeviation="4" result="coloredBlur" />
+              <FeMerge>
+                <FeMergeNode in="coloredBlur" />
+                <FeMergeNode in="SourceGraphic" />
+              </FeMerge>
+            </Filter>
             {Object.keys(STAGE_COLORS).map((key) => {
               const s = key as StageName;
               return (
