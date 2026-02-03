@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
   <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions"/>
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
   <uses-permission android:name="android.permission.RECORD_AUDIO"/>
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
@@ -19,6 +20,9 @@
     </intent>
     <intent>
       <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"/>
+    </intent>
+    <intent>
+      <action android:name="android.settings.USAGE_ACCESS_SETTINGS"/>
     </intent>
     <package android:name="com.google.android.apps.healthdata"/>
   </queries>

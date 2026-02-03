@@ -121,8 +121,11 @@ class HealthConnectModule : Module() {
                     ))
                     return@runBlocking
                 }
-                
-                // Try to use the launcher if available
+
+                val permissions = setOf(
+                    HealthPermission.getReadPermission(SleepSessionRecord::class)
+                )
+
                 val launcher = permissionLauncher
                 if (launcher != null && activity is ComponentActivity) {
                     try {
@@ -131,19 +134,15 @@ class HealthConnectModule : Module() {
                         return@runBlocking
                     } catch (e: Exception) {
                         permissionPromise = null
-                        // Fall through to fallback
                     }
                 }
-                
-                // Fallback: Open Health Connect app permissions page
+
                 try {
                     val packageName = context.packageName
                     val intent = Intent("androidx.health.ACTION_MANAGE_HEALTH_PERMISSIONS").apply {
                         putExtra(Intent.EXTRA_PACKAGE_NAME, packageName)
                     }
                     activity.startActivity(intent)
-                    
-                    // Return current status (user will grant permission in Health Connect)
                     promise.resolve(listOf(
                         mapOf(
                             "permission" to "READ_SLEEP",

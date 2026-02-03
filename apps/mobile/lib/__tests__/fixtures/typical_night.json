@@ -1,0 +1,106 @@
+{
+  "description": "Typical 8-hour continuous sleep night with Health Connect stages",
+  "session": {
+    "id": "session-typical-001",
+    "startTime": "2026-02-01T23:15:00.000Z",
+    "endTime": "2026-02-02T07:15:00.000Z",
+    "stages": [
+      {
+        "stage": 1,
+        "startTime": "2026-02-01T23:15:00.000Z",
+        "endTime": "2026-02-01T23:22:00.000Z"
+      },
+      {
+        "stage": 4,
+        "startTime": "2026-02-01T23:22:00.000Z",
+        "endTime": "2026-02-01T23:45:00.000Z"
+      },
+      {
+        "stage": 5,
+        "startTime": "2026-02-01T23:45:00.000Z",
+        "endTime": "2026-02-02T00:30:00.000Z"
+      },
+      {
+        "stage": 4,
+        "startTime": "2026-02-02T00:30:00.000Z",
+        "endTime": "2026-02-02T01:00:00.000Z"
+      },
+      {
+        "stage": 6,
+        "startTime": "2026-02-02T01:00:00.000Z",
+        "endTime": "2026-02-02T01:35:00.000Z"
+      },
+      {
+        "stage": 4,
+        "startTime": "2026-02-02T01:35:00.000Z",
+        "endTime": "2026-02-02T02:15:00.000Z"
+      },
+      {
+        "stage": 5,
+        "startTime": "2026-02-02T02:15:00.000Z",
+        "endTime": "2026-02-02T02:50:00.000Z"
+      },
+      {
+        "stage": 4,
+        "startTime": "2026-02-02T02:50:00.000Z",
+        "endTime": "2026-02-02T03:20:00.000Z"
+      },
+      {
+        "stage": 6,
+        "startTime": "2026-02-02T03:20:00.000Z",
+        "endTime": "2026-02-02T03:55:00.000Z"
+      },
+      {
+        "stage": 4,
+        "startTime": "2026-02-02T03:55:00.000Z",
+        "endTime": "2026-02-02T04:30:00.000Z"
+      },
+      {
+        "stage": 5,
+        "startTime": "2026-02-02T04:30:00.000Z",
+        "endTime": "2026-02-02T04:55:00.000Z"
+      },
+      {
+        "stage": 4,
+        "startTime": "2026-02-02T04:55:00.000Z",
+        "endTime": "2026-02-02T05:30:00.000Z"
+      },
+      {
+        "stage": 6,
+        "startTime": "2026-02-02T05:30:00.000Z",
+        "endTime": "2026-02-02T06:10:00.000Z"
+      },
+      {
+        "stage": 4,
+        "startTime": "2026-02-02T06:10:00.000Z",
+        "endTime": "2026-02-02T06:50:00.000Z"
+      },
+      {
+        "stage": 2,
+        "startTime": "2026-02-02T06:50:00.000Z",
+        "endTime": "2026-02-02T07:05:00.000Z"
+      },
+      { "stage": 1, "startTime": "2026-02-02T07:05:00.000Z", "endTime": "2026-02-02T07:15:00.000Z" }
+    ],
+    "metadata": {
+      "dataOrigin": "com.google.android.apps.fitness"
+    }
+  },
+  "expected": {
+    "duration_minutes": 480,
+    "deep_sleep_minutes": 100,
+    "rem_sleep_minutes": 115,
+    "light_sleep_minutes": 248,
+    "awake_minutes": 17,
+    "source": "health_connect",
+    "confidence": "high",
+    "estimated_score_range": {
+      "min": 75,
+      "max": 90
+    }
+  },
+  "screen_time": {
+    "last_unlock_before_bedtime": "2026-02-01T22:45:00.000Z",
+    "first_unlock_after_wakeup": "2026-02-02T07:20:00.000Z"
+  }
+}

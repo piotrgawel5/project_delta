@@ -3,7 +3,13 @@ import { sleepController } from "./sleep.controller";
 import { requireAuth } from "../auth/auth.middleware";
 import { validate } from "../../middleware/validate";
 import { asyncHandler } from "../../utils/asyncHandler";
-import { sleepHistoryParamsSchema, sleepLogSchema } from "./sleep.validation";
+import {
+    sleepBatchSyncSchema,
+    sleepEditRequestSchema,
+    sleepHistoryParamsSchema,
+    sleepLogByDateSchema,
+    sleepLogSchema,
+} from "./sleep.validation";
 import {
     burstLimiter,
     userReadLimiter,
@@ -13,7 +19,15 @@ import { requireOwnership } from "../../middleware/authorization";
 
 const router = Router();
 
-// Get sleep history for a user
+// ============================================================================
+// READ ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /sleep/:userId/history
+ * Get sleep history with optional date range and pagination
+ * Query params: ?limit=30&offset=0&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+ */
 router.get(
     "/:userId/history",
     requireAuth,
@@ -24,7 +38,22 @@ router.get(
     asyncHandler((req, res) => sleepController.getHistory(req, res)),
 );
 
-// Get sleep log by date
+/**
+ * GET /sleep/:userId/log/:date
+ * Get sleep log by date with optional includes
+ * Query params: ?include=stages,metrics,screen_time,provenance,edits
+ */
+router.get(
+    "/:userId/log/:date",
+    requireAuth,
+    requireOwnership,
+    burstLimiter,
+    userReadLimiter,
+    validate(sleepLogByDateSchema),
+    asyncHandler((req, res) => sleepController.getLogByDate(req, res)),
+);
+
+// Legacy route - redirect to new pattern
 router.get(
     "/:userId/:date",
     requireAuth,
@@ -34,18 +63,70 @@ router.get(
     asyncHandler((req, res) => sleepController.getLogByDate(req, res)),
 );
 
-// Save/update sleep log
+// ============================================================================
+// WRITE ENDPOINTS
+// ============================================================================
+
+/**
+ * POST /sleep/log
+ * Save or update a single sleep log
+ */
 router.post(
     "/log",
     requireAuth,
-    requireOwnership, // Checks body.user_id matches authenticated user
+    requireOwnership,
     burstLimiter,
     userWriteLimiter,
     validate(sleepLogSchema),
     asyncHandler((req, res) => sleepController.saveLog(req, res)),
 );
 
-// Delete sleep log
+/**
+ * POST /sleep/sync-batch
+ * Batch sync multiple sleep records (up to 30 at a time)
+ */
+router.post(
+    "/sync-batch",
+    requireAuth,
+    requireOwnership,
+    burstLimiter,
+    userWriteLimiter,
+    validate(sleepBatchSyncSchema),
+    asyncHandler((req, res) => sleepController.syncBatch(req, res)),
+);
+
+/**
+ * PATCH /sleep/log/:date/edit
+ * Edit an existing sleep log with required edit reason
+ */
+router.patch(
+    "/log/:date/edit",
+    requireAuth,
+    requireOwnership,
+    burstLimiter,
+    userWriteLimiter,
+    validate(sleepEditRequestSchema),
+    asyncHandler((req, res) => sleepController.editLog(req, res)),
+);
+
+// ============================================================================
+// DELETE ENDPOINTS
+// ============================================================================
+
+/**
+ * DELETE /sleep/:userId/log/:date
+ * Delete a specific sleep log
+ */
+router.delete(
+    "/:userId/log/:date",
+    requireAuth,
+    requireOwnership,
+    burstLimiter,
+    userWriteLimiter,
+    asyncHandler((req, res) => sleepController.deleteLog(req, res)),
+);
+
+// Legacy route
 router.delete(
     "/:userId/:date",
     requireAuth,
@@ -53,6 +134,19 @@ router.delete(
     burstLimiter,
     userWriteLimiter,
     asyncHandler((req, res) => sleepController.deleteLog(req, res)),
+);
+
+/**
+ * DELETE /sleep/:userId/data
+ * Purge all sleep data for a user (account deletion)
+ */
+router.delete(
+    "/:userId/data",
+    requireAuth,
+    requireOwnership,
+    burstLimiter,
+    userWriteLimiter,
+    asyncHandler((req, res) => sleepController.purgeUserData(req, res)),
 );
 
 export const sleepRoutes = router;

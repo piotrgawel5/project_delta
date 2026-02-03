@@ -1,0 +1,508 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Modal, Dimensions, Pressable } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle, Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Animated, {
+  useSharedValue,
+  useAnimatedProps,
+  runOnJS,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const { width, height } = Dimensions.get('window');
+const SLIDER_SIZE = width * 0.7;
+const STROKE_WIDTH = 36;
+const CENTER = SLIDER_SIZE / 2;
+const RADIUS = CENTER - STROKE_WIDTH / 2 - 4;
+const KNOB_SIZE = 32;
+const KNOB_HALF = KNOB_SIZE / 2;
+
+// Visual Constants
+const BORDER_RADIUS = 24;
+const BTN_COLOR = '#581C87';
+
+interface AddSleepRecordModalProps {
+  isVisible: boolean;
+  onClose: () => void;
+  onSave: (startTime: Date, endTime: Date) => void;
+  date?: Date; // Reference date for the sleep record
+}
+
+// ----------------------------------------------------------------------
+// Math Helpers
+// ----------------------------------------------------------------------
+
+const PI = Math.PI;
+const TAU = 2 * PI;
+
+function normalizeAngle(angle: number): number {
+  'worklet';
+  let a = angle;
+  while (a <= -PI) a += TAU;
+  while (a > PI) a -= TAU;
+  return a;
+}
+
+function timeToRad(h: number, m: number): number {
+  'worklet';
+  const totalMinutes = h * 60 + m;
+  const ratio = totalMinutes / (24 * 60);
+  return normalizeAngle(ratio * TAU - PI / 2);
+}
+
+function radToTime(rad: number): { h: number; m: number } {
+  'worklet';
+  let angle = rad + PI / 2;
+  if (angle < 0) angle += TAU;
+  if (angle >= TAU) angle -= TAU;
+  const mins = Math.round(((angle / TAU) * 24 * 60) / 10) * 10;
+  let h = Math.floor(mins / 60);
+  if (h >= 24) h = 0;
+  const m = mins % 60;
+  return { h, m };
+}
+
+function polarToCartesian(angle: number, r: number, cx: number): { x: number; y: number } {
+  'worklet';
+  return {
+    x: cx + r * Math.cos(angle),
+    y: cx + r * Math.sin(angle),
+  };
+}
+
+const formatTime = (h: number, m: number) => {
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+};
+
+const getSmartDateLabel = (date: Date) => {
+  const now = new Date();
+  // Reset times to compare dates only
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const n = new Date(now);
+  n.setHours(0, 0, 0, 0);
+
+  const diffTime = n.getTime() - d.getTime();
+  const diffDays = diffTime / (1000 * 3600 * 24);
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+};
+
+// ----------------------------------------------------------------------
+// Component
+// ----------------------------------------------------------------------
+
+Animated.addWhitelistedNativeProps({ d: true });
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+export const AddSleepRecordModal = ({
+  isVisible,
+  onClose,
+  onSave,
+  date = new Date(),
+}: AddSleepRecordModalProps) => {
+  const insets = useSafeAreaInsets();
+
+  const startAngle = useSharedValue(timeToRad(23, 0));
+  const endAngle = useSharedValue(timeToRad(7, 0));
+  const activeKnob = useSharedValue<'start' | 'end' | null>(null);
+  const translateY = useSharedValue(height);
+
+  const [bedtime, setBedtime] = useState({ h: 23, m: 0 });
+  const [waketime, setWaketime] = useState({ h: 7, m: 0 });
+  const [durationStr, setDurationStr] = useState('8h 00m');
+  const [headerDate, setHeaderDate] = useState('');
+
+  const updateTimes = useCallback((sRad: number, eRad: number) => {
+    const sTime = radToTime(sRad);
+    const eTime = radToTime(eRad);
+    setBedtime(sTime);
+    setWaketime(eTime);
+
+    let diff = eRad - sRad;
+    if (diff <= 0) diff += TAU;
+    const durMins = Math.round(((diff / TAU) * 24 * 60) / 10) * 10;
+    const dh = Math.floor(durMins / 60);
+    const dm = durMins % 60;
+    setDurationStr(`${dh}h ${dm.toString().padStart(2, '0')}m`);
+  }, []);
+
+  useEffect(() => {
+    if (isVisible) {
+      setHeaderDate(getSmartDateLabel(date));
+      startAngle.value = timeToRad(23, 0);
+      endAngle.value = timeToRad(7, 0);
+      updateTimes(startAngle.value, endAngle.value);
+      translateY.value = withTiming(0, { duration: 350, easing: Easing.out(Easing.cubic) });
+    } else {
+      translateY.value = height;
+    }
+  }, [isVisible, date]);
+
+  const closeWithAnimation = useCallback(() => {
+    translateY.value = withTiming(height, { duration: 250, easing: Easing.in(Easing.cubic) });
+    setTimeout(onClose, 260);
+  }, [onClose]);
+
+  const triggerHaptic = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  // ------------------------------------------------------------------
+  // Circular Slider Gesture w/ Manual Activation
+  // ------------------------------------------------------------------
+  const sliderGesture = Gesture.Pan()
+    .manualActivation(true)
+    .onTouchesDown((e, state) => {
+      'worklet';
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+
+      const sPos = polarToCartesian(startAngle.value, RADIUS, CENTER);
+      const ePos = polarToCartesian(endAngle.value, RADIUS, CENTER);
+
+      const dS = Math.hypot(touch.x - sPos.x, touch.y - sPos.y);
+      const dE = Math.hypot(touch.x - ePos.x, touch.y - ePos.y);
+
+      const threshold = STROKE_WIDTH + 30;
+
+      if (dS <= threshold && dS <= dE) {
+        activeKnob.value = 'start';
+        state.activate();
+      } else if (dE <= threshold) {
+        activeKnob.value = 'end';
+        state.activate();
+      } else {
+        activeKnob.value = null;
+        state.fail();
+      }
+    })
+    .onUpdate((e) => {
+      'worklet';
+      if (!activeKnob.value) return;
+
+      const rawAngle = Math.atan2(e.y - CENTER, e.x - CENTER);
+
+      const STEP = TAU / 144;
+      const offset = -PI / 2;
+      let relative = rawAngle - offset;
+      if (relative < 0) relative += TAU;
+      if (relative >= TAU) relative -= TAU;
+
+      const snapped = Math.round(relative / STEP) * STEP;
+      const finalAngle = normalizeAngle(snapped + offset);
+
+      const current = activeKnob.value === 'start' ? startAngle.value : endAngle.value;
+      let angleDiff = Math.abs(finalAngle - current);
+      if (angleDiff > PI) angleDiff = TAU - angleDiff;
+
+      if (angleDiff > 0.01) {
+        if (activeKnob.value === 'start') {
+          startAngle.value = finalAngle;
+        } else {
+          endAngle.value = finalAngle;
+        }
+        runOnJS(triggerHaptic)();
+        runOnJS(updateTimes)(startAngle.value, endAngle.value);
+      }
+    })
+    .onFinalize(() => {
+      'worklet';
+      activeKnob.value = null;
+    });
+
+  // ------------------------------------------------------------------
+  // Sheet Dismiss Gesture
+  // ------------------------------------------------------------------
+  const sheetGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      'worklet';
+      if (e.translationY > 0) {
+        translateY.value = e.translationY;
+      }
+    })
+    .onEnd((e) => {
+      'worklet';
+      if (translateY.value > 120 || e.velocityY > 600) {
+        translateY.value = withTiming(height, { duration: 250 });
+        runOnJS(onClose)();
+      } else {
+        translateY.value = withTiming(0, { duration: 200 });
+      }
+    });
+
+  // ------------------------------------------------------------------
+  // Animated Styles
+  // ------------------------------------------------------------------
+  const animatedPathProps = useAnimatedProps(() => {
+    const start = startAngle.value;
+    const end = endAngle.value;
+    let diff = end - start;
+    if (diff <= 0) diff += TAU;
+    const largeArc = diff > PI ? 1 : 0;
+    const startPos = polarToCartesian(start, RADIUS, CENTER);
+    const endPos = polarToCartesian(end, RADIUS, CENTER);
+    if (isNaN(startPos.x) || isNaN(endPos.x)) return { d: '' };
+    return {
+      d: `M ${startPos.x} ${startPos.y} A ${RADIUS} ${RADIUS} 0 ${largeArc} 1 ${endPos.x} ${endPos.y}`,
+    };
+  });
+
+  const startKnobStyle = useAnimatedStyle(() => {
+    const pos = polarToCartesian(startAngle.value, RADIUS, CENTER);
+    return { transform: [{ translateX: pos.x - KNOB_HALF }, { translateY: pos.y - KNOB_HALF }] };
+  });
+
+  const endKnobStyle = useAnimatedStyle(() => {
+    const pos = polarToCartesian(endAngle.value, RADIUS, CENTER);
+    return { transform: [{ translateX: pos.x - KNOB_HALF }, { translateY: pos.y - KNOB_HALF }] };
+  });
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const handleSave = () => {
+    const n = new Date(date); // Use the passed date
+    const s = new Date(n);
+    s.setHours(bedtime.h, bedtime.m, 0, 0);
+    const e = new Date(n);
+    e.setHours(waketime.h, waketime.m, 0, 0);
+
+    // Logic: Bedtime allows going back 1 day. Wake up defaults to reference day.
+    if (s > e) {
+      // e.g. Sleep 23:00 -> Wake 07:00
+      // s is day before
+      s.setDate(s.getDate() - 1);
+    }
+    // If e is "in the future" relative to NOW, we might want to clamp it, but user might be manually entering.
+    // For "Add Sleep", we assume we are recording something that happened.
+    // However, if reference date is Today, e cannot be tomorrow.
+
+    onSave(s, e);
+    closeWithAnimation();
+  };
+
+  if (!isVisible) return null;
+
+  return (
+    <Modal animationType="none" transparent visible={isVisible} onRequestClose={closeWithAnimation}>
+      <Pressable style={styles.backdrop} onPress={closeWithAnimation}>
+        <BlurView intensity={25} style={StyleSheet.absoluteFill} tint="dark" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
+      </Pressable>
+
+      <GestureHandlerRootView style={styles.gestureRoot} pointerEvents="box-none">
+        <GestureDetector gesture={sheetGesture}>
+          <Animated.View style={[styles.sheet, { paddingBottom: insets.bottom + 20 }, sheetStyle]}>
+            {/* Expanded Header Zone for Gestures */}
+            <View style={styles.headerZone}>
+              <View style={styles.handleContainer}>
+                <View style={styles.handle} />
+              </View>
+
+              <View style={styles.header}>
+                <Text style={styles.title}>{headerDate}</Text>
+                <Pressable onPress={closeWithAnimation} style={styles.closeBtn}>
+                  <Ionicons name="close" size={18} color="#8E8E93" />
+                </Pressable>
+              </View>
+            </View>
+
+            {/* Slider */}
+            <View style={styles.content}>
+              <GestureDetector gesture={sliderGesture}>
+                <View style={styles.sliderContainer}>
+                  <Svg width={SLIDER_SIZE} height={SLIDER_SIZE}>
+                    <Defs>
+                      <LinearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <Stop offset="0" stopColor="#8E86FF" />
+                        <Stop offset="1" stopColor="#A855F7" />
+                      </LinearGradient>
+                    </Defs>
+                    <Circle
+                      cx={CENTER}
+                      cy={CENTER}
+                      r={RADIUS}
+                      stroke="#2C2C2E"
+                      strokeWidth={STROKE_WIDTH}
+                      fill="none"
+                    />
+                    <AnimatedPath
+                      animatedProps={animatedPathProps}
+                      stroke="url(#arcGrad)"
+                      strokeWidth={STROKE_WIDTH}
+                      fill="none"
+                      strokeLinecap="round"
+                    />
+                    {Array.from({ length: 48 }).map((_, i) => {
+                      const ang = (i / 48) * TAU - PI / 2;
+                      const inner = RADIUS - 24;
+                      const outer = inner + 3;
+                      const isMajor = i % 4 === 0;
+                      return (
+                        <Path
+                          key={i}
+                          d={`M ${CENTER + inner * Math.cos(ang)} ${CENTER + inner * Math.sin(ang)} L ${CENTER + outer * Math.cos(ang)} ${CENTER + outer * Math.sin(ang)}`}
+                          stroke={isMajor ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'}
+                          strokeWidth={isMajor ? 1.5 : 1}
+                        />
+                      );
+                    })}
+                  </Svg>
+                  <Text style={[styles.clockLabel, { top: 16 }]}>00</Text>
+                  <Text style={[styles.clockLabel, { right: 16, top: CENTER - 7 }]}>06</Text>
+                  <Text style={[styles.clockLabel, { bottom: 16 }]}>12</Text>
+                  <Text style={[styles.clockLabel, { left: 16, top: CENTER - 7 }]}>18</Text>
+
+                  <Animated.View style={[styles.knobWrap, startKnobStyle]}>
+                    <View style={styles.knob}>
+                      <Ionicons name="bed" size={13} color="#000" />
+                    </View>
+                  </Animated.View>
+                  <Animated.View style={[styles.knobWrap, endKnobStyle]}>
+                    <View style={styles.knob}>
+                      <Ionicons name="alarm" size={13} color="#000" />
+                    </View>
+                  </Animated.View>
+
+                  <View style={styles.centerInfo} pointerEvents="none">
+                    <Text style={styles.durationLabel}>Duration</Text>
+                    <Text style={styles.durationValue}>{durationStr}</Text>
+                  </View>
+                </View>
+              </GestureDetector>
+
+              {/* Time display */}
+              <View style={styles.timeRow}>
+                <View style={styles.timeItem}>
+                  <View style={styles.timeLabelRow}>
+                    <Ionicons name="bed" size={13} color="#8E86FF" />
+                    <Text style={styles.timeLabelText}>Bedtime</Text>
+                  </View>
+                  <Text style={styles.timeValue}>{formatTime(bedtime.h, bedtime.m)}</Text>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.timeItem}>
+                  <View style={styles.timeLabelRow}>
+                    <Ionicons name="alarm" size={13} color="#A855F7" />
+                    <Text style={styles.timeLabelText}>Wake Up</Text>
+                  </View>
+                  <Text style={styles.timeValue}>{formatTime(waketime.h, waketime.m)}</Text>
+                </View>
+              </View>
+
+              {/* Save button */}
+              <Pressable
+                onPress={handleSave}
+                style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.85 }]}>
+                <Text style={styles.saveBtnText}>Save Sleep</Text>
+              </Pressable>
+            </View>
+          </Animated.View>
+        </GestureDetector>
+      </GestureHandlerRootView>
+    </Modal>
+  );
+};
+
+const styles = StyleSheet.create({
+  backdrop: { flex: 1 },
+  gestureRoot: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
+  sheet: {
+    backgroundColor: '#1C1C1E',
+    borderTopLeftRadius: BORDER_RADIUS,
+    borderTopRightRadius: BORDER_RADIUS,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  headerZone: {
+    width: '100%',
+    paddingBottom: 10,
+    backgroundColor: 'transparent',
+    // Increase top padding to add "some space at the top" for gestures
+    paddingTop: 16,
+  },
+  handleContainer: { alignItems: 'center', marginBottom: 8 },
+  handle: { width: 36, height: 5, backgroundColor: '#48484A', borderRadius: 3 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  title: { color: 'white', fontSize: 19, fontWeight: '700' },
+  closeBtn: { padding: 6, backgroundColor: '#2C2C2E', borderRadius: 14 },
+  content: { alignItems: 'center', paddingHorizontal: 20 },
+  sliderContainer: {
+    width: SLIDER_SIZE,
+    height: SLIDER_SIZE,
+    marginBottom: 16,
+  },
+  clockLabel: {
+    position: 'absolute',
+    color: '#636366',
+    fontSize: 11,
+    fontWeight: '600',
+    alignSelf: 'center',
+  },
+  knobWrap: { position: 'absolute', width: KNOB_SIZE, height: KNOB_SIZE },
+  knob: {
+    width: KNOB_SIZE,
+    height: KNOB_SIZE,
+    borderRadius: KNOB_SIZE / 2,
+    backgroundColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  centerInfo: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  durationLabel: { color: '#8E8E93', fontSize: 12, fontWeight: '500', marginBottom: 2 },
+  durationValue: { color: 'white', fontSize: 26, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  timeRow: {
+    flexDirection: 'row',
+    backgroundColor: '#2C2C2E',
+    borderRadius: BORDER_RADIUS,
+    padding: 14,
+    width: '100%',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+  },
+  timeItem: { flex: 1, alignItems: 'center' },
+  timeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  timeLabelText: { color: '#AEAEB2', fontSize: 13, fontWeight: '500' },
+  timeValue: { color: 'white', fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  divider: { width: 1, height: 36, backgroundColor: '#48484A', marginHorizontal: 12 },
+  saveBtn: {
+    backgroundColor: BTN_COLOR,
+    width: '100%',
+    height: 50,
+    borderRadius: BORDER_RADIUS,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  saveBtnText: { color: 'white', fontSize: 16, fontWeight: '600' },
+});

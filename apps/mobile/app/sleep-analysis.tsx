@@ -26,6 +26,10 @@ import Svg, {
 } from 'react-native-svg';
 import { useAuthStore } from '@store/authStore';
 import { useSleepStore } from '@store/sleepStore';
+// P1 Components
+import { SleepTimeline, TimelineData, SleepStage } from '../components/sleep/SleepTimeline';
+import { EditHistoryBadge, SleepEdit } from '../components/sleep/EditHistoryBadge';
+import { InsightCard, SleepInsight, ContributingSignal } from '../components/sleep/InsightCard';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -44,7 +48,6 @@ export default function SleepAnalysisScreen() {
 
   // Date selection state
   const [selectedDateIndex, setSelectedDateIndex] = useState(0);
-  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Animations
   const efficiencyAnim = useSharedValue(0);
@@ -62,27 +65,66 @@ export default function SleepAnalysisScreen() {
     if (weeklyHistory.length === 0) init();
   }, [user?.id]);
 
-  // Get available dates from history
-  const availableDates = useMemo(() => {
-    if (!weeklyHistory.length) return [];
-    return weeklyHistory.map((h, i) => ({
-      date: h.date,
-      label:
-        i === 0
-          ? 'Today'
-          : new Date(h.date).toLocaleDateString('en-US', {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-            }),
-      index: i,
-    }));
+  // Horizontal Calendar Logic
+  const calendarDates = useMemo(() => {
+    // Generate last 7 days + today if history is empty, or use history dates
+    // For visual fidelity with "The Outsiders", we want a strip of days.
+    // If we have history, we map it.
+    if (weeklyHistory.length > 0) {
+      return weeklyHistory
+        .map((h, i) => ({
+          date: new Date(h.date),
+          label: new Date(h.date).getDate().toString(),
+          dayLabel: new Date(h.date).toLocaleDateString('en-US', { weekday: 'narrow' }), // M, T, W...
+          index: i,
+          score: h.quality_score || 0,
+        }))
+        .reverse(); // Show newest first? Or standard calendar order? Usually calendar is left-to-right (past to future).
+      // Let's sort by date ascending.
+      // weeklyHistory from store might be desc.
+    }
+
+    // Fallback: Last 7 days
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      days.push({
+        date: d,
+        label: d.getDate().toString(),
+        dayLabel: d.toLocaleDateString('en-US', { weekday: 'narrow' }),
+        index: 6 - i, // placeholder index
+        score: 0,
+      });
+    }
+    return days;
   }, [weeklyHistory]);
 
-  const sleepData = useMemo(() => {
+  const sortedDates = useMemo(() => {
+    // Ensure ascending order for calendar strip
+    return [...calendarDates].sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [calendarDates]);
+
+  // Handle Date Selection
+  const onSelectDate = (index: number) => {
+    // Find the original index in weeklyHistory if needed
+    // For now, let's just assume we pick by date match
+    setSelectedDateIndex(index);
+  };
+
+  const currentSleepData = useMemo(() => {
     if (weeklyHistory.length === 0) return null;
-    return weeklyHistory[selectedDateIndex] || weeklyHistory[0];
-  }, [weeklyHistory, selectedDateIndex]);
+    // Map the visible sorted index back to the history item
+    const selectedDate = sortedDates[selectedDateIndex]?.date;
+    if (!selectedDate) return weeklyHistory[0];
+
+    return (
+      weeklyHistory.find((h) => new Date(h.date).toDateString() === selectedDate.toDateString()) ||
+      weeklyHistory[0]
+    );
+  }, [weeklyHistory, selectedDateIndex, sortedDates]);
+
+  const sleepData = currentSleepData; // Alias for compatibility
 
   const formatTime = (date: string | undefined) => {
     if (!date) return '--:--';
@@ -131,6 +173,195 @@ export default function SleepAnalysisScreen() {
     const consistencyScore = sleepData.quality_score ? sleepData.quality_score * 0.15 : 70 * 0.15;
     return Math.round(durationScore + deepScore + remScore + consistencyScore);
   }, [sleepData, deepPercent, remPercent]);
+
+  // Prepare timeline data for SleepTimeline component
+  const timelineData: TimelineData | null = useMemo(() => {
+    if (!sleepData || !sleepData.start_time || !sleepData.end_time) return null;
+
+    const stages: SleepStage[] = [];
+    const startTimeMs = new Date(sleepData.start_time).getTime();
+    const totalDuration = sleepData.duration_minutes;
+
+    // Create segments based on percentages (approximate distribution)
+    const awakeMins = sleepData.awake_minutes || Math.round(totalDuration * 0.05);
+    const lightMins = sleepData.light_sleep_minutes || Math.round(totalDuration * 0.55);
+    const deepMins = sleepData.deep_sleep_minutes || Math.round(totalDuration * 0.18);
+    const remMins = sleepData.rem_sleep_minutes || Math.round(totalDuration * 0.22);
+
+    let currentTime = startTimeMs;
+
+    // Light sleep (first portion)
+    const light1Mins = Math.round(lightMins * 0.4);
+    stages.push({
+      stage: 'light',
+      startTime: new Date(currentTime).toISOString(),
+      endTime: new Date(currentTime + light1Mins * 60 * 1000).toISOString(),
+      durationMinutes: light1Mins,
+    });
+    currentTime += light1Mins * 60 * 1000;
+
+    // Deep sleep
+    stages.push({
+      stage: 'deep',
+      startTime: new Date(currentTime).toISOString(),
+      endTime: new Date(currentTime + deepMins * 60 * 1000).toISOString(),
+      durationMinutes: deepMins,
+    });
+    currentTime += deepMins * 60 * 1000;
+
+    // REM sleep
+    stages.push({
+      stage: 'rem',
+      startTime: new Date(currentTime).toISOString(),
+      endTime: new Date(currentTime + remMins * 60 * 1000).toISOString(),
+      durationMinutes: remMins,
+    });
+    currentTime += remMins * 60 * 1000;
+
+    // Light sleep (second portion)
+    const light2Mins = lightMins - light1Mins;
+    stages.push({
+      stage: 'light',
+      startTime: new Date(currentTime).toISOString(),
+      endTime: new Date(currentTime + light2Mins * 60 * 1000).toISOString(),
+      durationMinutes: light2Mins,
+    });
+    currentTime += light2Mins * 60 * 1000;
+
+    // Awake (brief)
+    if (awakeMins > 0) {
+      stages.push({
+        stage: 'awake',
+        startTime: new Date(currentTime).toISOString(),
+        endTime: new Date(currentTime + awakeMins * 60 * 1000).toISOString(),
+        durationMinutes: awakeMins,
+      });
+    }
+
+    return {
+      stages,
+      startTime: sleepData.start_time,
+      endTime: sleepData.end_time,
+      totalDurationMinutes: totalDuration,
+    };
+  }, [sleepData]);
+
+  // Prepare edit history for EditHistoryBadge
+  const sleepEdits: SleepEdit[] = useMemo(() => {
+    // Get edits from sleep data if available
+    const rawEdits = (sleepData as any)?.edits;
+    if (!rawEdits || !Array.isArray(rawEdits)) return [];
+    return rawEdits;
+  }, [sleepData]);
+
+  const dataSource = useMemo(() => {
+    const source = (sleepData as any)?.source;
+    return source || 'health_connect';
+  }, [sleepData]);
+
+  const confidence = useMemo(() => {
+    const conf = (sleepData as any)?.confidence;
+    return conf || 'medium';
+  }, [sleepData]);
+
+  // Prepare AI insight data for InsightCard
+  const aiInsight: SleepInsight | null = useMemo(() => {
+    if (!sleepData) return null;
+
+    const signals: ContributingSignal[] = [];
+    const durationScore = Math.round((sleepData.duration_minutes / 480) * 100);
+    const deepScore = Math.round((deepPercent / 20) * 100);
+    const remScore = Math.round((remPercent / 25) * 100);
+
+    // Duration contribution
+    signals.push({
+      factor: 'Sleep Duration',
+      impact: durationScore >= 80 ? 'positive' : durationScore >= 50 ? 'neutral' : 'negative',
+      value: `${durationHours}h ${durationMins}m`,
+      weight: 35,
+      description: durationScore >= 80 ? 'Optimal sleep duration' : 'Consider sleeping longer',
+    });
+
+    // Deep sleep contribution
+    signals.push({
+      factor: 'Deep Sleep',
+      impact: deepPercent >= 15 ? 'positive' : deepPercent >= 10 ? 'neutral' : 'negative',
+      value: `${deepPercent}%`,
+      weight: 25,
+      description: deepPercent >= 15 ? 'Excellent restorative sleep' : 'Lower than optimal',
+    });
+
+    // REM sleep contribution
+    signals.push({
+      factor: 'REM Sleep',
+      impact: remPercent >= 20 ? 'positive' : remPercent >= 15 ? 'neutral' : 'negative',
+      value: `${remPercent}%`,
+      weight: 25,
+      description: remPercent >= 20 ? 'Good dream cycle' : 'Consider improving',
+    });
+
+    // Sleep efficiency
+    signals.push({
+      factor: 'Sleep Efficiency',
+      impact: sleepEfficiency >= 85 ? 'positive' : sleepEfficiency >= 70 ? 'neutral' : 'negative',
+      value: `${sleepEfficiency}%`,
+      weight: 15,
+      description: sleepEfficiency >= 85 ? 'Minimal time awake' : 'Room for improvement',
+    });
+
+    // Generate headline based on score
+    let headline = '';
+    let subheadline = '';
+    if (sleepScore >= 85) {
+      headline = 'Excellent sleep quality! 🌟';
+      subheadline = 'You achieved optimal recovery last night with balanced sleep stages.';
+    } else if (sleepScore >= 70) {
+      headline = 'Good sleep, minor improvements possible';
+      subheadline = "Your sleep was restorative but there's room to optimize.";
+    } else if (sleepScore >= 50) {
+      headline = 'Fair sleep - focus on consistency';
+      subheadline = 'Consider adjusting your bedtime routine for better results.';
+    } else {
+      headline = 'Sleep needs attention';
+      subheadline = 'Try going to bed earlier and limiting screen time before sleep.';
+    }
+
+    // Generate recommendations
+    const recommendations: string[] = [];
+    if (deepPercent < 15) {
+      recommendations.push('Avoid caffeine after 2 PM to improve deep sleep');
+    }
+    if (remPercent < 20) {
+      recommendations.push('Maintain consistent wake times for better REM cycles');
+    }
+    if (sleepEfficiency < 85) {
+      recommendations.push('Keep your bedroom cool and dark for less interruptions');
+    }
+    if (sleepDebt > 60) {
+      recommendations.push('Consider a 20-minute power nap to reduce sleep debt');
+    }
+
+    return {
+      headline,
+      subheadline,
+      contributingSignals: signals,
+      predictedDelta: {
+        direction: sleepScore >= 70 ? ('stable' as const) : ('up' as const),
+        value: sleepScore >= 70 ? 0 : Math.round((100 - sleepScore) * 0.15),
+        confidence: 'medium' as const,
+      },
+      recommendations: recommendations.slice(0, 2),
+    };
+  }, [
+    sleepData,
+    sleepScore,
+    deepPercent,
+    remPercent,
+    sleepEfficiency,
+    sleepDebt,
+    durationHours,
+    durationMins,
+  ]);
 
   const getScoreLabel = (score: number) => {
     if (score >= 85) return 'Excellent';
@@ -400,74 +631,77 @@ export default function SleepAnalysisScreen() {
     );
   };
 
-  // Redesigned Timeline
+  /* Redesigned Timeline */
   const renderTimeline = () => {
-    const totalWidth = SCREEN_WIDTH - 80;
-    const segments = [
-      { percent: awakePercent, color: '#64748B', label: 'Awake' },
-      { percent: lightPercent, color: ACCENT_YELLOW, label: 'Light' },
-      { percent: deepPercent, color: ACCENT_PINK, label: 'Deep' },
-      { percent: remPercent, color: ACCENT_PURPLE, label: 'REM' },
-    ];
-
     return (
-      <Animated.View entering={FadeInDown.delay(350).duration(400)} style={styles.timelineSection}>
-        <LinearGradient
-          colors={['rgba(99,102,241,0.08)', 'transparent']}
-          style={styles.cardGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-        <View style={styles.timelineHeader}>
-          <View style={styles.timelineHeaderLeft}>
-            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-              <Circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
-              <Path
-                d="M12 6v6l4 2"
-                stroke="rgba(255,255,255,0.7)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </Svg>
-            <Text style={styles.timelineTitle}>Sleep Phases</Text>
-          </View>
-          <View style={styles.timeRange}>
-            <Text style={styles.timeRangeText}>{formatTime(sleepData?.start_time)}</Text>
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M5 12h14M12 5l7 7-7 7"
-                stroke="rgba(255,255,255,0.4)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
-            <Text style={styles.timeRangeText}>{formatTime(sleepData?.end_time)}</Text>
-          </View>
+      <>
+        {/* Horizontal Calendar Strip */}
+        <View style={styles.calendarContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.calendarContent}>
+            {sortedDates.map((item, i) => {
+              const isSelected = i === selectedDateIndex;
+              const isSelectedDate =
+                sleepData && new Date(sleepData.date).toDateString() === item.date.toDateString();
+
+              return (
+                <Pressable
+                  key={i}
+                  onPress={() => onSelectDate(i)}
+                  style={[styles.calendarDay, isSelectedDate && styles.calendarDaySelected]}>
+                  <Text
+                    style={[
+                      styles.calendarDayLabel,
+                      isSelectedDate && styles.calendarDayLabelSelected,
+                    ]}>
+                    {item.dayLabel}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.calendarDateLabel,
+                      isSelectedDate && styles.calendarDateLabelSelected,
+                    ]}>
+                    {item.label}
+                  </Text>
+                  {/* Score Dot */}
+                  {item.score > 0 && (
+                    <View
+                      style={[
+                        styles.scoreDot,
+                        {
+                          backgroundColor:
+                            item.score >= 85
+                              ? ACCENT_GREEN
+                              : item.score >= 70
+                                ? ACCENT_YELLOW
+                                : ACCENT_PINK,
+                        },
+                      ]}
+                    />
+                  )}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </View>
 
-        <View style={styles.timelineTrack}>
-          {segments.map((seg, i) => (
-            <View
-              key={i}
-              style={[
-                styles.timelineSegment,
-                { width: `${seg.percent}%`, backgroundColor: seg.color },
-              ]}>
-              {seg.percent > 12 && <Text style={styles.segmentLabel}>{seg.percent}%</Text>}
+        {/* Timeline Section */}
+        <View style={styles.timelineSection}>
+          <View style={styles.timelineHeader}>
+            <Text style={styles.timelineTitle}>Hypnogram</Text>
+            <View style={styles.timeRange}>
+              <Text style={styles.timeRangeText}>{formatTime(sleepData?.start_time)}</Text>
+              <Text style={styles.timeRangeText}> - </Text>
+              <Text style={styles.timeRangeText}>{formatTime(sleepData?.end_time)}</Text>
             </View>
-          ))}
-        </View>
+          </View>
 
-        <View style={styles.timelineLegend}>
-          {segments.map((seg, i) => (
-            <View key={i} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: seg.color }]} />
-              <Text style={styles.legendText}>{seg.label}</Text>
-            </View>
-          ))}
+          {/* New Hypnogram Component */}
+          {timelineData && <SleepTimeline data={timelineData} />}
         </View>
-      </Animated.View>
+      </>
     );
   };
 
@@ -759,82 +993,6 @@ export default function SleepAnalysisScreen() {
     </Animated.View>
   );
 
-  // Premium Date Picker Modal
-  const renderDatePicker = () => (
-    <Modal
-      visible={showDatePicker}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setShowDatePicker(false)}>
-      <Pressable style={styles.modalOverlay} onPress={() => setShowDatePicker(false)}>
-        <View style={styles.datePickerContainer}>
-          <LinearGradient
-            colors={['rgba(99,102,241,0.15)', 'rgba(30,30,50,0.95)']}
-            style={styles.datePickerGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
-          <View style={styles.datePickerHandle} />
-          <Text style={styles.datePickerTitle}>Select Date</Text>
-          <Text style={styles.datePickerSubtitle}>View sleep data for different days</Text>
-
-          <View style={styles.dateOptionsContainer}>
-            {availableDates.map((d, i) => (
-              <Pressable
-                key={d.index}
-                style={({ pressed }) => [
-                  styles.dateOptionNew,
-                  selectedDateIndex === d.index && styles.dateOptionActiveNew,
-                  pressed && styles.dateOptionPressed,
-                ]}
-                onPress={() => {
-                  setSelectedDateIndex(d.index);
-                  setShowDatePicker(false);
-                }}>
-                <View style={styles.dateOptionLeft}>
-                  <View
-                    style={[
-                      styles.dateIndicator,
-                      selectedDateIndex === d.index && styles.dateIndicatorActive,
-                    ]}
-                  />
-                  <View>
-                    <Text
-                      style={[
-                        styles.dateOptionLabel,
-                        selectedDateIndex === d.index && styles.dateOptionLabelActive,
-                      ]}>
-                      {i === 0
-                        ? 'Today'
-                        : new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' })}
-                    </Text>
-                    <Text style={styles.dateOptionDate}>
-                      {new Date(d.date).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </Text>
-                  </View>
-                </View>
-                {selectedDateIndex === d.index && (
-                  <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-                    <Path
-                      d="M20 6L9 17l-5-5"
-                      stroke={ACCENT_PURPLE}
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </Svg>
-                )}
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      </Pressable>
-    </Modal>
-  );
-
   return (
     <View style={styles.container}>
       {/* OLED Edge Gradients */}
@@ -884,29 +1042,6 @@ export default function SleepAnalysisScreen() {
                 : '--'}
             </Text>
           </View>
-          <Pressable
-            style={({ pressed }) => [styles.dateSelector, pressed && styles.dateSelectorPressed]}
-            onPress={() => setShowDatePicker(true)}>
-            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M8 2v3M16 2v3M3 9h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"
-                stroke="rgba(255,255,255,0.8)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </Svg>
-            <Text style={styles.dateSelectorText}>
-              {availableDates[selectedDateIndex]?.label || 'Today'}
-            </Text>
-            <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M6 9l6 6 6-6"
-                stroke="rgba(255,255,255,0.6)"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </Svg>
-          </Pressable>
         </View>
 
         {loading ? (
@@ -922,15 +1057,30 @@ export default function SleepAnalysisScreen() {
           <>
             {renderChart()}
             {renderScoreRing()}
+
+            {/* Data Provenance Badge */}
+            <View style={styles.provenanceRow}>
+              <EditHistoryBadge edits={sleepEdits} source={dataSource} confidence={confidence} />
+            </View>
+
+            {/* Horizontal Calendar & Hypnogram */}
             {renderTimeline()}
+
             {renderStats()}
-            {renderInsights()}
+
+            {/* AI Insight Card (P1) */}
+            {aiInsight && (
+              <InsightCard
+                insight={aiInsight}
+                showContributors={true}
+                showPrediction={true}
+                delay={550}
+              />
+            )}
           </>
         )}
         <View style={{ height: 50 }} />
       </ScrollView>
-
-      {renderDatePicker()}
     </View>
   );
 }
@@ -954,6 +1104,12 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
     height: SCREEN_WIDTH,
     opacity: 0.3,
+  },
+  provenanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 4,
+    marginBottom: 12,
   },
 
   header: {
@@ -1070,10 +1226,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
+    paddingHorizontal: 20,
   },
   timelineHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  timelineTitle: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  timelineTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
   timeRange: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   timeRangeText: { fontSize: 12, color: 'rgba(255,255,255,0.6)', fontWeight: '500' },
   timelineTrack: {
@@ -1303,5 +1460,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.4)',
     marginTop: 2,
+  },
+  // Calendar Styles
+  calendarContainer: {
+    marginVertical: 16,
+    paddingHorizontal: 16,
+    height: 80,
+  },
+  calendarContent: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  calendarDay: {
+    width: 48,
+    height: 70,
+    borderRadius: 24,
+    backgroundColor: '#1E1E24',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  calendarDaySelected: {
+    backgroundColor: '#34D399', // Based on reference or theme default. User mentioned "calendar fitting style", usually accent color.
+    borderColor: '#34D399',
+  },
+  calendarDayLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  calendarDayLabelSelected: {
+    color: '#000',
+  },
+  calendarDateLabel: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  calendarDateLabelSelected: {
+    color: '#000',
+  },
+  scoreDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 6,
   },
 });

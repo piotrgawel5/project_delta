@@ -15,7 +15,8 @@ import {
     loadFromCache,
     markFetchCompleted,
     markRecordsSynced,
-    mergeWithSupabaseData,
+    mergeAllSources,
+    resetCooldowns,
     shouldFetchFromHealthConnect,
     shouldSync,
     upsertCacheRecord,
@@ -62,7 +63,7 @@ interface SleepState {
         session: SleepSession,
         profile: UserProfile | null,
     ) => Promise<void>;
-    refreshData: (userId: string) => Promise<void>;
+    refreshData: (userId: string, forceRefresh?: boolean) => Promise<void>;
     loadCachedData: () => Promise<void>;
     syncPendingRecords: (userId: string) => Promise<void>;
     // NEW: Force save a manual sleep entry directly to database
@@ -169,13 +170,14 @@ export const useSleepStore = create<SleepState>((set, get) => ({
     },
 
     fetchSleepData: async (userId: string) => {
-        if (Platform.OS !== "android" || !get().isConnected) return;
+        // Check if we should fetch (cooldown) - non-Android continues to cloud fetch
+        const shouldFetchHC = Platform.OS === "android" && get().isConnected;
+        const shouldFetch = shouldFetchHC
+            ? await shouldFetchFromHealthConnect()
+            : true;
 
-        // Check if we should fetch (cooldown)
-        const shouldFetch = await shouldFetchFromHealthConnect();
-        if (!shouldFetch) {
-            console.log("[SleepStore] Skipping fetch - cooldown active");
-            // Still load from cache
+        if (!shouldFetch && shouldFetchHC) {
+            console.log("[SleepStore] Skipping HC fetch - cooldown active");
             await get().loadCachedData();
             return;
         }
@@ -183,48 +185,175 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         set({ loading: true });
 
         try {
-            // Get user profile for personalized calculations
             const profile = useProfileStore.getState().profile;
-
-            // Fetch last 8 days from Health Connect
             const now = new Date();
             const startDate = new Date(now);
             startDate.setDate(startDate.getDate() - 8);
             startDate.setHours(0, 0, 0, 0);
 
-            const sessions = await getSleepSessions(
-                startDate.toISOString(),
-                now.toISOString(),
+            // ============================================================
+            // 3-WAY MERGE: Fetch from all sources in parallel
+            // ============================================================
+
+            // 1. Fetch Cloud history
+            let cloudRecords: SleepData[] = [];
+            try {
+                const historyResponse = await api.get(
+                    `/api/sleep/${userId}/history?limit=30`,
+                );
+                cloudRecords = historyResponse?.data || historyResponse || [];
+                console.log(
+                    `[SleepStore] Fetched ${cloudRecords.length} records from Cloud`,
+                );
+            } catch (cloudError) {
+                console.warn(
+                    "[SleepStore] Cloud fetch failed, continuing with local data",
+                    cloudError,
+                );
+            }
+
+            // 2. Fetch Health Connect (Android only)
+            let hcRecords: CachedSleepRecord[] = [];
+            if (shouldFetchHC) {
+                const sessions = await getSleepSessions(
+                    startDate.toISOString(),
+                    now.toISOString(),
+                );
+                console.log(
+                    `[SleepStore] Fetched ${sessions.length} sessions from Health Connect`,
+                );
+                await markFetchCompleted();
+
+                // Convert HC sessions to CachedSleepRecord format
+                for (const session of sessions) {
+                    const endDate = new Date(session.endTime);
+                    const date = endDate.toISOString().split("T")[0];
+                    const durationMs = endDate.getTime() -
+                        new Date(session.startTime).getTime();
+                    const durationMinutes = Math.round(durationMs / 60000);
+
+                    let deepMinutes = 0,
+                        remMinutes = 0,
+                        lightMinutes = 0,
+                        awakeMinutes = 0;
+                    const hasStages = session.stages &&
+                        session.stages.length > 0;
+
+                    if (hasStages) {
+                        for (const stage of session.stages) {
+                            const stageDuration = Math.round(
+                                (new Date(stage.endTime).getTime() -
+                                    new Date(stage.startTime).getTime()) /
+                                    60000,
+                            );
+                            switch (stage.stage) {
+                                case 5:
+                                    deepMinutes += stageDuration;
+                                    break;
+                                case 6:
+                                    remMinutes += stageDuration;
+                                    break;
+                                case 4:
+                                case 2:
+                                    lightMinutes += stageDuration;
+                                    break;
+                                case 1:
+                                    awakeMinutes += stageDuration;
+                                    break;
+                                default:
+                                    lightMinutes += stageDuration;
+                                    break;
+                            }
+                        }
+                    } else if (durationMinutes > 0) {
+                        const estimated = estimateSleepStages(
+                            durationMinutes,
+                            profile,
+                        );
+                        deepMinutes = estimated.deep;
+                        remMinutes = estimated.rem;
+                        lightMinutes = estimated.light;
+                        awakeMinutes = estimated.awake;
+                    }
+
+                    const qualityScore = hasStages
+                        ? calculateSleepQuality(session)
+                        : calculateQualityFromDuration(
+                            durationMinutes,
+                            profile,
+                        );
+
+                    hcRecords.push({
+                        user_id: userId,
+                        date,
+                        start_time: session.startTime,
+                        end_time: session.endTime,
+                        duration_minutes: durationMinutes,
+                        quality_score: qualityScore,
+                        deep_sleep_minutes: deepMinutes,
+                        rem_sleep_minutes: remMinutes,
+                        light_sleep_minutes: lightMinutes,
+                        awake_minutes: awakeMinutes,
+                        data_source: session.metadata?.dataOrigin ||
+                            "health_connect",
+                        source: "health_connect" as any,
+                        confidence: hasStages ? "high" : "medium",
+                        cached_at: new Date().toISOString(),
+                        needs_sync: true,
+                    });
+                }
+
+                // Set most recent session
+                if (sessions.length > 0) {
+                    const sorted = [...sessions].sort(
+                        (a, b) =>
+                            new Date(b.endTime).getTime() -
+                            new Date(a.endTime).getTime(),
+                    );
+                    set({ lastNightSleep: sorted[0] });
+                }
+            }
+
+            // 3. Load local cache
+            const cachedRecords = await loadFromCache();
+            console.log(
+                `[SleepStore] Loaded ${cachedRecords.length} records from Cache`,
+            );
+
+            // 4. Merge all sources with conflict resolution
+            const merged = await mergeAllSources(
+                cloudRecords,
+                hcRecords,
+                cachedRecords,
             );
             console.log(
-                `[SleepStore] Fetched ${sessions.length} sessions from Health Connect`,
+                `[SleepStore] Merged result: ${merged.length} unique records`,
             );
 
-            // Mark fetch completed
-            await markFetchCompleted();
+            // 5. Update UI immediately
+            const weeklyHistory: SleepData[] = merged.slice(0, 30).map((r) => ({
+                id: r.id || `local-${r.date}`,
+                user_id: r.user_id,
+                date: r.date,
+                start_time: r.start_time,
+                end_time: r.end_time,
+                duration_minutes: r.duration_minutes,
+                quality_score: r.quality_score,
+                deep_sleep_minutes: r.deep_sleep_minutes,
+                rem_sleep_minutes: r.rem_sleep_minutes,
+                light_sleep_minutes: r.light_sleep_minutes,
+                awake_minutes: r.awake_minutes,
+                data_source: r.data_source,
+                synced_at: r.synced_at || "",
+            }));
+            set({ weeklyHistory });
 
-            // Process and cache each session (WITHOUT immediately syncing to Supabase)
-            for (const session of sessions) {
-                await get().syncToSupabase(userId, session, profile);
-            }
-
-            // Set the most recent session
-            if (sessions.length > 0) {
-                const sorted = [...sessions].sort(
-                    (a, b) =>
-                        new Date(b.endTime).getTime() -
-                        new Date(a.endTime).getTime(),
-                );
-                set({ lastNightSleep: sorted[0] });
-            }
-
-            // Sync to Supabase if cooldown allows
+            // 6. Sync HC-only records to cloud
             await get().syncPendingRecords(userId);
-
-            // Load fresh data from cache
-            await get().loadCachedData();
         } catch (error) {
             console.error("Error fetching sleep data:", error);
+            // Fallback to cache on error
+            await get().loadCachedData();
         } finally {
             set({ loading: false });
         }
@@ -324,6 +453,10 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                 light_sleep_minutes: lightMinutes,
                 awake_minutes: awakeMinutes,
                 data_source: session.metadata?.dataOrigin || "health_connect",
+                source: "health_connect",
+                confidence: session.stages && session.stages.length > 0
+                    ? "high"
+                    : "medium",
             });
         } catch (error) {
             console.error("Error processing sleep data:", error);
@@ -351,12 +484,13 @@ export const useSleepStore = create<SleepState>((set, get) => ({
             }
 
             console.log(
-                `[SleepStore] Syncing ${pending.length} records to Supabase`,
+                `[SleepStore] Syncing ${pending.length} records to Supabase via batch`,
             );
 
-            // Prepare batch upsert data
-            const records = pending.map((r: CachedSleepRecord) => ({
-                user_id: r.user_id,
+            // Prepare batch upsert data (max 30 per batch)
+            const records = pending.slice(0, 30).map((
+                r: CachedSleepRecord,
+            ) => ({
                 date: r.date,
                 start_time: r.start_time,
                 end_time: r.end_time,
@@ -367,45 +501,69 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                 light_sleep_minutes: r.light_sleep_minutes,
                 awake_minutes: r.awake_minutes,
                 data_source: r.data_source,
-                synced_at: new Date().toISOString(),
             }));
 
-            // Sync via API (one by one or batch if API supported)
-            // Phase 5 API currently supports singular saveLog.
-            // For efficiency with existing API, we loop.
-            // Ideal: Update API to support batch.
-            // For now, loop.
+            // Use batch sync API for efficiency
+            const result = await api.post("/api/sleep/sync-batch", {
+                user_id: userId,
+                records,
+            });
 
-            for (const record of records) {
-                await api.post("/api/sleep/log", record);
-            }
+            const synced = result?.data?.synced || records.length;
+            console.log(`[SleepStore] Batch sync complete: ${synced} synced`);
 
-            // Mark all as synced
-            await markRecordsSynced(
-                pending.map((r: CachedSleepRecord) => r.date),
-            );
+            // Mark synced records
+            await markRecordsSynced(records.map((r) => r.date));
             set({ lastSyncTime: Date.now() });
-            console.log(
-                `[SleepStore] Successfully synced ${pending.length} records via API`,
-            );
 
-            // Fetch fresh data from API
-            const history = await api.get(`/api/sleep/${userId}/history`);
-
-            if (history) {
-                await mergeWithSupabaseData(history);
-                set({ weeklyHistory: history });
+            // If there are more pending records, schedule another sync
+            if (pending.length > 30) {
+                console.log(
+                    `[SleepStore] ${
+                        pending.length - 30
+                    } records remaining, will sync on next cycle`,
+                );
             }
         } catch (error) {
             console.error("[SleepStore] Error syncing pending records:", error);
+            // Fallback to individual sync on batch failure
+            try {
+                const pending = await getPendingSyncRecords();
+                for (const record of pending.slice(0, 10)) {
+                    await api.post("/api/sleep/log", {
+                        user_id: record.user_id,
+                        date: record.date,
+                        start_time: record.start_time,
+                        end_time: record.end_time,
+                        duration_minutes: record.duration_minutes,
+                        quality_score: record.quality_score,
+                        deep_sleep_minutes: record.deep_sleep_minutes,
+                        rem_sleep_minutes: record.rem_sleep_minutes,
+                        light_sleep_minutes: record.light_sleep_minutes,
+                        awake_minutes: record.awake_minutes,
+                        data_source: record.data_source,
+                    });
+                    await markRecordsSynced([record.date]);
+                }
+                console.log("[SleepStore] Fallback individual sync completed");
+            } catch (fallbackError) {
+                console.error(
+                    "[SleepStore] Fallback sync also failed:",
+                    fallbackError,
+                );
+            }
         }
     },
 
-    refreshData: async (userId: string) => {
-        await get().checkHealthConnectStatus();
-        if (get().isConnected) {
-            await get().fetchSleepData(userId);
+    refreshData: async (userId: string, forceRefresh = false) => {
+        // Reset cooldowns if force refresh requested (e.g., pull-to-refresh)
+        if (forceRefresh) {
+            console.log("[SleepStore] Force refresh - bypassing cooldowns");
+            await resetCooldowns();
         }
+
+        await get().checkHealthConnectStatus();
+        await get().fetchSleepData(userId);
     },
 
     /**
@@ -427,14 +585,14 @@ export const useSleepStore = create<SleepState>((set, get) => ({
             const durationMs = endDate.getTime() - startDate.getTime();
             const durationMinutes = Math.round(durationMs / 60000);
 
-            // Estimate sleep stages based on duration and profile
             const estimated = estimateSleepStages(durationMinutes, profile);
             const qualityScore = calculateQualityFromDuration(
                 durationMinutes,
                 profile,
             );
 
-            const sleepRecord = {
+            const sleepRecord: SleepData = {
+                id: `manual-${date}-${Date.now()}`,
                 user_id: userId,
                 date,
                 start_time: startTime,
@@ -451,15 +609,33 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 
             console.log("[SleepStore] Force saving manual sleep:", sleepRecord);
 
-            // Directly call API (bypass cooldown)
+            // 1. OPTIMISTIC UI UPDATE - show immediately
+            set((state) => {
+                const existingIndex = state.weeklyHistory.findIndex((r) =>
+                    r.date === date
+                );
+                const updated = [...state.weeklyHistory];
+                if (existingIndex >= 0) {
+                    updated[existingIndex] = sleepRecord;
+                } else {
+                    updated.unshift(sleepRecord);
+                    updated.sort((a, b) =>
+                        new Date(b.date).getTime() - new Date(a.date).getTime()
+                    );
+                }
+                return { weeklyHistory: updated.slice(0, 30) };
+            });
+
+            // 2. Save to API
             await api.post("/api/sleep/log", sleepRecord);
 
-            // Update local cache
-            await upsertCacheRecord(sleepRecord, false); // false = already synced
+            // 3. Update cache (already synced)
+            await upsertCacheRecord({
+                ...sleepRecord,
+                source: "manual" as any,
+                confidence: "low",
+            }, false);
             await markRecordsSynced([date]);
-
-            // Reload cached data to update UI
-            await get().loadCachedData();
 
             console.log("[SleepStore] Manual sleep saved successfully");
             return true;
@@ -468,6 +644,8 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                 "[SleepStore] Error force saving manual sleep:",
                 error,
             );
+            // Rollback optimistic update by reloading from cache
+            await get().loadCachedData();
             return false;
         }
     },

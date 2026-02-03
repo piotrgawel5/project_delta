@@ -88,4 +88,11 @@ export const api = {
             method: "GET",
         });
     },
+
+    patch: async (endpoint: string, body: any) => {
+        return api.fetch(endpoint, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+        });
+    },
 };

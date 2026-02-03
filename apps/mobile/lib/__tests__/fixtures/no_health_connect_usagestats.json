@@ -1,0 +1,54 @@
+{
+  "description": "Fallback scenario: No Health Connect data, only UsageStats screen events",
+  "health_connect": {
+    "available": false,
+    "reason": "Health Connect not installed or permissions denied"
+  },
+  "usage_stats_events": [
+    { "type": "SCREEN_ON", "timestamp": "2026-02-01T22:15:00.000Z" },
+    { "type": "SCREEN_OFF", "timestamp": "2026-02-01T22:18:00.000Z" },
+    { "type": "SCREEN_ON", "timestamp": "2026-02-01T22:30:00.000Z" },
+    { "type": "SCREEN_OFF", "timestamp": "2026-02-01T22:35:00.000Z" },
+    { "type": "SCREEN_ON", "timestamp": "2026-02-01T22:50:00.000Z" },
+    { "type": "SCREEN_OFF", "timestamp": "2026-02-01T23:05:00.000Z" },
+    { "type": "SCREEN_ON", "timestamp": "2026-02-02T06:45:00.000Z" },
+    { "type": "SCREEN_OFF", "timestamp": "2026-02-02T06:47:00.000Z" },
+    { "type": "SCREEN_ON", "timestamp": "2026-02-02T07:00:00.000Z" },
+    { "type": "SCREEN_OFF", "timestamp": "2026-02-02T07:15:00.000Z" },
+    { "type": "SCREEN_ON", "timestamp": "2026-02-02T07:30:00.000Z" }
+  ],
+  "expected": {
+    "estimated_bedtime": "2026-02-01T23:05:00.000Z",
+    "estimated_wakeup": "2026-02-02T06:45:00.000Z",
+    "duration_minutes": 460,
+    "source": "usage_stats",
+    "confidence": "low",
+    "estimation_method": "longest_idle_interval",
+    "notes": [
+      "No stage data available - will use personalized estimation",
+      "Score should be calculated with lower confidence weighting",
+      "UI should show 'Estimated' badge"
+    ]
+  },
+  "profile": {
+    "date_of_birth": "1990-05-15",
+    "sex": "male",
+    "activity_level": "moderate",
+    "goal": "stay_healthy"
+  },
+  "expected_estimated_stages": {
+    "description": "Based on profile for 460 minutes",
+    "deep_percent_range": { "min": 0.14, "max": 0.22 },
+    "rem_percent_range": { "min": 0.18, "max": 0.25 },
+    "light_percent_range": { "min": 0.45, "max": 0.58 },
+    "awake_percent_range": { "min": 0.03, "max": 0.08 }
+  },
+  "algorithm_notes": [
+    "1. Find all SCREEN_OFF to SCREEN_ON intervals",
+    "2. Filter intervals >= 90 minutes (minimum sleep threshold)",
+    "3. Select longest interval as primary sleep period",
+    "4. Set estimated_bedtime = SCREEN_OFF before longest interval",
+    "5. Set estimated_wakeup = SCREEN_ON after longest interval",
+    "6. If no 90-minute interval exists, extend threshold or mark as 'unknown'"
+  ]
+}

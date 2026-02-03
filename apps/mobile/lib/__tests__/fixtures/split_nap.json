@@ -1,0 +1,124 @@
+{
+  "description": "Split sleep with afternoon nap - tests multi-session handling",
+  "sessions": [
+    {
+      "id": "session-split-001-night",
+      "startTime": "2026-02-01T23:00:00.000Z",
+      "endTime": "2026-02-02T05:30:00.000Z",
+      "stages": [
+        {
+          "stage": 4,
+          "startTime": "2026-02-01T23:00:00.000Z",
+          "endTime": "2026-02-01T23:30:00.000Z"
+        },
+        {
+          "stage": 5,
+          "startTime": "2026-02-01T23:30:00.000Z",
+          "endTime": "2026-02-02T00:15:00.000Z"
+        },
+        {
+          "stage": 4,
+          "startTime": "2026-02-02T00:15:00.000Z",
+          "endTime": "2026-02-02T00:45:00.000Z"
+        },
+        {
+          "stage": 6,
+          "startTime": "2026-02-02T00:45:00.000Z",
+          "endTime": "2026-02-02T01:20:00.000Z"
+        },
+        {
+          "stage": 4,
+          "startTime": "2026-02-02T01:20:00.000Z",
+          "endTime": "2026-02-02T02:00:00.000Z"
+        },
+        {
+          "stage": 5,
+          "startTime": "2026-02-02T02:00:00.000Z",
+          "endTime": "2026-02-02T02:35:00.000Z"
+        },
+        {
+          "stage": 4,
+          "startTime": "2026-02-02T02:35:00.000Z",
+          "endTime": "2026-02-02T03:15:00.000Z"
+        },
+        {
+          "stage": 6,
+          "startTime": "2026-02-02T03:15:00.000Z",
+          "endTime": "2026-02-02T03:50:00.000Z"
+        },
+        {
+          "stage": 4,
+          "startTime": "2026-02-02T03:50:00.000Z",
+          "endTime": "2026-02-02T04:30:00.000Z"
+        },
+        {
+          "stage": 6,
+          "startTime": "2026-02-02T04:30:00.000Z",
+          "endTime": "2026-02-02T05:05:00.000Z"
+        },
+        {
+          "stage": 2,
+          "startTime": "2026-02-02T05:05:00.000Z",
+          "endTime": "2026-02-02T05:30:00.000Z"
+        }
+      ],
+      "metadata": {
+        "dataOrigin": "com.google.android.apps.fitness"
+      }
+    },
+    {
+      "id": "session-split-001-nap",
+      "startTime": "2026-02-02T14:00:00.000Z",
+      "endTime": "2026-02-02T15:30:00.000Z",
+      "stages": [
+        {
+          "stage": 4,
+          "startTime": "2026-02-02T14:00:00.000Z",
+          "endTime": "2026-02-02T14:15:00.000Z"
+        },
+        {
+          "stage": 5,
+          "startTime": "2026-02-02T14:15:00.000Z",
+          "endTime": "2026-02-02T14:45:00.000Z"
+        },
+        {
+          "stage": 4,
+          "startTime": "2026-02-02T14:45:00.000Z",
+          "endTime": "2026-02-02T15:10:00.000Z"
+        },
+        {
+          "stage": 6,
+          "startTime": "2026-02-02T15:10:00.000Z",
+          "endTime": "2026-02-02T15:25:00.000Z"
+        },
+        {
+          "stage": 1,
+          "startTime": "2026-02-02T15:25:00.000Z",
+          "endTime": "2026-02-02T15:30:00.000Z"
+        }
+      ],
+      "metadata": {
+        "dataOrigin": "com.google.android.apps.fitness"
+      }
+    }
+  ],
+  "expected": {
+    "primary_session": {
+      "is_night": true,
+      "duration_minutes": 390,
+      "confidence": "high"
+    },
+    "nap_session": {
+      "duration_minutes": 90,
+      "should_combine": false,
+      "note": "Naps should be tracked separately but can contribute to daily total"
+    },
+    "combined_duration_minutes": 480,
+    "source": "health_connect"
+  },
+  "notes": [
+    "This tests split-sleep patterns common with shift workers or parents",
+    "The primary overnight session should be used for sleep score",
+    "Naps can be displayed separately or combined based on user preference"
+  ]
+}
