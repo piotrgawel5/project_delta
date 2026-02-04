@@ -30,7 +30,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const H_GUTTER = 20;
 const GAP = 16;
 const CARD_WIDTH = Math.floor((SCREEN_W - H_GUTTER * 2 - GAP) / 2);
-const CARD_RADIUS = 18;
+const CARD_RADIUS = 28;
 
 // Sparkline dimensions
 const SPARKLINE_W = CARD_WIDTH - 28; // Full width minus padding
@@ -237,6 +237,13 @@ export default function MetricCard({
           )}
         </View>
 
+        <LinearGradient
+          colors={['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0)']}
+          start={[0, 0]}
+          end={[1, 0]}
+          style={styles.divider}
+        />
+
         <Animated.View style={[styles.valueRow, valueStyle]}>
           <Text style={styles.valueText} selectable>
             {value}
@@ -247,6 +254,9 @@ export default function MetricCard({
         {/* Sparkline or placeholder */}
         <View style={styles.rowBottom}>
           {sparklinePaths ? renderSparkline() : <Text style={styles.subText}>Last 7 days</Text>}
+          <View style={styles.weekBadge}>
+            <Text style={styles.weekBadgeText}>Week view</Text>
+          </View>
         </View>
       </Pressable>
     </Animated.View>
@@ -297,6 +307,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  divider: {
+    height: 2,
+    borderRadius: 999,
+    marginBottom: 10,
+    alignSelf: 'stretch',
+  },
   label: {
     color: 'rgba(255,255,255,0.78)',
     fontSize: 12,
@@ -335,6 +351,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  weekBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  weekBadgeText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   sparklineContainer: {
     flex: 1,

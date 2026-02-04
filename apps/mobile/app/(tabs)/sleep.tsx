@@ -36,7 +36,8 @@ const BG_PRIMARY = '#000000';
 const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
 const STATUS_GREEN = '#22C55E';
 const { width: SCREEN_W } = Dimensions.get('window');
-const UI_RADIUS = 18;
+const UI_RADIUS = 28;
+
 
 export default function SleepScreen() {
   const { user } = useAuthStore();
