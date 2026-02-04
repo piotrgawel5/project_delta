@@ -7,7 +7,8 @@ import { StatusBar } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
-import { Poppins_700Bold } from '@expo-google-fonts/poppins';
+import { Poppins_700Bold, Poppins_900Black } from '@expo-google-fonts/poppins';
+import { InclusiveSans_400Regular } from '@expo-google-fonts/inclusive-sans';
 import { DialogProvider } from '@components/ui/Dialog';
 import '../global.css';
 
@@ -25,6 +26,8 @@ export default function RootLayout() {
     'Inter-Regular': Inter_400Regular,
     'Inter-SemiBold': Inter_600SemiBold,
     'Poppins-Bold': Poppins_700Bold,
+    'Poppins-Black': Poppins_900Black,
+    'InclusiveSans-Regular': InclusiveSans_400Regular,
   });
 
   // Initialize auth

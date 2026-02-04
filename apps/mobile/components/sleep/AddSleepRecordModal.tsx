@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Modal, Dimensions, Pressable } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,8 +30,9 @@ const BTN_COLOR = '#581C87';
 interface AddSleepRecordModalProps {
   isVisible: boolean;
   onClose: () => void;
-  onSave: (startTime: Date, endTime: Date) => void;
+  onSave: (startTime: Date, endTime: Date) => Promise<boolean>;
   date?: Date; // Reference date for the sleep record
+  userId: string;
 }
 
 // ----------------------------------------------------------------------
@@ -108,7 +109,8 @@ export const AddSleepRecordModal = ({
   isVisible,
   onClose,
   onSave,
-  date = new Date(),
+  date,
+  userId,
 }: AddSleepRecordModalProps) => {
   const insets = useSafeAreaInsets();
 
@@ -121,6 +123,13 @@ export const AddSleepRecordModal = ({
   const [waketime, setWaketime] = useState({ h: 7, m: 0 });
   const [durationStr, setDurationStr] = useState('8h 00m');
   const [headerDate, setHeaderDate] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Stabilize date to prevent infinite re-renders when parent passes new Date()
+  const stableDate = useMemo(() => {
+    const d = date || new Date();
+    return d;
+  }, [date?.getTime()]);
 
   const updateTimes = useCallback((sRad: number, eRad: number) => {
     const sTime = radToTime(sRad);
@@ -138,7 +147,8 @@ export const AddSleepRecordModal = ({
 
   useEffect(() => {
     if (isVisible) {
-      setHeaderDate(getSmartDateLabel(date));
+      setHeaderDate(getSmartDateLabel(stableDate));
+      setIsSaving(false);
       startAngle.value = timeToRad(23, 0);
       endAngle.value = timeToRad(7, 0);
       updateTimes(startAngle.value, endAngle.value);
@@ -146,7 +156,7 @@ export const AddSleepRecordModal = ({
     } else {
       translateY.value = height;
     }
-  }, [isVisible, date]);
+  }, [isVisible, stableDate]);
 
   const closeWithAnimation = useCallback(() => {
     translateY.value = withTiming(height, { duration: 250, easing: Easing.in(Easing.cubic) });
@@ -271,8 +281,12 @@ export const AddSleepRecordModal = ({
     transform: [{ translateY: translateY.value }],
   }));
 
-  const handleSave = () => {
-    const n = new Date(date); // Use the passed date
+  const handleSave = async () => {
+    if (isSaving || !userId) return;
+
+    setIsSaving(true);
+
+    const n = new Date(stableDate); // Use the stabilized date
     const s = new Date(n);
     s.setHours(bedtime.h, bedtime.m, 0, 0);
     const e = new Date(n);
@@ -284,12 +298,18 @@ export const AddSleepRecordModal = ({
       // s is day before
       s.setDate(s.getDate() - 1);
     }
-    // If e is "in the future" relative to NOW, we might want to clamp it, but user might be manually entering.
-    // For "Add Sleep", we assume we are recording something that happened.
-    // However, if reference date is Today, e cannot be tomorrow.
 
-    onSave(s, e);
-    closeWithAnimation();
+    try {
+      const success = await onSave(s, e);
+      if (success) {
+        closeWithAnimation();
+      } else {
+        setIsSaving(false);
+      }
+    } catch (error) {
+      console.error('[AddSleepRecordModal] Save failed:', error);
+      setIsSaving(false);
+    }
   };
 
   if (!isVisible) return null;
@@ -404,8 +424,13 @@ export const AddSleepRecordModal = ({
               {/* Save button */}
               <Pressable
                 onPress={handleSave}
-                style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.85 }]}>
-                <Text style={styles.saveBtnText}>Save Sleep</Text>
+                disabled={isSaving || !userId}
+                style={({ pressed }) => [
+                  styles.saveBtn,
+                  pressed && { opacity: 0.85 },
+                  (isSaving || !userId) && { opacity: 0.5 },
+                ]}>
+                <Text style={styles.saveBtnText}>{isSaving ? 'Saving...' : 'Save Sleep'}</Text>
               </Pressable>
             </View>
           </Animated.View>

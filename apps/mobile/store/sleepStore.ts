@@ -23,6 +23,7 @@ import {
 } from "../lib/sleepCache";
 import {
     calculateQualityFromDuration,
+    calculateSleepScore,
     estimateSleepStages,
 } from "../lib/sleepCalculations";
 import { useProfileStore, UserProfile } from "./profileStore";
@@ -40,6 +41,7 @@ interface SleepData {
     rem_sleep_minutes: number;
     light_sleep_minutes: number;
     awake_minutes: number;
+    sleep_score?: number;
     data_source: string;
     synced_at: string;
 }
@@ -156,6 +158,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                     rem_sleep_minutes: r.rem_sleep_minutes,
                     light_sleep_minutes: r.light_sleep_minutes,
                     awake_minutes: r.awake_minutes,
+                    sleep_score: r.sleep_score,
                     data_source: r.data_source,
                     synced_at: r.synced_at || "",
                 }));
@@ -343,6 +346,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                 rem_sleep_minutes: r.rem_sleep_minutes,
                 light_sleep_minutes: r.light_sleep_minutes,
                 awake_minutes: r.awake_minutes,
+                sleep_score: r.sleep_score,
                 data_source: r.data_source,
                 synced_at: r.synced_at || "",
             }));
@@ -591,6 +595,19 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                 profile,
             );
 
+            // Calculate deterministic sleep score for immediate display
+            const scoreBreakdown = calculateSleepScore(
+                durationMinutes,
+                {
+                    deep: estimated.deep,
+                    rem: estimated.rem,
+                    light: estimated.light,
+                    awake: estimated.awake,
+                },
+                [],
+                profile,
+            );
+
             const sleepRecord: SleepData = {
                 id: `manual-${date}-${Date.now()}`,
                 user_id: userId,
@@ -603,7 +620,8 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                 rem_sleep_minutes: estimated.rem,
                 light_sleep_minutes: estimated.light,
                 awake_minutes: estimated.awake,
-                data_source: "manual_entry",
+                sleep_score: scoreBreakdown.total, // Add sleep score for immediate UI display
+                data_source: "manual",
                 synced_at: new Date().toISOString(),
             };
 
@@ -626,8 +644,14 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                 return { weeklyHistory: updated.slice(0, 30) };
             });
 
-            // 2. Save to API
-            await api.post("/api/sleep/log", sleepRecord);
+            // 2. Save to API - use 'source' field for validation schema
+            // Exclude 'id' and 'synced_at' as Supabase auto-generates these
+            const { id: _id, synced_at: _synced, ...apiPayload } = sleepRecord;
+            await api.post("/api/sleep/log", {
+                ...apiPayload,
+                source: "manual", // Backend validation expects this enum value
+                confidence: "low",
+            });
 
             // 3. Update cache (already synced)
             await upsertCacheRecord({

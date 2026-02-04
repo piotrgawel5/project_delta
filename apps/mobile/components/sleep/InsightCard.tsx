@@ -146,7 +146,7 @@ export function InsightCard({
                     </View>
                     <View style={styles.signalValueRow}>
                       <Text style={[styles.signalValue, { color }]}>{signal.value}</Text>
-                      <Ionicons name={arrow} size={12} color={color} />
+                      <Ionicons name={arrow as any} size={12} color={color} />
                     </View>
                   </View>
 

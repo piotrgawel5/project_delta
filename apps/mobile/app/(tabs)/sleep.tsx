@@ -1,14 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  StyleSheet,
-  Text,
-  ScrollView,
-  RefreshControl,
-  Dimensions,
-  Alert,
-  Pressable,
-} from 'react-native';
+import { View, StyleSheet, Text, ScrollView, RefreshControl, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/authStore';
 import { useSleepStore } from '@store/sleepStore';
@@ -23,18 +14,16 @@ import Animated, {
   useAnimatedReaction,
   runOnJS,
 } from 'react-native-reanimated';
-import { HypnogramChart } from '../../components/sleep/dashboard/HypnogramChart';
 import { SleepCalendar } from '../../components/sleep/SleepCalendar';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
-import { router } from 'expo-router';
 import { transformToHypnogramStages } from '@lib/sleepTransform';
+import { getSleepScoreGrade, brightenColor } from '@lib/sleepColors';
+import { formatTime } from '@lib/sleepFormatters';
 
-// Colors matching the "Outsiders" reference screenshot
-// Deep Purple Gradient
+// Colors
 const BG_PRIMARY = '#000000';
-const GRADIENT_START = '#581C87'; // Purple-900/800 mix
 const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
-const STATUS_GREEN = '#22C55E'; // Green-500
+const STATUS_GREEN = '#22C55E';
 
 const MetricItem = ({ label, value, unit, status, statusIcon = 'checkmark-circle' }: any) => (
   <View style={styles.metricItem}>
@@ -151,14 +140,14 @@ export default function SleepScreen() {
   const restorative = formatDuration(restorativeMin);
 
   // Times
-  const formatTime = (iso?: string) => {
-    if (!iso) return '--:--';
-    const d = new Date(iso);
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }).replace(' ', '');
-  };
-
   const startTime = hi?.start_time ? new Date(hi.start_time) : null;
   const endTime = hi?.end_time ? new Date(hi.end_time) : null;
+
+  // Memoize sleep score grade to avoid redundant calculations
+  const sleepScoreGrade = useMemo(
+    () => getSleepScoreGrade(currentData.historyItem?.sleep_score ?? 0),
+    [currentData.historyItem?.sleep_score]
+  );
 
   // Transform aggregate sleep data into hypnogram-compatible stages
   const hypnogramStages = useMemo(() => {
@@ -178,7 +167,7 @@ export default function SleepScreen() {
     <View style={styles.container}>
       {/* Background Gradient */}
       <LinearGradient
-        colors={[GRADIENT_START, BG_PRIMARY, BG_PRIMARY]}
+        colors={[sleepScoreGrade.color, BG_PRIMARY, BG_PRIMARY]}
         locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -225,20 +214,27 @@ export default function SleepScreen() {
         <AddSleepRecordModal
           isVisible={isAddModalVisible}
           onClose={() => setIsAddModalVisible(false)}
-          onSave={(start, end) => {
+          onSave={async (start, end) => {
             console.log('Save record:', start, end);
             // In a real app this would trigger store.forceSaveManualSleep
             // For now, UI only as requested.
+            return true;
           }}
+          date={selectedDate}
+          userId={user?.id || ''}
         />
 
         {/* Title Section */}
         <View style={styles.titleSection}>
           <View style={styles.labelRow}>
-            <Ionicons name="moon" size={16} color="#A855F7" />
-            <Text style={styles.sectionLabel}>Sleep</Text>
+            <Ionicons name="moon" size={16} color={brightenColor(sleepScoreGrade.color)} />
+            <Text style={[styles.sectionLabel, { color: brightenColor(sleepScoreGrade.color) }]}>
+              Sleep
+            </Text>
           </View>
-          <Text style={styles.mainRating}>Excellent</Text>
+          <Text style={styles.mainRating}>
+            {currentData.historyItem?.sleep_score !== undefined ? sleepScoreGrade.grade : '--'}
+          </Text>
           <Text style={styles.dateLabel}>{currentData.fullDate}</Text>
           <Text style={styles.description}>
             Your sleep duration last night was above your goal, providing optimal restorative sleep
@@ -288,12 +284,12 @@ export default function SleepScreen() {
             />
           </View>
 
-          <HypnogramChart
+          {/*   <HypnogramChart
             stages={hypnogramStages}
             startTime={hi?.start_time || new Date().toISOString()}
             endTime={hi?.end_time || new Date().toISOString()}
             height={180}
-          />
+          /> */}
 
           {/* Time Labels for Chart */}
           <View style={styles.chartTimeLabels}>
