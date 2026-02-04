@@ -30,6 +30,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const H_GUTTER = 20;
 const GAP = 16;
 const CARD_WIDTH = Math.floor((SCREEN_W - H_GUTTER * 2 - GAP) / 2);
+const CARD_RADIUS = 18;
 
 // Sparkline dimensions
 const SPARKLINE_W = CARD_WIDTH - 28; // Full width minus padding
@@ -209,6 +210,13 @@ export default function MetricCard({
         ]}
         android_ripple={{ color: 'rgba(255,255,255,0.04)', borderless: false }}
         onPress={onPress}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.01)']}
+          start={[0, 0]}
+          end={[1, 1]}
+          style={styles.baseGlow}
+        />
+
         {/* Subtle top gradient accent */}
         <LinearGradient
           colors={[meta.color + '18', 'transparent']}
@@ -250,23 +258,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   card: {
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: CARD_RADIUS,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: 'rgba(14,14,16,0.7)',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
     // soft elevation
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
         shadowOffset: { height: 6, width: 0 },
       },
       android: {
-        elevation: 3,
+        elevation: 4,
       },
     }),
+  },
+  baseGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: CARD_RADIUS,
   },
   topAccent: {
     position: 'absolute',
@@ -274,8 +288,8 @@ const styles = StyleSheet.create({
     right: 0,
     height: 38,
     top: 0,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
+    borderTopLeftRadius: CARD_RADIUS,
+    borderTopRightRadius: CARD_RADIUS,
   },
   rowTop: {
     flexDirection: 'row',
