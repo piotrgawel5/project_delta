@@ -30,6 +30,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const H_GUTTER = 20;
 const GAP = 16;
 const CARD_WIDTH = Math.floor((SCREEN_W - H_GUTTER * 2 - GAP) / 2);
+const CARD_RADIUS = 28;
 
 // Sparkline dimensions
 const SPARKLINE_W = CARD_WIDTH - 28; // Full width minus padding
@@ -209,6 +210,13 @@ export default function MetricCard({
         ]}
         android_ripple={{ color: 'rgba(255,255,255,0.04)', borderless: false }}
         onPress={onPress}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.01)']}
+          start={[0, 0]}
+          end={[1, 1]}
+          style={styles.baseGlow}
+        />
+
         {/* Subtle top gradient accent */}
         <LinearGradient
           colors={[meta.color + '18', 'transparent']}
@@ -229,6 +237,13 @@ export default function MetricCard({
           )}
         </View>
 
+        <LinearGradient
+          colors={['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0)']}
+          start={[0, 0]}
+          end={[1, 0]}
+          style={styles.divider}
+        />
+
         <Animated.View style={[styles.valueRow, valueStyle]}>
           <Text style={styles.valueText} selectable>
             {value}
@@ -239,6 +254,9 @@ export default function MetricCard({
         {/* Sparkline or placeholder */}
         <View style={styles.rowBottom}>
           {sparklinePaths ? renderSparkline() : <Text style={styles.subText}>Last 7 days</Text>}
+          <View style={styles.weekBadge}>
+            <Text style={styles.weekBadgeText}>Week view</Text>
+          </View>
         </View>
       </Pressable>
     </Animated.View>
@@ -250,23 +268,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   card: {
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: CARD_RADIUS,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: 'rgba(14,14,16,0.7)',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
     // soft elevation
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
         shadowOffset: { height: 6, width: 0 },
       },
       android: {
-        elevation: 3,
+        elevation: 4,
       },
     }),
+  },
+  baseGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: CARD_RADIUS,
   },
   topAccent: {
     position: 'absolute',
@@ -274,14 +298,20 @@ const styles = StyleSheet.create({
     right: 0,
     height: 38,
     top: 0,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
+    borderTopLeftRadius: CARD_RADIUS,
+    borderTopRightRadius: CARD_RADIUS,
   },
   rowTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  divider: {
+    height: 2,
+    borderRadius: 999,
+    marginBottom: 10,
+    alignSelf: 'stretch',
   },
   label: {
     color: 'rgba(255,255,255,0.78)',
@@ -321,6 +351,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  weekBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  weekBadgeText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   sparklineContainer: {
     flex: 1,

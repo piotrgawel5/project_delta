@@ -36,6 +36,7 @@ const BG_PRIMARY = '#000000';
 const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
 const STATUS_GREEN = '#22C55E';
 const { width: SCREEN_W } = Dimensions.get('window');
+const UI_RADIUS = 28;
 
 export default function SleepScreen() {
   const { user } = useAuthStore();
@@ -370,7 +371,7 @@ const styles = StyleSheet.create({
   iconButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: UI_RADIUS,
     backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
