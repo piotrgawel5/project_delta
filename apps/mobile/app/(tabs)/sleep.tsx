@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, StyleSheet, Text, ScrollView, RefreshControl, Pressable } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  Text,
+  RefreshControl,
+  Pressable,
+  InteractionManager,
+  Dimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { useAuthStore } from '@store/authStore';
 import { useSleepStore } from '@store/sleepStore';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,37 +24,18 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { SleepCalendar } from '../../components/sleep/AppleSleepCalendar';
+import { TypewriterText } from '../../components/ui/TypewriterText';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
 import { transformToHypnogramStages } from '@lib/sleepTransform';
 import { getSleepScoreGrade, brightenColor } from '@lib/sleepColors';
 import { formatTime } from '@lib/sleepFormatters';
+import MetricCard from '@components/sleep/MetricCard';
 
 // Colors
 const BG_PRIMARY = '#000000';
 const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
 const STATUS_GREEN = '#22C55E';
-
-const MetricItem = ({ label, value, unit, status, statusIcon = 'checkmark-circle' }: any) => (
-  <View style={styles.metricItem}>
-    <View style={styles.metricHeader}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Ionicons
-        name="information-circle"
-        size={14}
-        color={TEXT_SECONDARY}
-        style={{ marginLeft: 4 }}
-      />
-    </View>
-    <View style={styles.metricValueContainer}>
-      <Text style={styles.metricValue}>{value}</Text>
-      {unit && <Text style={styles.metricUnit}>{unit}</Text>}
-    </View>
-    <View style={styles.metricStatusRow}>
-      <Ionicons name={statusIcon as any} size={14} color={STATUS_GREEN} />
-      <Text style={styles.metricStatusText}>{status}</Text>
-    </View>
-  </View>
-);
+const { width: SCREEN_W } = Dimensions.get('window');
 
 export default function SleepScreen() {
   const { user } = useAuthStore();
@@ -60,6 +50,20 @@ export default function SleepScreen() {
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isHeaderInteractable, setIsHeaderInteractable] = useState(false);
+  const [isNavigated, setIsNavigated] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      const task = InteractionManager.runAfterInteractions(() => {
+        setIsNavigated(true);
+      });
+
+      return () => {
+        task.cancel();
+        setIsNavigated(false);
+      };
+    }, [])
+  );
 
   useEffect(() => {
     if (user?.id) {
@@ -157,6 +161,29 @@ export default function SleepScreen() {
     });
   }, [hi]);
 
+  // Compute sparkline data from weekly history (last 7 days, chronological order)
+  const sparklineData = useMemo(() => {
+    const history = weeklyHistory || [];
+    if (history.length < 2) {
+      return { duration: undefined, restorative: undefined };
+    }
+
+    // Sort chronologically (oldest first) for proper sparkline trend
+    const sorted = [...history]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(-7); // Last 7 days
+
+    const durationData = sorted.map((item) => item.duration_minutes || 0);
+    const restorativeData = sorted.map(
+      (item) => (item.deep_sleep_minutes || 0) + (item.rem_sleep_minutes || 0)
+    );
+
+    return {
+      duration: durationData.length >= 2 ? durationData : undefined,
+      restorative: restorativeData.length >= 2 ? restorativeData : undefined,
+    };
+  }, [weeklyHistory]);
+
   return (
     <View style={styles.container}>
       {/* Background Gradient */}
@@ -170,9 +197,8 @@ export default function SleepScreen() {
       <Animated.View
         pointerEvents={isHeaderInteractable ? 'auto' : 'none'}
         style={[styles.stickyHeader, { paddingTop: insets.top }, headerStyle]}>
-        <View style={styles.stickyHeaderContent}>
-          <Text style={styles.stickyTitle}>Sleep (Updated)</Text>
-        </View>
+        <LinearGradient colors={['#000000', 'rgba(0,0,0,0)']} style={StyleSheet.absoluteFill} />
+        <View style={styles.stickyHeaderContent} />
       </Animated.View>
 
       <Animated.ScrollView
@@ -230,40 +256,46 @@ export default function SleepScreen() {
             {currentData.historyItem?.sleep_score !== undefined ? sleepScoreGrade.grade : '--'}
           </Text>
           <Text style={styles.dateLabel}>{currentData.fullDate}</Text>
-          <Text style={styles.description}>
-            Your sleep duration last night was above your goal, providing optimal restorative sleep
-            for complete recovery. You barely stirred awake last night - great stuff.
-          </Text>
+          <TypewriterText
+            text="Your sleep duration last night was above your goal, providing optimal restorative sleep for complete recovery. You barely stirred awake last night - great stuff."
+            style={styles.description}
+            trigger={!loading && isNavigated}
+          />
         </View>
 
         {/* Metrics Grid */}
         <View style={styles.metricsGrid}>
-          <View style={styles.gridRow}>
-            <MetricItem
-              label="Sleep Duration"
-              value={`${duration.h}h ${duration.m}m`}
-              status="ABOVE NORMAL"
-            />
-            <MetricItem
-              label="Restorative Sleep"
-              value={`${restorative.h}h ${restorative.m}m`}
-              status="ABOVE NORMAL"
-            />
-          </View>
-          <View style={styles.gridRow}>
-            <MetricItem
-              label="Fell Asleep At"
-              value={formatTime(hi?.start_time).replace(/(AM|PM)/, '')}
-              unit={startTime ? (startTime.getHours() >= 12 ? 'PM' : 'AM') : ''}
-              status="EARLIER THAN USUAL"
-            />
-            <MetricItem
-              label="Woke Up At"
-              value={formatTime(hi?.end_time).replace(/(AM|PM)/, '')}
-              unit={endTime ? (endTime.getHours() >= 12 ? 'PM' : 'AM') : ''}
-              status="AS USUAL"
-            />
-          </View>
+          <MetricCard
+            label="Sleep Duration"
+            value={`${duration.h}h ${duration.m}m`}
+            status={duration.h >= 7 ? 'up' : 'neutral'}
+            sparkline={sparklineData.duration}
+            onPress={() => {
+              /* open detail or chart */
+            }}
+          />
+
+          <MetricCard
+            label="Restorative"
+            value={`${restorative.h}h ${restorative.m}m`}
+            status={restorative.h >= 2 ? 'up' : 'neutral'}
+            sparkline={sparklineData.restorative}
+            onPress={() => {}}
+          />
+
+          <MetricCard
+            label="Fell Asleep"
+            value={formatTime(hi?.start_time).replace(/(AM|PM)/, '')}
+            unit={startTime ? (startTime.getHours() >= 12 ? 'PM' : 'AM') : undefined}
+            status="neutral"
+          />
+
+          <MetricCard
+            label="Woke Up"
+            value={formatTime(hi?.end_time).replace(/(AM|PM)/, '')}
+            unit={endTime ? (endTime.getHours() >= 12 ? 'PM' : 'AM') : undefined}
+            status="neutral"
+          />
         </View>
 
         {/* Chart Section */}
@@ -313,12 +345,9 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0,0,0,0.85)',
     zIndex: 100,
     alignItems: 'center',
     paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
   stickyHeaderContent: {
     height: 44,
@@ -362,9 +391,8 @@ const styles = StyleSheet.create({
   },
   mainRating: {
     color: 'white',
-    fontSize: 72,
-    fontFamily: 'InclusiveSans-Regular',
-    fontWeight: '700', // Inclusive Sans usually only has 400, this might faux-bold
+    fontSize: Math.min(72, Math.round(SCREEN_W * 0.18)),
+    fontWeight: '700',
     marginBottom: 4,
     letterSpacing: -2,
   },
@@ -379,51 +407,11 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   metricsGrid: {
-    gap: 24,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12, // keep visual rhythm
     marginBottom: 32,
-  },
-  gridRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  metricItem: {
-    flex: 1,
-  },
-  metricHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  metricLabel: {
-    color: TEXT_SECONDARY,
-    fontSize: 15,
-  },
-  metricValueContainer: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 4,
-  },
-  metricValue: {
-    color: 'white',
-    fontSize: 34,
-    fontWeight: '600',
-    letterSpacing: -1,
-  },
-  metricUnit: {
-    color: TEXT_SECONDARY,
-    fontSize: 18,
-    marginLeft: 4,
-  },
-  metricStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metricStatusText: {
-    color: TEXT_SECONDARY,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
   },
   chartSection: {
     marginBottom: 40,
