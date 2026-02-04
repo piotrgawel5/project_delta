@@ -14,7 +14,7 @@ import Animated, {
   useAnimatedReaction,
   runOnJS,
 } from 'react-native-reanimated';
-import { SleepCalendar } from '../../components/sleep/SleepCalendar';
+import { SleepCalendar } from '../../components/sleep/AppleSleepCalendar';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
 import { transformToHypnogramStages } from '@lib/sleepTransform';
 import { getSleepScoreGrade, brightenColor } from '@lib/sleepColors';
@@ -52,9 +52,9 @@ export default function SleepScreen() {
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
 
-  const { weeklyHistory, loading, fetchSleepData, checkHealthConnectStatus } = useSleepStore();
+  const { weeklyHistory, monthlyData, loading, fetchSleepData, checkHealthConnectStatus } =
+    useSleepStore();
 
-  const [selectedDayIndex, setSelectedDayIndex] = useState(6);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
@@ -100,27 +100,21 @@ export default function SleepScreen() {
     return { h, m };
   };
 
-  const currentData = (() => {
-    // If we have specific date selected via calendar:
-    // We should ideally search in history for that date.
-    // BUT, the current store might only hold ~7 days.
-    // Implementing purely UI selection for now as requested generally.
-
-    // For this task, let's use the selectedDate state
+  const currentData = useMemo(() => {
     const targetDateStr = selectedDate.toISOString().split('T')[0];
 
-    // Safe access to weeklyHistory
+    // 1. Try weekly history first
     const hist = weeklyHistory || [];
+    let displayItem = hist.find((item) => item.date === targetDateStr);
 
-    // Find item if exists
-    const displayItem = hist.find((item) => item.date === targetDateStr);
-
-    // Fallback logic if needed, but for now exact date match or null
-    // If we wanted to fallback to yesterday for "Last Night" context if today has no data yet?
-    // Kept simple: specific date or nothing/mock.
-    // The previous code had a fallback to 'weeklyHistory[weeklyHistory.length - 1]' if not found.
-    // Let's keep a fallback if it's TODAY and there is no data, maybe show yesterday?
-    // Actually, user wants to select dates. If no data, displayItem is undefined. UI handles nulls.
+    // 2. Fallback to monthly data cache if not found
+    if (!displayItem && monthlyData) {
+      const monthKey = targetDateStr.substring(0, 7); // YYYY-MM
+      const monthRecords = monthlyData[monthKey];
+      if (monthRecords) {
+        displayItem = monthRecords.find((r) => r.date === targetDateStr);
+      }
+    }
 
     return {
       historyItem: displayItem || null,
@@ -130,7 +124,7 @@ export default function SleepScreen() {
         year: 'numeric',
       }),
     };
-  })();
+  }, [selectedDate, weeklyHistory, monthlyData]);
 
   const hi = currentData.historyItem;
 
@@ -177,7 +171,7 @@ export default function SleepScreen() {
         pointerEvents={isHeaderInteractable ? 'auto' : 'none'}
         style={[styles.stickyHeader, { paddingTop: insets.top }, headerStyle]}>
         <View style={styles.stickyHeaderContent}>
-          <Text style={styles.stickyTitle}>Sleep</Text>
+          <Text style={styles.stickyTitle}>Sleep (Updated)</Text>
         </View>
       </Animated.View>
 
@@ -368,9 +362,11 @@ const styles = StyleSheet.create({
   },
   mainRating: {
     color: 'white',
-    fontSize: 48,
-    fontWeight: '700',
+    fontSize: 72,
+    fontFamily: 'InclusiveSans-Regular',
+    fontWeight: '700', // Inclusive Sans usually only has 400, this might faux-bold
     marginBottom: 4,
+    letterSpacing: -2,
   },
   dateLabel: {
     color: TEXT_SECONDARY,
@@ -388,7 +384,7 @@ const styles = StyleSheet.create({
   },
   gridRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
   },
   metricItem: {
     flex: 1,

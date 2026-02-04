@@ -52,6 +52,7 @@ interface SleepState {
     checkingStatus: boolean;
     lastNightSleep: SleepSession | null;
     weeklyHistory: SleepData[];
+    monthlyData: Record<string, SleepData[]>; // CACHE: "YYYY-MM" -> Records
     loading: boolean;
     lastSyncTime: number;
 
@@ -60,6 +61,11 @@ interface SleepState {
         { granted: boolean; openedSettings?: boolean }
     >;
     fetchSleepData: (userId: string) => Promise<void>;
+    fetchMonthHistory: (
+        userId: string,
+        year: number,
+        month: number,
+    ) => Promise<void>;
     syncToSupabase: (
         userId: string,
         session: SleepSession,
@@ -82,6 +88,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
     checkingStatus: true,
     lastNightSleep: null,
     weeklyHistory: [],
+    monthlyData: {},
     loading: false,
     lastSyncTime: 0,
 
@@ -350,7 +357,18 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                 data_source: r.data_source,
                 synced_at: r.synced_at || "",
             }));
-            set({ weeklyHistory });
+            const map: Record<string, SleepData[]> = {};
+            // Populate monthly data from weekly fetch as well
+            weeklyHistory.forEach((r) => {
+                const monthKey = r.date.substring(0, 7); // YYYY-MM
+                if (!map[monthKey]) map[monthKey] = [];
+                map[monthKey].push(r);
+            });
+
+            set({
+                weeklyHistory,
+                monthlyData: { ...get().monthlyData, ...map },
+            });
 
             // 6. Sync HC-only records to cloud
             await get().syncPendingRecords(userId);
@@ -360,6 +378,45 @@ export const useSleepStore = create<SleepState>((set, get) => ({
             await get().loadCachedData();
         } finally {
             set({ loading: false });
+        }
+    },
+
+    fetchMonthHistory: async (userId: string, year: number, month: number) => {
+        // month is 0-indexed (0 = Jan)
+        const key = `${year}-${(month + 1).toString().padStart(2, "0")}`;
+
+        // If we already have data for this month and it's not the current month, maybe skip?
+        // But user might want fresh info. Let's fetch.
+
+        const startDate = new Date(year, month, 1);
+        const endDate = new Date(year, month + 1, 0); // Last day of month
+        const startStr = startDate.toISOString().split("T")[0];
+        const endStr = endDate.toISOString().split("T")[0];
+
+        try {
+            console.log(`[SleepStore] Fetching month history for ${key}`);
+            const response = await api.get(`/api/sleep/${userId}/history`, {
+                params: {
+                    start_date: startStr,
+                    end_date: endStr,
+                    limit: 35, // Max days in month + buffer
+                },
+            });
+
+            const records: SleepData[] = response?.data || response || [];
+            if (records.length > 0) {
+                set((state) => ({
+                    monthlyData: {
+                        ...state.monthlyData,
+                        [key]: records,
+                    },
+                }));
+            }
+        } catch (error) {
+            console.error(
+                `[SleepStore] Failed to fetch month history for ${key}`,
+                error,
+            );
         }
     },
 
