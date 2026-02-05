@@ -21,8 +21,13 @@ export function TypewriterText({
     return text.split(' ');
   }, [text]);
 
+  // Reserve space with invisible text when not triggered
   if (!trigger) {
-    return null;
+    return (
+      <View style={[styles.container, containerStyle]}>
+        <Text style={[style, styles.placeholder]}>{text}</Text>
+      </View>
+    );
   }
 
   return (
@@ -46,5 +51,8 @@ const styles = StyleSheet.create({
   },
   word: {
     // Ensure words don't get cut off vertically if line height is tight
+  },
+  placeholder: {
+    opacity: 0, // Invisible but takes up space
   },
 });

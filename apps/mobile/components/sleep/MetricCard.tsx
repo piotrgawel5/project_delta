@@ -14,6 +14,7 @@ import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Circle } from 're
 import { LinearGradient } from 'expo-linear-gradient';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 type MetricStatus = 'up' | 'down' | 'neutral';
 
@@ -99,12 +100,19 @@ export default function MetricCard({
       60,
       withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) })
     );
-    // Animate sparkline drawing
-    sparklineProgress.value = withDelay(
-      200,
-      withTiming(1, { duration: 600, easing: Easing.out(Easing.quad) })
-    );
   }, []);
+
+  // Animate sparkline when data becomes available
+  useEffect(() => {
+    if (sparkline && sparkline.length >= 2) {
+      // Reset and animate
+      sparklineProgress.value = 0;
+      sparklineProgress.value = withTiming(1, {
+        duration: 800,
+        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+      });
+    }
+  }, [sparkline]);
 
   useEffect(() => {
     pulse.value = withTiming(1.06, { duration: 130 }, () => {
@@ -138,13 +146,24 @@ export default function MetricCard({
     return generateSmoothPath(points, SPARKLINE_W, SPARKLINE_H);
   }, [sparkline]);
 
-  // Animated props for the sparkline stroke
+  // Animated props for the sparkline stroke - draws from left to right
   const animatedLineProps = useAnimatedProps(() => ({
-    strokeDashoffset: interpolate(sparklineProgress.value, [0, 1], [200, 0]),
+    strokeDashoffset: interpolate(sparklineProgress.value, [0, 1], [300, 0]),
   }));
 
   const animatedAreaProps = useAnimatedProps(() => ({
-    opacity: interpolate(sparklineProgress.value, [0, 0.5, 1], [0, 0.1, 0.25]),
+    opacity: interpolate(sparklineProgress.value, [0, 0.3, 1], [0, 0.15, 0.35]),
+  }));
+
+  // Dot appears at the end of the line drawing
+  const animatedDotProps = useAnimatedProps(() => ({
+    opacity: interpolate(sparklineProgress.value, [0.7, 1], [0, 1]),
+    r: interpolate(sparklineProgress.value, [0.7, 0.85, 1], [0, 4, 3]),
+  }));
+
+  const animatedDotGlowProps = useAnimatedProps(() => ({
+    opacity: interpolate(sparklineProgress.value, [0.7, 1], [0, 0.25]),
+    r: interpolate(sparklineProgress.value, [0.7, 0.85, 1], [0, 6, 5]),
   }));
 
   const renderSparkline = () => {
@@ -188,13 +207,18 @@ export default function MetricCard({
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            strokeDasharray={200}
+            strokeDasharray={300}
             animatedProps={animatedLineProps}
           />
 
-          {/* End dot with glow */}
-          <Circle cx={dotX} cy={dotY} r={5} fill={meta.color} opacity={0.25} />
-          <Circle cx={dotX} cy={dotY} r={3} fill={meta.color} />
+          {/* End dot with animated glow */}
+          <AnimatedCircle
+            cx={dotX}
+            cy={dotY}
+            fill={meta.color}
+            animatedProps={animatedDotGlowProps}
+          />
+          <AnimatedCircle cx={dotX} cy={dotY} fill={meta.color} animatedProps={animatedDotProps} />
         </Svg>
       </View>
     );
@@ -243,7 +267,6 @@ export default function MetricCard({
           end={[1, 0]}
           style={styles.divider}
         />
-
         <Animated.View style={[styles.valueRow, valueStyle]}>
           <Text style={styles.valueText} selectable>
             {value}
@@ -252,9 +275,9 @@ export default function MetricCard({
         </Animated.View>
 
         {/* Sparkline or placeholder */}
-        <View style={styles.rowBottom}>
+        <View style={sparklinePaths ? styles.rowBottomStacked : styles.rowBottom}>
           {sparklinePaths ? renderSparkline() : <Text style={styles.subText}>Last 7 days</Text>}
-          <View style={styles.weekBadge}>
+          <View style={[styles.weekBadge, sparklinePaths && styles.weekBadgeBelow]}>
             <Text style={styles.weekBadgeText}>Week view</Text>
           </View>
         </View>
@@ -305,7 +328,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   divider: {
     height: 2,
@@ -352,6 +375,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  rowBottomStacked: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
+  sparklineWrapper: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
   weekBadge: {
     marginLeft: 8,
     paddingHorizontal: 10,
@@ -360,6 +391,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
+  },
+  weekBadgeBelow: {
+    marginLeft: 0,
+    marginTop: 6,
   },
   weekBadgeText: {
     color: 'rgba(255,255,255,0.7)',
