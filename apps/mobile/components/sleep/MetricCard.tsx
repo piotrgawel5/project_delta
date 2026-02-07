@@ -1,20 +1,8 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  useAnimatedProps,
-  withTiming,
-  withDelay,
-  Easing,
-  interpolate,
-} from 'react-native-reanimated';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
-
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 type MetricStatus = 'up' | 'down' | 'neutral';
 
@@ -90,45 +78,6 @@ export default function MetricCard({
 }: MetricCardProps) {
   const meta = STATUS_META[status];
 
-  // Entrance animation
-  const mounted = useSharedValue(0);
-  const pulse = useSharedValue(1);
-  const sparklineProgress = useSharedValue(0);
-
-  useEffect(() => {
-    mounted.value = withDelay(
-      60,
-      withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) })
-    );
-  }, []);
-
-  // Animate sparkline when data becomes available
-  useEffect(() => {
-    if (sparkline && sparkline.length >= 2) {
-      // Reset and animate
-      sparklineProgress.value = 0;
-      sparklineProgress.value = withTiming(1, {
-        duration: 800,
-        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-      });
-    }
-  }, [sparkline]);
-
-  useEffect(() => {
-    pulse.value = withTiming(1.06, { duration: 130 }, () => {
-      pulse.value = withTiming(1, { duration: 240, easing: Easing.out(Easing.quad) });
-    });
-  }, [value, unit]);
-
-  const containerStyle = useAnimatedStyle(() => ({
-    opacity: mounted.value,
-    transform: [{ translateY: interpolate(mounted.value, [0, 1], [8, 0]) }, { scale: pulse.value }],
-  }));
-
-  const valueStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulse.value }],
-  }));
-
   // Calculate sparkline paths
   const sparklinePaths = useMemo(() => {
     if (!sparkline || sparkline.length < 2) return null;
@@ -145,26 +94,6 @@ export default function MetricCard({
 
     return generateSmoothPath(points, SPARKLINE_W, SPARKLINE_H);
   }, [sparkline]);
-
-  // Animated props for the sparkline stroke - draws from left to right
-  const animatedLineProps = useAnimatedProps(() => ({
-    strokeDashoffset: interpolate(sparklineProgress.value, [0, 1], [300, 0]),
-  }));
-
-  const animatedAreaProps = useAnimatedProps(() => ({
-    opacity: interpolate(sparklineProgress.value, [0, 0.3, 1], [0, 0.15, 0.35]),
-  }));
-
-  // Dot appears at the end of the line drawing
-  const animatedDotProps = useAnimatedProps(() => ({
-    opacity: interpolate(sparklineProgress.value, [0.7, 1], [0, 1]),
-    r: interpolate(sparklineProgress.value, [0.7, 0.85, 1], [0, 4, 3]),
-  }));
-
-  const animatedDotGlowProps = useAnimatedProps(() => ({
-    opacity: interpolate(sparklineProgress.value, [0.7, 1], [0, 0.25]),
-    r: interpolate(sparklineProgress.value, [0.7, 0.85, 1], [0, 6, 5]),
-  }));
 
   const renderSparkline = () => {
     if (!sparklinePaths) return null;
@@ -193,39 +122,27 @@ export default function MetricCard({
           </Defs>
 
           {/* Gradient fill area */}
-          <AnimatedPath
-            d={sparklinePaths.areaPath}
-            fill={`url(#${gradientId})`}
-            animatedProps={animatedAreaProps}
-          />
+          <Path d={sparklinePaths.areaPath} fill={`url(#${gradientId})`} />
 
           {/* Smooth line */}
-          <AnimatedPath
+          <Path
             d={sparklinePaths.linePath}
             fill="none"
             stroke={meta.color}
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            strokeDasharray={300}
-            animatedProps={animatedLineProps}
           />
 
-          {/* End dot with animated glow */}
-          <AnimatedCircle
-            cx={dotX}
-            cy={dotY}
-            fill={meta.color}
-            animatedProps={animatedDotGlowProps}
-          />
-          <AnimatedCircle cx={dotX} cy={dotY} fill={meta.color} animatedProps={animatedDotProps} />
+          {/* End dot */}
+          <Circle cx={dotX} cy={dotY} r={3} fill={meta.color} />
         </Svg>
       </View>
     );
   };
 
   return (
-    <Animated.View style={[styles.wrapper, containerStyle]}>
+    <View style={styles.wrapper}>
       <Pressable
         style={({ pressed }) => [
           styles.card,
@@ -267,12 +184,12 @@ export default function MetricCard({
           end={[1, 0]}
           style={styles.divider}
         />
-        <Animated.View style={[styles.valueRow, valueStyle]}>
+        <View style={styles.valueRow}>
           <Text style={styles.valueText} selectable>
             {value}
           </Text>
           {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
-        </Animated.View>
+        </View>
 
         {/* Sparkline or placeholder */}
         <View style={sparklinePaths ? styles.rowBottomStacked : styles.rowBottom}>
@@ -282,7 +199,7 @@ export default function MetricCard({
           </View>
         </View>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 

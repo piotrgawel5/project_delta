@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,6 +7,7 @@ import {
   Pressable,
   InteractionManager,
   Dimensions,
+  FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -14,6 +15,7 @@ import { useAuthStore } from '@store/authStore';
 import { useSleepStore } from '@store/sleepStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import Animated, {
   useSharedValue,
   useAnimatedScrollHandler,
@@ -22,6 +24,8 @@ import Animated, {
   Extrapolation,
   useAnimatedReaction,
   runOnJS,
+  withTiming,
+  Easing,
 } from 'react-native-reanimated';
 import { SleepCalendar } from '../../components/sleep/SleepCalendar';
 import { TypewriterText } from '../../components/ui/TypewriterText';
@@ -39,6 +43,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const UI_RADIUS = 28;
 
 export default function SleepScreen() {
+  const navigation = useNavigation();
   const { user } = useAuthStore();
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
@@ -46,12 +51,34 @@ export default function SleepScreen() {
   const { weeklyHistory, monthlyData, loading, fetchSleepData, checkHealthConnectStatus } =
     useSleepStore();
 
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const normalizeDate = useCallback((date: Date) => {
+    const d = new Date(date);
+    d.setHours(12, 0, 0, 0);
+    return d;
+  }, []);
+
+  const dateKey = useCallback((date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  const [selectedDate, setSelectedDate] = useState(() => {
+    return normalizeDate(new Date());
+  });
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isHeaderInteractable, setIsHeaderInteractable] = useState(false);
   const [isNavigated, setIsNavigated] = useState(false);
+  const pagerRef = useRef<FlatList<Date>>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const selectedYear = selectedDate.getFullYear();
+  const selectedMonth = selectedDate.getMonth();
+  const gradientProgress = useSharedValue(1);
+  const [gradientFrom, setGradientFrom] = useState('#000000');
+  const [gradientTo, setGradientTo] = useState('#000000');
 
   useFocusEffect(
     useCallback(() => {
@@ -106,7 +133,7 @@ export default function SleepScreen() {
   };
 
   const currentData = useMemo(() => {
-    const targetDateStr = selectedDate.toISOString().split('T')[0];
+    const targetDateStr = dateKey(selectedDate);
 
     // 1. Try weekly history first
     const hist = weeklyHistory || [];
@@ -129,9 +156,10 @@ export default function SleepScreen() {
         year: 'numeric',
       }),
     };
-  }, [selectedDate, weeklyHistory, monthlyData]);
+  }, [selectedDate, weeklyHistory, monthlyData, dateKey]);
 
   const hi = currentData.historyItem;
+  const hasData = !!hi;
 
   // Metrics
   const duration = formatDuration(hi?.duration_minutes || 0);
@@ -147,6 +175,18 @@ export default function SleepScreen() {
     () => getSleepScoreGrade(currentData.historyItem?.sleep_score ?? 0),
     [currentData.historyItem?.sleep_score]
   );
+
+  const gradientTarget = hasData ? sleepScoreGrade.color : BG_PRIMARY;
+
+  useEffect(() => {
+    setGradientFrom(gradientTo);
+    setGradientTo(gradientTarget);
+    gradientProgress.value = 0;
+    gradientProgress.value = withTiming(1, {
+      duration: 700,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [gradientTarget]);
 
   // Transform aggregate sleep data into hypnogram-compatible stages
   const hypnogramStages = useMemo(() => {
@@ -185,14 +225,76 @@ export default function SleepScreen() {
     };
   }, [weeklyHistory]);
 
+  const historyByDate = useMemo(() => {
+    const map = new Map<string, any>();
+    (weeklyHistory || []).forEach((item) => {
+      map.set(item.date, item);
+    });
+    if (monthlyData) {
+      Object.keys(monthlyData).forEach((monthKey) => {
+        (monthlyData[monthKey] || []).forEach((item) => {
+          if (!map.has(item.date)) {
+            map.set(item.date, item);
+          }
+        });
+      });
+    }
+    return map;
+  }, [weeklyHistory, monthlyData]);
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  const monthDates = useMemo(() => {
+    const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    return Array.from({ length: lastDay }, (_, i) =>
+      normalizeDate(new Date(selectedYear, selectedMonth, i + 1))
+    );
+  }, [selectedYear, selectedMonth]);
+
+  useEffect(() => {
+    const index = monthDates.findIndex((d) => isSameDay(d, selectedDate));
+    if (index >= 0) {
+      pagerRef.current?.scrollToIndex({ index, animated: true });
+      setActiveIndex(index);
+    }
+  }, [selectedDate, monthDates]);
+
+  const handlePagerEnd = (offsetX: number) => {
+    const index = Math.round(offsetX / SCREEN_W);
+    const next = monthDates[index];
+    if (next && !isSameDay(next, selectedDate)) {
+      setSelectedDate(next);
+      setActiveIndex(index);
+    }
+    navigation.getParent()?.setOptions({ swipeEnabled: true });
+  };
+
+  useEffect(() => {
+    navigation.getParent()?.setOptions({ swipeEnabled: true });
+  }, [navigation]);
+
+  const gradientTopStyle = useAnimatedStyle(() => ({
+    opacity: gradientProgress.value,
+  }));
+
   return (
     <View style={styles.container}>
       {/* Background Gradient */}
       <LinearGradient
-        colors={[sleepScoreGrade.color, BG_PRIMARY, BG_PRIMARY]}
+        colors={[gradientFrom, BG_PRIMARY, BG_PRIMARY]}
         locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
+      <Animated.View style={[StyleSheet.absoluteFill, gradientTopStyle]}>
+        <LinearGradient
+          colors={[gradientTo, BG_PRIMARY, BG_PRIMARY]}
+          locations={[0, 0.5, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
 
       {/* Sticky Header */}
       <Animated.View
@@ -209,18 +311,20 @@ export default function SleepScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />
         }>
-        {/* Navigation Row */}
-        <View style={styles.navRow}>
-          {/* Back button removed as requested */}
-          <View style={{ width: 44 }} />
+        <View style={styles.contentWrap}>
+          {/* Navigation Row */}
+          <View style={styles.navRow}>
+            {/* Back button removed as requested */}
+            <View style={{ width: 44 }} />
 
-          <View style={styles.rightIcons}>
-            <Pressable style={styles.iconButton} onPress={() => setIsCalendarVisible(true)}>
-              <Ionicons name="calendar-outline" size={20} color="white" />
-            </Pressable>
-            <Pressable style={styles.iconButton} onPress={() => setIsAddModalVisible(true)}>
-              <Ionicons name="add" size={24} color="white" />
-            </Pressable>
+            <View style={styles.rightIcons}>
+              <Pressable style={styles.iconButton} onPress={() => setIsCalendarVisible(true)}>
+                <Ionicons name="calendar-outline" size={20} color="white" />
+              </Pressable>
+              <Pressable style={styles.iconButton} onPress={() => setIsAddModalVisible(true)}>
+                <Ionicons name="add" size={24} color="white" />
+              </Pressable>
+            </View>
           </View>
         </View>
 
@@ -228,7 +332,7 @@ export default function SleepScreen() {
           isVisible={isCalendarVisible}
           onClose={() => setIsCalendarVisible(false)}
           selectedDate={selectedDate}
-          onDateSelect={setSelectedDate}
+          onDateSelect={(date) => setSelectedDate(normalizeDate(date))}
           history={weeklyHistory}
         />
 
@@ -245,84 +349,163 @@ export default function SleepScreen() {
           userId={user?.id || ''}
         />
 
-        {/* Title Section */}
-        <View style={styles.titleSection}>
-          <View style={styles.labelRow}>
-            <Ionicons name="moon" size={16} color={brightenColor(sleepScoreGrade.color)} />
-            <Text style={[styles.sectionLabel, { color: brightenColor(sleepScoreGrade.color) }]}>
-              Sleep
-            </Text>
-          </View>
-          <Text style={styles.mainRating}>
-            {currentData.historyItem?.sleep_score !== undefined ? sleepScoreGrade.grade : '--'}
-          </Text>
-          <Text style={styles.dateLabel}>{currentData.fullDate}</Text>
-          <TypewriterText
-            text="Your sleep duration last night was above your goal, providing optimal restorative sleep for complete recovery. You barely stirred awake last night - great stuff."
-            style={styles.description}
-            trigger={!loading && isNavigated}
-          />
-        </View>
-
-        {/* Metrics Grid */}
-        <View style={styles.metricsGrid}>
-          <MetricCard
-            label="Sleep Duration"
-            value={`${duration.h}h ${duration.m}m`}
-            status={duration.h >= 7 ? 'up' : 'neutral'}
-            sparkline={sparklineData.duration}
-            onPress={() => {
-              /* open detail or chart */
+        {/* Swipeable Title Section */}
+        <View style={styles.pagerWrap}>
+          <FlatList
+            ref={pagerRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            data={monthDates}
+            keyExtractor={(item) => dateKey(item)}
+            getItemLayout={(_, index) => ({
+              length: SCREEN_W,
+              offset: SCREEN_W * index,
+              index,
+            })}
+            initialScrollIndex={activeIndex}
+            windowSize={3}
+            maxToRenderPerBatch={3}
+            updateCellsBatchingPeriod={50}
+            removeClippedSubviews
+            onScrollBeginDrag={() => navigation.getParent()?.setOptions({ swipeEnabled: false })}
+            onMomentumScrollEnd={(event) => handlePagerEnd(event.nativeEvent.contentOffset.x)}
+            onScrollEndDrag={() => navigation.getParent()?.setOptions({ swipeEnabled: true })}
+            onTouchStart={() => navigation.getParent()?.setOptions({ swipeEnabled: false })}
+            onTouchEnd={() => navigation.getParent()?.setOptions({ swipeEnabled: true })}
+            renderItem={({ item, index }) => {
+              const shouldPrefetch = Math.abs(index - activeIndex) <= 1;
+              const itemDateStr = dateKey(item);
+              const itemHistory = shouldPrefetch ? historyByDate.get(itemDateStr) || null : null;
+              const itemHasData = !!itemHistory;
+              const itemGrade = getSleepScoreGrade(itemHistory?.sleep_score ?? 0);
+              const isActive = isSameDay(item, selectedDate);
+              return (
+                <View style={styles.pagerItem}>
+                  <View style={styles.titleSection}>
+                    <View style={styles.labelRow}>
+                      <Ionicons name="moon" size={16} color={brightenColor(itemGrade.color)} />
+                      <Text
+                        style={[
+                          styles.sectionLabel,
+                          { color: brightenColor(itemGrade.color) },
+                        ]}>
+                        Sleep
+                      </Text>
+                    </View>
+                    <Text style={styles.mainRating}>
+                      {itemHistory?.sleep_score !== undefined ? itemGrade.grade : '--'}
+                    </Text>
+                    <Text style={styles.dateLabel}>
+                      {item.toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                    {isActive ? (
+                      <TypewriterText
+                        text={
+                          itemHasData
+                            ? 'Your sleep duration last night was above your goal, providing optimal restorative sleep for complete recovery. You barely stirred awake last night - great stuff.'
+                            : 'No sleep data yet for this day. Add a record to see your score and trends.'
+                        }
+                        style={styles.description}
+                        trigger={!loading && isNavigated}
+                      />
+                    ) : (
+                      <Text style={styles.description}>
+                        {itemHasData
+                          ? 'Your sleep duration last night was above your goal, providing optimal restorative sleep for complete recovery. You barely stirred awake last night - great stuff.'
+                          : 'No sleep data yet for this day. Add a record to see your score and trends.'}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
             }}
           />
-
-          <MetricCard
-            label="Restorative"
-            value={`${restorative.h}h ${restorative.m}m`}
-            status={restorative.h >= 2 ? 'up' : 'neutral'}
-            sparkline={sparklineData.restorative}
-            onPress={() => {}}
-          />
-
-          <MetricCard
-            label="Fell Asleep"
-            value={formatTime(hi?.start_time).replace(/(AM|PM)/, '')}
-            unit={startTime ? (startTime.getHours() >= 12 ? 'PM ' : 'AM ') : undefined}
-            status="neutral"
-          />
-
-          <MetricCard
-            label="Woke Up"
-            value={formatTime(hi?.end_time).replace(/(AM|PM)/, '')}
-            unit={endTime ? (endTime.getHours() >= 12 ? 'PM ' : 'AM ') : undefined}
-            status="neutral"
-          />
         </View>
 
-        {/* Chart Section */}
-        <View style={styles.chartSection}>
-          <View style={styles.labelRow}>
-            <Text style={styles.chartTitle}>Sleep Stages</Text>
-            <Ionicons
-              name="information-circle"
-              size={16}
-              color={TEXT_SECONDARY}
-              style={{ marginLeft: 6 }}
-            />
-          </View>
+        <View style={styles.contentWrap}>
+          {hasData ? (
+            <>
+              {/* Metrics Grid */}
+              <View style={styles.metricsGrid}>
+                <MetricCard
+                  label="Sleep Duration"
+                  value={`${duration.h}h ${duration.m}m`}
+                  status={duration.h >= 7 ? 'up' : 'neutral'}
+                  sparkline={sparklineData.duration}
+                  onPress={() => {
+                    /* open detail or chart */
+                  }}
+                />
 
-          {/*   <HypnogramChart
-            stages={hypnogramStages}
-            startTime={hi?.start_time || new Date().toISOString()}
-            endTime={hi?.end_time || new Date().toISOString()}
-            height={180}
-          /> */}
+                <MetricCard
+                  label="Restorative"
+                  value={`${restorative.h}h ${restorative.m}m`}
+                  status={restorative.h >= 2 ? 'up' : 'neutral'}
+                  sparkline={sparklineData.restorative}
+                  onPress={() => {}}
+                />
 
-          {/* Time Labels for Chart */}
-          <View style={styles.chartTimeLabels}>
-            <Text style={styles.chartTimeText}>{formatTime(hi?.start_time)}</Text>
-            <Text style={styles.chartTimeText}>{formatTime(hi?.end_time)}</Text>
-          </View>
+                <MetricCard
+                  label="Fell Asleep"
+                  value={formatTime(hi?.start_time).replace(/(AM|PM)/, '')}
+                  unit={startTime ? (startTime.getHours() >= 12 ? 'PM ' : 'AM ') : undefined}
+                  status="neutral"
+                />
+
+                <MetricCard
+                  label="Woke Up"
+                  value={formatTime(hi?.end_time).replace(/(AM|PM)/, '')}
+                  unit={endTime ? (endTime.getHours() >= 12 ? 'PM ' : 'AM ') : undefined}
+                  status="neutral"
+                />
+              </View>
+
+              {/* Chart Section */}
+              <View style={styles.chartSection}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.chartTitle}>Sleep Stages</Text>
+                  <Ionicons
+                    name="information-circle"
+                    size={16}
+                    color={TEXT_SECONDARY}
+                    style={{ marginLeft: 6 }}
+                  />
+                </View>
+
+                {/*   <HypnogramChart
+                  stages={hypnogramStages}
+                  startTime={hi?.start_time || new Date().toISOString()}
+                  endTime={hi?.end_time || new Date().toISOString()}
+                  height={180}
+                /> */}
+
+                {/* Time Labels for Chart */}
+                <View style={styles.chartTimeLabels}>
+                  <Text style={styles.chartTimeText}>{formatTime(hi?.start_time)}</Text>
+                  <Text style={styles.chartTimeText}>{formatTime(hi?.end_time)}</Text>
+                </View>
+              </View>
+            </>
+          ) : (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyBadge}>
+                <Ionicons name="moon-outline" size={22} color={TEXT_SECONDARY} />
+              </View>
+              <Text style={styles.emptyTitle}>No sleep data</Text>
+              <Text style={styles.emptyCopy}>
+                Add a sleep record for this day to unlock metrics and trends.
+              </Text>
+              <Pressable style={styles.emptyButton} onPress={() => setIsAddModalVisible(true)}>
+                <Text style={styles.emptyButtonText}>Add data</Text>
+                <Ionicons name="add" size={18} color="black" />
+              </Pressable>
+            </View>
+          )}
         </View>
 
         {/* Bottom Tab Bar Placeholder Spacer */}
@@ -338,8 +521,18 @@ const styles = StyleSheet.create({
     backgroundColor: BG_PRIMARY,
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 0,
     paddingBottom: 40,
+  },
+  contentWrap: {
+    paddingHorizontal: 20,
+  },
+  pagerWrap: {
+    marginBottom: 24,
+  },
+  pagerItem: {
+    width: SCREEN_W,
+    paddingHorizontal: 20,
   },
   stickyHeader: {
     position: 'absolute',
@@ -406,6 +599,49 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     fontSize: 17,
     lineHeight: 24,
+  },
+  emptyState: {
+    borderRadius: 24,
+    padding: 22,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  emptyBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  emptyCopy: {
+    color: TEXT_SECONDARY,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  emptyButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'white',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+  },
+  emptyButtonText: {
+    color: 'black',
+    fontSize: 14,
+    fontWeight: '700',
   },
   metricsGrid: {
     flexDirection: 'row',
