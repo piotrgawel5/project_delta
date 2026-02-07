@@ -19,7 +19,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const H_GUTTER = 20;
 const GAP = 16;
 const CARD_WIDTH = Math.floor((SCREEN_W - H_GUTTER * 2 - GAP) / 2);
-const CARD_RADIUS = 28;
+const CARD_RADIUS = 36;
 
 // Sparkline dimensions
 const SPARKLINE_W = CARD_WIDTH - 28; // Full width minus padding

@@ -5,12 +5,10 @@ import {
   Text,
   RefreshControl,
   Pressable,
-  InteractionManager,
   Dimensions,
   FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
 import { useAuthStore } from '@store/authStore';
 import { useSleepStore } from '@store/sleepStore';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,15 +18,17 @@ import Animated, {
   useSharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
+  useAnimatedProps,
   interpolate,
   Extrapolation,
   useAnimatedReaction,
   runOnJS,
   withTiming,
   Easing,
+  SharedValue,
 } from 'react-native-reanimated';
+import Svg, { Rect, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { SleepCalendar } from '../../components/sleep/SleepCalendar';
-import { TypewriterText } from '../../components/ui/TypewriterText';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
 import { transformToHypnogramStages } from '@lib/sleepTransform';
 import { getSleepScoreGrade, brightenColor } from '@lib/sleepColors';
@@ -38,9 +38,51 @@ import MetricCard from '@components/sleep/MetricCard';
 // Colors
 const BG_PRIMARY = '#000000';
 const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
-const STATUS_GREEN = '#22C55E';
-const { width: SCREEN_W } = Dimensions.get('window');
-const UI_RADIUS = 28;
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const BG_WIDTH = SCREEN_W;
+const BG_HEIGHT = SCREEN_H;
+const UI_RADIUS = 36;
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
+const GradientBackground = React.memo(function GradientBackground({
+  baseColor,
+  overlayColor,
+  progress,
+}: {
+  baseColor: string;
+  overlayColor: string;
+  progress: SharedValue<number>;
+}) {
+  const animatedOverlayProps = useAnimatedProps(() => ({
+    opacity: progress.value,
+  }));
+
+  return (
+    <Svg width={BG_WIDTH} height={BG_HEIGHT} style={StyleSheet.absoluteFill}>
+      <Defs>
+        <SvgGradient id="sleepGradientBase" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={baseColor} />
+          <Stop offset="0.55" stopColor={BG_PRIMARY} />
+          <Stop offset="1" stopColor={BG_PRIMARY} />
+        </SvgGradient>
+        <SvgGradient id="sleepGradientOverlay" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={overlayColor} />
+          <Stop offset="0.55" stopColor={BG_PRIMARY} />
+          <Stop offset="1" stopColor={BG_PRIMARY} />
+        </SvgGradient>
+      </Defs>
+      <Rect x="0" y="0" width={BG_WIDTH} height={BG_HEIGHT} fill="url(#sleepGradientBase)" />
+      <AnimatedRect
+        x="0"
+        y="0"
+        width={BG_WIDTH}
+        height={BG_HEIGHT}
+        fill="url(#sleepGradientOverlay)"
+        animatedProps={animatedOverlayProps}
+      />
+    </Svg>
+  );
+});
 
 export default function SleepScreen() {
   const navigation = useNavigation();
@@ -48,8 +90,14 @@ export default function SleepScreen() {
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
 
-  const { weeklyHistory, monthlyData, loading, fetchSleepData, checkHealthConnectStatus } =
-    useSleepStore();
+  const {
+    weeklyHistory,
+    monthlyData,
+    loading,
+    fetchSleepData,
+    fetchSleepDataRange,
+    checkHealthConnectStatus,
+  } = useSleepStore();
 
   const normalizeDate = useCallback((date: Date) => {
     const d = new Date(date);
@@ -64,6 +112,12 @@ export default function SleepScreen() {
     return `${y}-${m}-${d}`;
   }, []);
 
+  const addDays = useCallback((date: Date, days: number) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+  }, []);
+
   const [selectedDate, setSelectedDate] = useState(() => {
     return normalizeDate(new Date());
   });
@@ -71,27 +125,17 @@ export default function SleepScreen() {
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isHeaderInteractable, setIsHeaderInteractable] = useState(false);
-  const [isNavigated, setIsNavigated] = useState(false);
   const pagerRef = useRef<FlatList<Date>>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const selectedYear = selectedDate.getFullYear();
   const selectedMonth = selectedDate.getMonth();
   const gradientProgress = useSharedValue(1);
-  const [gradientFrom, setGradientFrom] = useState('#000000');
-  const [gradientTo, setGradientTo] = useState('#000000');
-
-  useFocusEffect(
-    useCallback(() => {
-      const task = InteractionManager.runAfterInteractions(() => {
-        setIsNavigated(true);
-      });
-
-      return () => {
-        task.cancel();
-        setIsNavigated(false);
-      };
-    }, [])
-  );
+  const [gradientBase, setGradientBase] = useState('#000000');
+  const [gradientOverlay, setGradientOverlay] = useState('#000000');
+  const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
+  const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
+  const [gradientDateKey, setGradientDateKey] = useState(() => dateKey(selectedDate));
+  const gradientInitialized = useRef(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -176,17 +220,6 @@ export default function SleepScreen() {
     [currentData.historyItem?.sleep_score]
   );
 
-  const gradientTarget = hasData ? sleepScoreGrade.color : BG_PRIMARY;
-
-  useEffect(() => {
-    setGradientFrom(gradientTo);
-    setGradientTo(gradientTarget);
-    gradientProgress.value = 0;
-    gradientProgress.value = withTiming(1, {
-      duration: 700,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [gradientTarget]);
 
   // Transform aggregate sleep data into hypnogram-compatible stages
   const hypnogramStages = useMemo(() => {
@@ -242,6 +275,46 @@ export default function SleepScreen() {
     return map;
   }, [weeklyHistory, monthlyData]);
 
+  const getGradientColorForKey = useCallback(
+    (key: string) => {
+      const item = cachedHistory.get(key) || historyByDate.get(key);
+      if (!item) return BG_PRIMARY;
+      return getSleepScoreGrade(item.sleep_score ?? 0).color;
+    },
+    [cachedHistory, historyByDate]
+  );
+
+  const setGradientImmediate = useCallback((color: string) => {
+    setGradientBase(color);
+    setGradientOverlay(color);
+    gradientProgress.value = 1;
+  }, []);
+
+  const animateGradientTo = useCallback((color: string) => {
+    setGradientBase(gradientOverlay);
+    setGradientOverlay(color);
+    gradientProgress.value = 0;
+    gradientProgress.value = withTiming(1, {
+      duration: 600,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [gradientOverlay]);
+
+  useEffect(() => {
+    if (gradientInitialized.current) return;
+    const initial = getGradientColorForKey(gradientDateKey);
+    setGradientImmediate(initial);
+    gradientInitialized.current = true;
+  }, [getGradientColorForKey, gradientDateKey, setGradientImmediate]);
+
+  useEffect(() => {
+    if (!gradientInitialized.current) return;
+    const target = getGradientColorForKey(gradientDateKey);
+    if (gradientOverlay !== target && gradientProgress.value >= 1) {
+      setGradientImmediate(target);
+    }
+  }, [getGradientColorForKey, gradientDateKey, setGradientImmediate, gradientOverlay]);
+
   const isSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
@@ -268,7 +341,11 @@ export default function SleepScreen() {
     if (next && !isSameDay(next, selectedDate)) {
       setSelectedDate(next);
       setActiveIndex(index);
+      setGradientDateKey(dateKey(next));
     }
+    const nextKey = next ? dateKey(next) : gradientDateKey;
+    const targetColor = getGradientColorForKey(nextKey);
+    animateGradientTo(targetColor);
     navigation.getParent()?.setOptions({ swipeEnabled: true });
   };
 
@@ -276,25 +353,72 @@ export default function SleepScreen() {
     navigation.getParent()?.setOptions({ swipeEnabled: true });
   }, [navigation]);
 
-  const gradientTopStyle = useAnimatedStyle(() => ({
-    opacity: gradientProgress.value,
-  }));
+  useEffect(() => {
+    if (!monthDates.length) return;
+    const initialMin = Math.max(0, activeIndex - 4);
+    const initialMax = Math.min(monthDates.length - 1, activeIndex);
+    setCacheRange({ min: initialMin, max: initialMax });
+  }, [monthDates.length, activeIndex]);
+
+  useEffect(() => {
+    if (!monthDates.length) return;
+    setCacheRange((prev) => {
+      let min = prev.min;
+      let max = prev.max;
+
+      if (activeIndex < min + 1) {
+        min = Math.max(0, activeIndex - 4);
+      }
+      if (activeIndex >= max - 1) {
+        max = Math.min(monthDates.length - 1, activeIndex + 4);
+      }
+
+      if (min === prev.min && max === prev.max) return prev;
+      return { min, max };
+    });
+  }, [activeIndex, monthDates.length]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (!monthDates.length) return;
+
+    if (activeIndex >= cacheRange.max - 1) {
+      const start = addDays(selectedDate, 1);
+      const end = addDays(selectedDate, 7);
+      fetchSleepDataRange(user.id, start, end);
+    }
+
+    if (activeIndex <= cacheRange.min + 1) {
+      const start = addDays(selectedDate, -7);
+      const end = addDays(selectedDate, -1);
+      fetchSleepDataRange(user.id, start, end);
+    }
+  }, [activeIndex, cacheRange, selectedDate, user?.id, fetchSleepDataRange, addDays, monthDates.length]);
+
+  useEffect(() => {
+    if (!monthDates.length) return;
+    const next = new Map(cachedHistory);
+    for (let i = cacheRange.min; i <= cacheRange.max; i += 1) {
+      const date = monthDates[i];
+      if (!date) continue;
+      const key = dateKey(date);
+      if (next.has(key)) continue;
+      const record = historyByDate.get(key) || null;
+      next.set(key, record);
+    }
+    if (next.size !== cachedHistory.size) {
+      setCachedHistory(next);
+    }
+  }, [cacheRange, monthDates, historyByDate, dateKey]);
 
   return (
     <View style={styles.container}>
       {/* Background Gradient */}
-      <LinearGradient
-        colors={[gradientFrom, BG_PRIMARY, BG_PRIMARY]}
-        locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFill}
+      <GradientBackground
+        baseColor={gradientBase}
+        overlayColor={gradientOverlay}
+        progress={gradientProgress}
       />
-      <Animated.View style={[StyleSheet.absoluteFill, gradientTopStyle]}>
-        <LinearGradient
-          colors={[gradientTo, BG_PRIMARY, BG_PRIMARY]}
-          locations={[0, 0.5, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
 
       {/* Sticky Header */}
       <Animated.View
@@ -332,7 +456,13 @@ export default function SleepScreen() {
           isVisible={isCalendarVisible}
           onClose={() => setIsCalendarVisible(false)}
           selectedDate={selectedDate}
-          onDateSelect={(date) => setSelectedDate(normalizeDate(date))}
+          onDateSelect={(date) => {
+            const normalized = normalizeDate(date);
+            setSelectedDate(normalized);
+            setGradientDateKey(dateKey(normalized));
+            const targetColor = getGradientColorForKey(dateKey(normalized));
+            animateGradientTo(targetColor);
+          }}
           history={weeklyHistory}
         />
 
@@ -368,18 +498,27 @@ export default function SleepScreen() {
             maxToRenderPerBatch={3}
             updateCellsBatchingPeriod={50}
             removeClippedSubviews
-            onScrollBeginDrag={() => navigation.getParent()?.setOptions({ swipeEnabled: false })}
+            onScrollBeginDrag={() => {
+              navigation.getParent()?.setOptions({ swipeEnabled: false });
+            }}
             onMomentumScrollEnd={(event) => handlePagerEnd(event.nativeEvent.contentOffset.x)}
-            onScrollEndDrag={() => navigation.getParent()?.setOptions({ swipeEnabled: true })}
-            onTouchStart={() => navigation.getParent()?.setOptions({ swipeEnabled: false })}
-            onTouchEnd={() => navigation.getParent()?.setOptions({ swipeEnabled: true })}
+            onScrollEndDrag={() => {
+              navigation.getParent()?.setOptions({ swipeEnabled: true });
+            }}
+            onTouchStart={() => {
+              navigation.getParent()?.setOptions({ swipeEnabled: false });
+            }}
+            onTouchEnd={() => {
+              navigation.getParent()?.setOptions({ swipeEnabled: true });
+            }}
             renderItem={({ item, index }) => {
               const shouldPrefetch = Math.abs(index - activeIndex) <= 1;
               const itemDateStr = dateKey(item);
-              const itemHistory = shouldPrefetch ? historyByDate.get(itemDateStr) || null : null;
+              const itemHistory =
+                cachedHistory.get(itemDateStr) ||
+                (shouldPrefetch ? historyByDate.get(itemDateStr) || null : null);
               const itemHasData = !!itemHistory;
               const itemGrade = getSleepScoreGrade(itemHistory?.sleep_score ?? 0);
-              const isActive = isSameDay(item, selectedDate);
               return (
                 <View style={styles.pagerItem}>
                   <View style={styles.titleSection}>
@@ -403,23 +542,11 @@ export default function SleepScreen() {
                         year: 'numeric',
                       })}
                     </Text>
-                    {isActive ? (
-                      <TypewriterText
-                        text={
-                          itemHasData
-                            ? 'Your sleep duration last night was above your goal, providing optimal restorative sleep for complete recovery. You barely stirred awake last night - great stuff.'
-                            : 'No sleep data yet for this day. Add a record to see your score and trends.'
-                        }
-                        style={styles.description}
-                        trigger={!loading && isNavigated}
-                      />
-                    ) : (
-                      <Text style={styles.description}>
-                        {itemHasData
-                          ? 'Your sleep duration last night was above your goal, providing optimal restorative sleep for complete recovery. You barely stirred awake last night - great stuff.'
-                          : 'No sleep data yet for this day. Add a record to see your score and trends.'}
-                      </Text>
-                    )}
+                    <Text style={styles.description}>
+                      {itemHasData
+                        ? 'Your sleep duration last night was above your goal, providing optimal restorative sleep for complete recovery. You barely stirred awake last night - great stuff.'
+                        : 'No sleep data yet for this day. Add a record to see your score and trends.'}
+                    </Text>
                   </View>
                 </View>
               );
@@ -601,7 +728,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   emptyState: {
-    borderRadius: 24,
+    borderRadius: UI_RADIUS,
     padding: 22,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
@@ -610,7 +737,7 @@ const styles = StyleSheet.create({
   emptyBadge: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: UI_RADIUS,
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -636,7 +763,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 16,
+    borderRadius: UI_RADIUS,
   },
   emptyButtonText: {
     color: 'black',

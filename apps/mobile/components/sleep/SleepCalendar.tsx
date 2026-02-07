@@ -49,7 +49,7 @@ const NEON_COLORS = {
   NA: '#52525B', // Zinc 600
 };
 
-const BORDER_RADIUS = 28;
+const BORDER_RADIUS = 36;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface SleepCalendarProps {
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
   innerContent: {},
 
   handleContainer: { alignItems: 'center', paddingTop: 10, paddingBottom: 10 },
-  handle: { width: 40, height: 5, backgroundColor: '#48484A', borderRadius: 3 },
+  handle: { width: 40, height: 5, backgroundColor: '#48484A', borderRadius: BORDER_RADIUS },
 
   header: {
     flexDirection: 'row',
@@ -473,17 +473,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: { color: 'white', fontSize: 20, fontWeight: '700' },
-  closeBtn: { padding: 8, backgroundColor: POPUP_BG, borderRadius: 16 },
+  closeBtn: { padding: 8, backgroundColor: POPUP_BG, borderRadius: BORDER_RADIUS },
 
   controlsSection: { paddingHorizontal: 20, marginBottom: 20 },
   segmentedContainer: {
     flexDirection: 'row',
     backgroundColor: POPUP_BG,
-    borderRadius: 16,
+    borderRadius: BORDER_RADIUS,
     padding: 4,
     height: 48,
   },
-  segmentBtn: { flex: 1, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  segmentBtn: { flex: 1, borderRadius: BORDER_RADIUS, justifyContent: 'center', alignItems: 'center' },
   segmentBtnActive: {
     backgroundColor: '#48484A',
     shadowColor: '#000',
@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   navTitle: { color: 'white', fontSize: 17, fontWeight: '600' },
-  arrowBtn: { padding: 8, borderRadius: 12, backgroundColor: POPUP_BG },
+  arrowBtn: { padding: 8, borderRadius: BORDER_RADIUS, backgroundColor: POPUP_BG },
 
   // Month Grid
   gridContainer: { paddingHorizontal: 20, paddingBottom: 10 },
@@ -530,8 +530,8 @@ const styles = StyleSheet.create({
     height: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 9999, // Perfect circle
-    // No overflow: hidden to avoid clipping artifacts on android
+    borderRadius: 18,
+    overflow: 'hidden',
   },
   futureCell: { opacity: 0.3 },
   todayCell: { backgroundColor: 'rgba(255,255,255,0.1)' },
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
   stripDayCircle: {
     width: 40,
     height: 40,
-    borderRadius: 9999, // Perfect circle
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
   detailCardContainer: { paddingHorizontal: 20 },
   detailCard: {
     backgroundColor: POPUP_BG,
-    borderRadius: 24,
+    borderRadius: BORDER_RADIUS,
     padding: 24,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
@@ -571,8 +571,8 @@ const styles = StyleSheet.create({
     left: 0,
     width: 4,
     height: 32,
-    borderTopRightRadius: 4,
-    borderBottomRightRadius: 4,
+    borderTopRightRadius: BORDER_RADIUS,
+    borderBottomRightRadius: BORDER_RADIUS,
   },
   dcHeader: {
     flexDirection: 'row',
@@ -581,7 +581,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   dcTitle: { fontSize: 18, fontWeight: '700', color: 'white', flex: 1 },
-  gradeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  gradeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: BORDER_RADIUS },
   gradeText: { fontWeight: '800', fontSize: 14 },
 
   dcMetricsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },

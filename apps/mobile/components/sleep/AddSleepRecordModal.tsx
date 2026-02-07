@@ -24,8 +24,11 @@ const KNOB_SIZE = 32;
 const KNOB_HALF = KNOB_SIZE / 2;
 
 // Visual Constants
-const BORDER_RADIUS = 24;
-const BTN_COLOR = '#581C87';
+const BORDER_RADIUS = 36;
+const CARD_BG = '#1C1C1E';
+const POPUP_BG = '#2C2C2E';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.6)';
+const BTN_COLOR = '#818CF8';
 
 interface AddSleepRecordModalProps {
   isVisible: boolean;
@@ -444,7 +447,7 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1 },
   gestureRoot: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
   sheet: {
-    backgroundColor: '#1C1C1E',
+    backgroundColor: CARD_BG,
     borderTopLeftRadius: BORDER_RADIUS,
     borderTopRightRadius: BORDER_RADIUS,
     shadowColor: '#000',
@@ -461,7 +464,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   handleContainer: { alignItems: 'center', marginBottom: 8 },
-  handle: { width: 36, height: 5, backgroundColor: '#48484A', borderRadius: 3 },
+  handle: { width: 36, height: 5, backgroundColor: '#48484A', borderRadius: BORDER_RADIUS },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -469,7 +472,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   title: { color: 'white', fontSize: 19, fontWeight: '700' },
-  closeBtn: { padding: 6, backgroundColor: '#2C2C2E', borderRadius: 14 },
+  closeBtn: { padding: 6, backgroundColor: POPUP_BG, borderRadius: BORDER_RADIUS },
   content: { alignItems: 'center', paddingHorizontal: 20 },
   sliderContainer: {
     width: SLIDER_SIZE,
@@ -478,7 +481,7 @@ const styles = StyleSheet.create({
   },
   clockLabel: {
     position: 'absolute',
-    color: '#636366',
+    color: TEXT_SECONDARY,
     fontSize: 11,
     fontWeight: '600',
     alignSelf: 'center',
@@ -502,23 +505,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  durationLabel: { color: '#8E8E93', fontSize: 12, fontWeight: '500', marginBottom: 2 },
+  durationLabel: { color: TEXT_SECONDARY, fontSize: 12, fontWeight: '500', marginBottom: 2 },
   durationValue: { color: 'white', fontSize: 26, fontWeight: '700', fontVariant: ['tabular-nums'] },
   timeRow: {
     flexDirection: 'row',
-    backgroundColor: '#2C2C2E',
+    backgroundColor: POPUP_BG,
     borderRadius: BORDER_RADIUS,
     padding: 14,
     width: '100%',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#3A3A3C',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   timeItem: { flex: 1, alignItems: 'center' },
   timeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
-  timeLabelText: { color: '#AEAEB2', fontSize: 13, fontWeight: '500' },
+  timeLabelText: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '500' },
   timeValue: { color: 'white', fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  divider: { width: 1, height: 36, backgroundColor: '#48484A', marginHorizontal: 12 },
+  divider: { width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 12 },
   saveBtn: {
     backgroundColor: BTN_COLOR,
     width: '100%',

@@ -213,7 +213,7 @@ export default function TabLayout() {
       tabBarPosition="bottom"
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
-        swipeEnabled: true,
+        swipeEnabled: false,
         animationEnabled: true,
       }}>
       <MaterialTopTabs.Screen name="nutrition" options={{ title: 'Nutrition' }} />

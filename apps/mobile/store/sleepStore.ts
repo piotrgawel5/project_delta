@@ -66,6 +66,11 @@ interface SleepState {
         year: number,
         month: number,
     ) => Promise<void>;
+    fetchSleepDataRange: (
+        userId: string,
+        startDate: Date,
+        endDate: Date,
+    ) => Promise<void>;
     syncToSupabase: (
         userId: string,
         session: SleepSession,
@@ -81,6 +86,8 @@ interface SleepState {
         endTime: string,
     ) => Promise<boolean>;
 }
+
+const inFlightRanges = new Set<string>();
 
 export const useSleepStore = create<SleepState>((set, get) => ({
     isAvailable: false,
@@ -417,6 +424,64 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                 `[SleepStore] Failed to fetch month history for ${key}`,
                 error,
             );
+        }
+    },
+
+    fetchSleepDataRange: async (userId: string, startDate: Date, endDate: Date) => {
+        if (!userId) return;
+
+        const startStr = startDate.toISOString().split("T")[0];
+        const endStr = endDate.toISOString().split("T")[0];
+        const key = `${startStr}|${endStr}`;
+
+        if (inFlightRanges.has(key)) return;
+        inFlightRanges.add(key);
+
+        try {
+            const response = await api.get(`/api/sleep/${userId}/history`, {
+                params: {
+                    start_date: startStr,
+                    end_date: endStr,
+                    limit: 35,
+                },
+            });
+
+            const records: SleepData[] = response?.data || response || [];
+            if (records.length === 0) return;
+
+            const monthMap: Record<string, SleepData[]> = {};
+            records.forEach((r) => {
+                const monthKey = r.date.substring(0, 7);
+                if (!monthMap[monthKey]) monthMap[monthKey] = [];
+                monthMap[monthKey].push(r);
+            });
+
+            set((state) => {
+                const mergedMonthly = { ...state.monthlyData };
+                Object.keys(monthMap).forEach((monthKey) => {
+                    const existing = mergedMonthly[monthKey] || [];
+                    const merged = new Map<string, SleepData>();
+                    existing.forEach((r) => merged.set(r.date, r));
+                    monthMap[monthKey].forEach((r) => merged.set(r.date, r));
+                    mergedMonthly[monthKey] = Array.from(merged.values());
+                });
+
+                const weeklyMap = new Map<string, SleepData>();
+                state.weeklyHistory.forEach((r) => weeklyMap.set(r.date, r));
+                records.forEach((r) => weeklyMap.set(r.date, r));
+                const weeklyHistory = Array.from(weeklyMap.values()).sort(
+                    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+                );
+
+                return {
+                    monthlyData: mergedMonthly,
+                    weeklyHistory: weeklyHistory.slice(0, 30),
+                };
+            });
+        } catch (error) {
+            console.error("[SleepStore] Failed to fetch range history", error);
+        } finally {
+            inFlightRanges.delete(key);
         }
     },
 
