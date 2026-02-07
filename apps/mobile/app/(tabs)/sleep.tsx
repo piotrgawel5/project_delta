@@ -23,7 +23,7 @@ import Animated, {
   useAnimatedReaction,
   runOnJS,
 } from 'react-native-reanimated';
-import { SleepCalendar } from '../../components/sleep/AppleSleepCalendar';
+import { SleepCalendar } from '../../components/sleep/SleepCalendar';
 import { TypewriterText } from '../../components/ui/TypewriterText';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
 import { transformToHypnogramStages } from '@lib/sleepTransform';
