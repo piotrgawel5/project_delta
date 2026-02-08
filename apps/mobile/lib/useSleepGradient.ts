@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Easing, SharedValue, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  cancelAnimation,
+  Easing,
+  runOnJS,
+  SharedValue,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 type UseSleepGradientArgs = {
   initialKey: string;
@@ -21,29 +28,49 @@ export const useSleepGradient = ({
   getColorForKey,
 }: UseSleepGradientArgs): UseSleepGradientResult => {
   const gradientProgress = useSharedValue(1);
-  const [gradientBase, setGradientBase] = useState(defaultColor);
-  const [gradientOverlay, setGradientOverlay] = useState(defaultColor);
+  const [colors, setColors] = useState({ base: defaultColor, overlay: defaultColor });
   const [gradientKey, setGradientKeyState] = useState(initialKey);
   const initialized = useRef(false);
-
+  const currentRef = useRef(defaultColor);
+  const animatingRef = useRef(false);
+  const pendingRef = useRef<string | null>(null);
+  const animationIdRef = useRef(0);
+  const animateToRef = useRef<(color: string) => void>(() => {});
+  const pendingAnimRef = useRef<{ id: number; base: string; overlay: string } | null>(
+    null
+  );
   const setImmediate = useCallback((color: string) => {
-    setGradientBase(color);
-    setGradientOverlay(color);
+    cancelAnimation(gradientProgress);
+    animatingRef.current = false;
+    pendingRef.current = null;
+    pendingAnimRef.current = null;
+    currentRef.current = color;
+    setColors({ base: color, overlay: color });
     gradientProgress.value = 1;
   }, []);
 
-  const animateTo = useCallback(
-    (color: string) => {
-      setGradientBase(gradientOverlay);
-      setGradientOverlay(color);
-      gradientProgress.value = 0;
-      gradientProgress.value = withTiming(1, {
-        duration: 600,
-        easing: Easing.out(Easing.cubic),
-      });
-    },
-    [gradientOverlay]
-  );
+  const handleAnimationEnd = useCallback((id: number) => {
+    if (id !== animationIdRef.current) return;
+    animatingRef.current = false;
+    currentRef.current = colors.overlay;
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    if (pending && pending !== currentRef.current) {
+      animateToRef.current(pending);
+    }
+  }, [colors.overlay]);
+
+  const animateTo = useCallback((color: string) => {
+    const currentOverlay = currentRef.current;
+    cancelAnimation(gradientProgress);
+    animatingRef.current = true;
+    animationIdRef.current += 1;
+    const animationId = animationIdRef.current;
+    setColors({ base: currentOverlay, overlay: color });
+    pendingAnimRef.current = { id: animationId, base: currentOverlay, overlay: color };
+  }, []);
+
+  animateToRef.current = animateTo;
 
   const setGradientKey = useCallback(
     (key: string, animate = true) => {
@@ -54,11 +81,15 @@ export const useSleepGradient = ({
         initialized.current = true;
         return;
       }
-      if (gradientOverlay !== target) {
+      if (animatingRef.current) {
+        pendingRef.current = target;
+        return;
+      }
+      if (currentRef.current !== target) {
         animateTo(target);
       }
     },
-    [animateTo, getColorForKey, gradientOverlay, setImmediate]
+    [animateTo, getColorForKey, setImmediate]
   );
 
   useEffect(() => {
@@ -68,5 +99,36 @@ export const useSleepGradient = ({
     initialized.current = true;
   }, [getColorForKey, gradientKey, setImmediate]);
 
-  return { gradientBase, gradientOverlay, gradientProgress, gradientKey, setGradientKey };
+  useLayoutEffect(() => {
+    const pending = pendingAnimRef.current;
+    if (!pending) return;
+    if (pending.id !== animationIdRef.current) {
+      pendingAnimRef.current = null;
+      return;
+    }
+    if (colors.base !== pending.base || colors.overlay !== pending.overlay) return;
+    pendingAnimRef.current = null;
+    gradientProgress.value = 0;
+    gradientProgress.value = withTiming(
+      1,
+      {
+        duration: 600,
+        easing: Easing.out(Easing.cubic),
+      },
+      (finished) => {
+        if (!finished) return;
+        runOnJS(handleAnimationEnd)(pending.id);
+      }
+    );
+  }, [colors.base, colors.overlay]);
+
+  useEffect(() => {}, []);
+
+  return {
+    gradientBase: colors.base,
+    gradientOverlay: colors.overlay,
+    gradientProgress,
+    gradientKey,
+    setGradientKey,
+  };
 };

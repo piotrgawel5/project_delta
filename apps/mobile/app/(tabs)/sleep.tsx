@@ -18,14 +18,12 @@ import Animated, {
   useSharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
-  useAnimatedProps,
   interpolate,
   Extrapolation,
   useAnimatedReaction,
   runOnJS,
   SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Rect, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { SleepCalendar } from '../../components/sleep/SleepCalendar';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
 import { transformToHypnogramStages } from '@lib/sleepTransform';
@@ -52,8 +50,8 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const BG_WIDTH = SCREEN_W;
 const BG_HEIGHT = SCREEN_H;
 const UI_RADIUS = 36;
-const AnimatedRect = Animated.createAnimatedComponent(Rect);
-
+const GRADIENT_LOCATIONS = [0, 0.55, 1] as const;
+const GRADIENT_SWIPE_DELAY_MS = 250;
 const padToSeven = <T,>(values: T[], fill: T) => {
   if (values.length >= 7) return values.slice(-7);
   return Array(7 - values.length).fill(fill).concat(values);
@@ -68,34 +66,25 @@ const GradientBackground = React.memo(function GradientBackground({
   overlayColor: string;
   progress: SharedValue<number>;
 }) {
-  const animatedOverlayProps = useAnimatedProps(() => ({
+  const overlayStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
   }));
 
   return (
-    <Svg width={BG_WIDTH} height={BG_HEIGHT} style={StyleSheet.absoluteFill}>
-      <Defs>
-        <SvgGradient id="sleepGradientBase" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={baseColor} />
-          <Stop offset="0.55" stopColor={BG_PRIMARY} />
-          <Stop offset="1" stopColor={BG_PRIMARY} />
-        </SvgGradient>
-        <SvgGradient id="sleepGradientOverlay" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={overlayColor} />
-          <Stop offset="0.55" stopColor={BG_PRIMARY} />
-          <Stop offset="1" stopColor={BG_PRIMARY} />
-        </SvgGradient>
-      </Defs>
-      <Rect x="0" y="0" width={BG_WIDTH} height={BG_HEIGHT} fill="url(#sleepGradientBase)" />
-      <AnimatedRect
-        x="0"
-        y="0"
-        width={BG_WIDTH}
-        height={BG_HEIGHT}
-        fill="url(#sleepGradientOverlay)"
-        animatedProps={animatedOverlayProps}
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <LinearGradient
+        colors={[baseColor, BG_PRIMARY, BG_PRIMARY]}
+        locations={GRADIENT_LOCATIONS}
+        style={StyleSheet.absoluteFill}
       />
-    </Svg>
+      <Animated.View style={[StyleSheet.absoluteFill, overlayStyle]}>
+        <LinearGradient
+          colors={[overlayColor, BG_PRIMARY, BG_PRIMARY]}
+          locations={GRADIENT_LOCATIONS}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+    </View>
   );
 });
 
@@ -133,6 +122,7 @@ export default function SleepScreen() {
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
   const [activeMetric, setActiveMetric] = useState<MetricSheetData | null>(null);
+  const gradientDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -772,13 +762,28 @@ export default function SleepScreen() {
       setActiveIndex(index);
     }
     const nextKey = next ? dateKey(next) : gradientKey;
-    setGradientKey(nextKey, true);
+    if (gradientDelayRef.current) {
+      clearTimeout(gradientDelayRef.current);
+      gradientDelayRef.current = null;
+    }
+    gradientDelayRef.current = setTimeout(() => {
+      setGradientKey(nextKey, true);
+      gradientDelayRef.current = null;
+    }, GRADIENT_SWIPE_DELAY_MS);
     navigation.getParent()?.setOptions({ swipeEnabled: true });
   };
 
   useEffect(() => {
     navigation.getParent()?.setOptions({ swipeEnabled: true });
   }, [navigation]);
+
+  useEffect(() => {
+    return () => {
+      if (gradientDelayRef.current) {
+        clearTimeout(gradientDelayRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!monthDates.length) return;
@@ -944,6 +949,10 @@ export default function SleepScreen() {
             updateCellsBatchingPeriod={50}
             removeClippedSubviews
             onScrollBeginDrag={() => {
+              if (gradientDelayRef.current) {
+                clearTimeout(gradientDelayRef.current);
+                gradientDelayRef.current = null;
+              }
               navigation.getParent()?.setOptions({ swipeEnabled: false });
             }}
             onMomentumScrollEnd={(event) => handlePagerEnd(event.nativeEvent.contentOffset.x)}
@@ -951,6 +960,10 @@ export default function SleepScreen() {
               navigation.getParent()?.setOptions({ swipeEnabled: true });
             }}
             onTouchStart={() => {
+              if (gradientDelayRef.current) {
+                clearTimeout(gradientDelayRef.current);
+                gradientDelayRef.current = null;
+              }
               navigation.getParent()?.setOptions({ swipeEnabled: false });
             }}
             onTouchEnd={() => {
