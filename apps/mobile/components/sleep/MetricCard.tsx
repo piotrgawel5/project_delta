@@ -2,10 +2,12 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path, Circle } from 'react-native-svg';
 
 type MetricStatus = 'up' | 'down' | 'neutral';
 
 type TrendValue = number | null | undefined;
+type StageItem = { label: string; value: string; percent?: number; color: string };
 
 const STATUS_META: Record<MetricStatus, { label: string; color: string }> = {
   up: { label: 'ABOVE', color: '#22C55E' },
@@ -21,6 +23,8 @@ const TEXT_SECONDARY = 'rgba(255,255,255,0.76)';
 const TEXT_TERTIARY = 'rgba(255,255,255,0.5)';
 const MINI_BAR_MAX = 32;
 const MINI_BAR_MIN = 8;
+const CHART_W = 140;
+const CHART_H = 34;
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 export type MetricCardProps = {
@@ -31,8 +35,11 @@ export type MetricCardProps = {
   subLabel?: string;
   accent?: string;
   trend?: TrendValue[];
-  chartType?: 'bars' | 'dots';
+  chartType?: 'bars' | 'dots' | 'line' | 'ticks' | 'stages';
   dotThreshold?: number;
+  stages?: StageItem[];
+  icon?: keyof typeof Ionicons.glyphMap;
+  showDays?: boolean;
   onPress?: () => void;
 };
 
@@ -42,6 +49,8 @@ const padToSeven = (values: TrendValue[]) => {
 };
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+const withAlpha = (hex: string, alpha: string) => (hex.length === 7 ? `${hex}${alpha}` : hex);
 
 const buildBarHeights = (data: TrendValue[]) => {
   const numeric = data.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
@@ -56,6 +65,42 @@ const buildBarHeights = (data: TrendValue[]) => {
   });
 };
 
+const buildSmoothPath = (points: { x: number; y: number }[]) => {
+  if (points.length < 2) return '';
+  const tension = 0.3;
+  let path = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+
+    const cp1x = p1.x + (p2.x - p0.x) * tension;
+    const cp1y = p1.y + (p2.y - p0.y) * tension;
+    const cp2x = p2.x - (p3.x - p1.x) * tension;
+    const cp2y = p2.y - (p3.y - p1.y) * tension;
+
+    path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  }
+  return path;
+};
+
+const buildLinePath = (data: TrendValue[]) => {
+  const numeric = data.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+  if (numeric.length < 2) return null;
+  const min = Math.min(...numeric);
+  const max = Math.max(...numeric);
+  const range = max - min || 1;
+  const points = data.map((value, index) => {
+    const v = typeof value === 'number' && !Number.isNaN(value) ? value : min;
+    const x = (index / (data.length - 1)) * CHART_W;
+    const y = CHART_H - ((v - min) / range) * CHART_H;
+    return { x, y };
+  });
+  const path = buildSmoothPath(points);
+  return { path, end: points[points.length - 1] };
+};
+
 export default function MetricCard({
   label,
   value,
@@ -66,6 +111,9 @@ export default function MetricCard({
   trend,
   chartType = 'bars',
   dotThreshold = 0,
+  stages,
+  icon,
+  showDays = true,
   onPress,
 }: MetricCardProps) {
   const meta = STATUS_META[status];
@@ -73,6 +121,7 @@ export default function MetricCard({
 
   const trendData = useMemo(() => padToSeven(trend ?? []), [trend]);
   const barHeights = useMemo(() => buildBarHeights(trendData), [trendData]);
+  const linePath = useMemo(() => buildLinePath(trendData), [trendData]);
   const dotStates = useMemo(
     () =>
       trendData.map((value) =>
@@ -82,6 +131,9 @@ export default function MetricCard({
   );
 
   const statusText = subLabel ?? meta.label;
+  const isStageCard = chartType === 'stages';
+  const iconBg = icon ? withAlpha(accentColor, '22') : undefined;
+  const iconBorder = icon ? withAlpha(accentColor, '3A') : undefined;
 
   return (
     <View style={styles.wrapper}>
@@ -98,10 +150,19 @@ export default function MetricCard({
           end={[1, 1]}
           style={styles.cardGlow}
         />
-
         <View style={styles.rowTop}>
           <View style={styles.labelRow}>
-            <View style={[styles.dot, { backgroundColor: accentColor }]} />
+            {icon ? (
+              <View
+                style={[
+                  styles.iconBadge,
+                  { backgroundColor: iconBg, borderColor: iconBorder },
+                ]}>
+                <Ionicons name={icon} size={14} color={accentColor} />
+              </View>
+            ) : (
+              <View style={[styles.dot, { backgroundColor: accentColor }]} />
+            )}
             <Text style={styles.label} numberOfLines={1}>
               {label}
             </Text>
@@ -112,64 +173,133 @@ export default function MetricCard({
           </View>
         </View>
 
-        <View style={styles.contentRow}>
-          <View style={styles.valueBlock}>
-            <View style={styles.valueRow}>
-              <Text style={styles.valueText} selectable>
-                {value}
-              </Text>
-              {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
+        {isStageCard ? (
+          <View style={styles.stageContent}>
+            <View style={styles.stageTotals}>
+              <View style={styles.valueRow}>
+                <Text style={styles.valueText} selectable>
+                  {value}
+                </Text>
+                {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
+              </View>
+              <Text style={[styles.subText, { color: meta.color }]}>{statusText}</Text>
             </View>
-            <Text style={[styles.subText, { color: meta.color }]} numberOfLines={1}>
-              {statusText}
-            </Text>
-          </View>
 
-          <View style={styles.chartBlock}>
-            {chartType === 'dots' ? (
-              <View style={styles.dotsRow}>
-                {dotStates.map((filled, index) => (
+            <View style={styles.stageRows}>
+              {(stages || []).map((stage) => (
+                <View key={stage.label} style={styles.stageRow}>
+                  <View style={[styles.stageDot, { backgroundColor: stage.color }]} />
+                  <Text style={styles.stageLabel}>{stage.label}</Text>
+                  <Text style={styles.stageValue}>{stage.value}</Text>
+                  {typeof stage.percent === 'number' ? (
+                    <Text style={styles.stagePercent}>{stage.percent}%</Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+
+            {(stages || []).length ? (
+              <View style={styles.stageBar}>
+                {(stages || []).map((stage) => (
                   <View
-                    key={`${label}-dot-${index}`}
+                    key={`${stage.label}-seg`}
                     style={[
-                      styles.dotItem,
+                      styles.stageSegment,
                       {
-                        borderColor: accentColor,
-                        backgroundColor: filled ? accentColor : 'transparent',
-                        opacity: filled ? 1 : 0.35,
+                        backgroundColor: stage.color,
+                        flex: stage.percent ? stage.percent : 1,
                       },
                     ]}
                   />
                 ))}
               </View>
-            ) : (
-              <View style={styles.barsRow}>
-                {barHeights.map((height, index) => (
-                  <View key={`${label}-bar-${index}`} style={styles.barTrack}>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.contentRow}>
+            <View style={styles.valueBlock}>
+              <View style={styles.valueRow}>
+                <Text style={styles.valueText} selectable>
+                  {value}
+                </Text>
+                {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
+              </View>
+              <Text style={[styles.subText, { color: meta.color }]} numberOfLines={1}>
+                {statusText}
+              </Text>
+            </View>
+
+            <View style={styles.chartBlock}>
+              {chartType === 'dots' ? (
+                <View style={styles.dotsRow}>
+                  {dotStates.map((filled, index) => (
                     <View
+                      key={`${label}-dot-${index}`}
                       style={[
-                        styles.barFill,
+                        styles.dotItem,
                         {
-                          height: clamp(height, MINI_BAR_MIN, MINI_BAR_MAX),
-                          backgroundColor: accentColor,
-                          opacity: 0.85,
+                          borderColor: accentColor,
+                          backgroundColor: filled ? accentColor : 'transparent',
+                          opacity: filled ? 1 : 0.35,
                         },
                       ]}
                     />
-                  </View>
-                ))}
-              </View>
-            )}
+                  ))}
+                </View>
+              ) : chartType === 'line' ? (
+                <Svg width={CHART_W} height={CHART_H}>
+                  {linePath ? (
+                    <>
+                      <Path
+                        d={linePath.path}
+                        stroke={accentColor}
+                        strokeWidth={2}
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <Circle
+                        cx={linePath.end.x}
+                        cy={linePath.end.y}
+                        r={3}
+                        fill={accentColor}
+                      />
+                    </>
+                  ) : null}
+                </Svg>
+              ) : (
+                <View style={chartType === 'ticks' ? styles.ticksRow : styles.barsRow}>
+                  {barHeights.map((height, index) => (
+                    <View
+                      key={`${label}-bar-${index}`}
+                      style={chartType === 'ticks' ? styles.tickTrack : styles.barTrack}>
+                      <View
+                        style={[
+                          chartType === 'ticks' ? styles.tickFill : styles.barFill,
+                          {
+                            height: clamp(height, MINI_BAR_MIN, MINI_BAR_MAX),
+                            backgroundColor: accentColor,
+                            opacity: chartType === 'ticks' ? 0.7 : 0.85,
+                          },
+                        ]}
+                      />
+                    </View>
+                  ))}
+                </View>
+              )}
 
-            <View style={styles.daysRow}>
-              {DAYS.map((day, index) => (
-                <Text key={`${label}-day-${index}`} style={styles.dayText}>
-                  {day}
-                </Text>
-              ))}
+              {showDays ? (
+                <View style={styles.daysRow}>
+                  {DAYS.map((day, index) => (
+                    <Text key={`${label}-day-${index}`} style={styles.dayText}>
+                      {day}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
             </View>
           </View>
-        </View>
+        )}
       </Pressable>
     </View>
   );
@@ -178,6 +308,7 @@ export default function MetricCard({
 const styles = StyleSheet.create({
   wrapper: {
     width: '100%',
+    alignSelf: 'stretch',
   },
   cardGlow: {
     ...StyleSheet.absoluteFillObject,
@@ -187,7 +318,7 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: CARD_RADIUS,
     paddingHorizontal: 18,
-    paddingVertical: 14,
+    paddingVertical: 16,
     backgroundColor: CARD_BG,
     borderWidth: 1,
     borderColor: CARD_STROKE,
@@ -215,6 +346,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     maxWidth: '70%',
+  },
+  iconBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
   },
   dot: {
     width: 10,
@@ -267,7 +406,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chartBlock: {
-    minWidth: 140,
+    minWidth: CHART_W,
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
   },
@@ -285,6 +424,23 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   barFill: {
+    width: '100%',
+    borderRadius: 999,
+  },
+  ticksRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  tickTrack: {
+    width: 3,
+    height: MINI_BAR_MAX,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  tickFill: {
     width: '100%',
     borderRadius: 999,
   },
@@ -312,5 +468,51 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'center',
     width: 10,
+  },
+  stageContent: {
+    gap: 10,
+  },
+  stageTotals: {
+    marginBottom: 2,
+  },
+  stageRows: {
+    gap: 8,
+  },
+  stageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stageDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+  },
+  stageLabel: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  stageValue: {
+    color: TEXT_PRIMARY,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  stagePercent: {
+    color: TEXT_TERTIARY,
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  stageBar: {
+    flexDirection: 'row',
+    height: 10,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  stageSegment: {
+    height: '100%',
   },
 });

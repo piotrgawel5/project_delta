@@ -24,10 +24,11 @@ const KNOB_SIZE = 32;
 const KNOB_HALF = KNOB_SIZE / 2;
 
 // Visual Constants
-const BORDER_RADIUS = 36;
+const BORDER_RADIUS = 30;
 const CARD_BG = '#000000';
 const POPUP_BG = '#0B0B0D';
-const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.65)';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
+const TEXT_TERTIARY = 'rgba(255,255,255,0.5)';
 const STROKE = 'rgba(255,255,255,0.08)';
 const BTN_SOLID = '#F8FAFC';
 
@@ -321,8 +322,8 @@ export const AddSleepRecordModal = ({
   return (
     <Modal animationType="none" transparent visible={isVisible} onRequestClose={closeWithAnimation}>
       <Pressable style={styles.backdrop} onPress={closeWithAnimation}>
-        <BlurView intensity={25} style={StyleSheet.absoluteFill} tint="dark" />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
+        <BlurView intensity={20} style={StyleSheet.absoluteFill} tint="dark" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]} />
       </Pressable>
 
       <GestureHandlerRootView style={styles.gestureRoot} pointerEvents="box-none">
@@ -349,15 +350,15 @@ export const AddSleepRecordModal = ({
                   <Svg width={SLIDER_SIZE} height={SLIDER_SIZE}>
                     <Defs>
                       <SvgGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <Stop offset="0" stopColor="#8E86FF" />
-                        <Stop offset="1" stopColor="#A855F7" />
+                        <Stop offset="0" stopColor="#7DD3FC" />
+                        <Stop offset="1" stopColor="#C4B5FD" />
                       </SvgGradient>
                     </Defs>
                     <Circle
                       cx={CENTER}
                       cy={CENTER}
                       r={RADIUS}
-                      stroke="#2C2C2E"
+                      stroke="rgba(255,255,255,0.12)"
                       strokeWidth={STROKE_WIDTH}
                       fill="none"
                     />
@@ -377,7 +378,7 @@ export const AddSleepRecordModal = ({
                         <Path
                           key={i}
                           d={`M ${CENTER + inner * Math.cos(ang)} ${CENTER + inner * Math.sin(ang)} L ${CENTER + outer * Math.cos(ang)} ${CENTER + outer * Math.sin(ang)}`}
-                          stroke={isMajor ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'}
+                          stroke={isMajor ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.12)'}
                           strokeWidth={isMajor ? 1.5 : 1}
                         />
                       );
@@ -401,16 +402,16 @@ export const AddSleepRecordModal = ({
 
                   <View style={styles.centerInfo} pointerEvents="none">
                     <Text style={styles.durationLabel}>Duration</Text>
-                    <Text style={styles.durationValue}>{durationStr}</Text>
-                  </View>
+                  <Text style={styles.durationValue}>{durationStr}</Text>
                 </View>
+              </View>
               </GestureDetector>
 
               {/* Time display */}
               <View style={styles.timeRow}>
                 <View style={styles.timeItem}>
                   <View style={styles.timeLabelRow}>
-                    <Ionicons name="bed" size={13} color="#8E86FF" />
+                    <Ionicons name="bed" size={13} color="#7DD3FC" />
                     <Text style={styles.timeLabelText}>Bedtime</Text>
                   </View>
                   <Text style={styles.timeValue}>{formatTime(bedtime.h, bedtime.m)}</Text>
@@ -418,7 +419,7 @@ export const AddSleepRecordModal = ({
                 <View style={styles.divider} />
                 <View style={styles.timeItem}>
                   <View style={styles.timeLabelRow}>
-                    <Ionicons name="alarm" size={13} color="#A855F7" />
+                    <Ionicons name="alarm" size={13} color="#C4B5FD" />
                     <Text style={styles.timeLabelText}>Wake Up</Text>
                   </View>
                   <Text style={styles.timeValue}>{formatTime(waketime.h, waketime.m)}</Text>
@@ -464,10 +465,10 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     backgroundColor: 'transparent',
     // Increase top padding to add "some space at the top" for gestures
-    paddingTop: 16,
+    paddingTop: 12,
   },
   handleContainer: { alignItems: 'center', marginBottom: 8 },
-  handle: { width: 36, height: 5, backgroundColor: '#48484A', borderRadius: BORDER_RADIUS },
+  handle: { width: 36, height: 5, backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: BORDER_RADIUS },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -475,7 +476,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   title: { color: 'white', fontSize: 19, fontWeight: '700' },
-  closeBtn: { padding: 6, backgroundColor: POPUP_BG, borderRadius: BORDER_RADIUS, borderWidth: 1, borderColor: STROKE },
+  closeBtn: {
+    padding: 6,
+    backgroundColor: '#0F1117',
+    borderRadius: BORDER_RADIUS,
+    borderWidth: 1,
+    borderColor: STROKE,
+  },
   content: { alignItems: 'center', paddingHorizontal: 20 },
   sliderContainer: {
     width: SLIDER_SIZE,
@@ -484,7 +491,7 @@ const styles = StyleSheet.create({
   },
   clockLabel: {
     position: 'absolute',
-    color: TEXT_SECONDARY,
+    color: TEXT_TERTIARY,
     fontSize: 11,
     fontWeight: '600',
     alignSelf: 'center',
@@ -495,6 +502,8 @@ const styles = StyleSheet.create({
     height: KNOB_SIZE,
     borderRadius: KNOB_SIZE / 2,
     backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -512,7 +521,7 @@ const styles = StyleSheet.create({
   durationValue: { color: 'white', fontSize: 26, fontWeight: '700', fontVariant: ['tabular-nums'] },
   timeRow: {
     flexDirection: 'row',
-    backgroundColor: POPUP_BG,
+    backgroundColor: '#0F1117',
     borderRadius: BORDER_RADIUS,
     padding: 14,
     width: '100%',

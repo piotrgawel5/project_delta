@@ -30,10 +30,10 @@ import { useAuthStore } from '@store/authStore';
 import { getSleepScoreGrade } from '@lib/sleepColors';
 
 // Colors & Visual Constants
-const CARD_BG = '#141419';
-const POPUP_BG = '#1B1B21';
-const TEXT_PRIMARY = '#FFFFFF';
-const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.65)';
+const CARD_BG = '#000000';
+const POPUP_BG = '#0B0B0D';
+const TEXT_PRIMARY = '#F5F6F7';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
 const TEXT_DISABLED = 'rgba(255, 255, 255, 0.35)';
 const ACCENT_COLOR = '#818CF8'; // Indigo 400 - Brighter accent
 
@@ -49,7 +49,7 @@ const NEON_COLORS = {
   NA: '#52525B', // Zinc 600
 };
 
-const BORDER_RADIUS = 36;
+const BORDER_RADIUS = 30;
 const STROKE = 'rgba(255,255,255,0.08)';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -439,7 +439,7 @@ export const SleepCalendar = ({
 };
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
   gestureRoot: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
 
   sheetWrapper: {
@@ -466,7 +466,12 @@ const styles = StyleSheet.create({
   innerContent: {},
 
   handleContainer: { alignItems: 'center', paddingTop: 10, paddingBottom: 10 },
-  handle: { width: 40, height: 5, backgroundColor: '#48484A', borderRadius: BORDER_RADIUS },
+  handle: {
+    width: 40,
+    height: 5,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: BORDER_RADIUS,
+  },
 
   header: {
     flexDirection: 'row',
@@ -478,7 +483,7 @@ const styles = StyleSheet.create({
   title: { color: 'white', fontSize: 20, fontWeight: '700' },
   closeBtn: {
     padding: 8,
-    backgroundColor: POPUP_BG,
+    backgroundColor: '#0F1117',
     borderRadius: BORDER_RADIUS,
     borderWidth: 1,
     borderColor: STROKE,
@@ -487,7 +492,7 @@ const styles = StyleSheet.create({
   controlsSection: { paddingHorizontal: 20, marginBottom: 20 },
   segmentedContainer: {
     flexDirection: 'row',
-    backgroundColor: POPUP_BG,
+    backgroundColor: '#0F1117',
     borderRadius: BORDER_RADIUS,
     padding: 4,
     height: 48,
@@ -496,7 +501,7 @@ const styles = StyleSheet.create({
   },
   segmentBtn: { flex: 1, borderRadius: BORDER_RADIUS, justifyContent: 'center', alignItems: 'center' },
   segmentBtnActive: {
-    backgroundColor: '#48484A',
+    backgroundColor: '#1A1C22',
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowOffset: { width: 0, height: 2 },
@@ -516,7 +521,7 @@ const styles = StyleSheet.create({
   arrowBtn: {
     padding: 8,
     borderRadius: BORDER_RADIUS,
-    backgroundColor: POPUP_BG,
+    backgroundColor: '#0F1117',
     borderWidth: 1,
     borderColor: STROKE,
   },
@@ -576,7 +581,7 @@ const styles = StyleSheet.create({
   // Detail Card Styles
   detailCardContainer: { paddingHorizontal: 20 },
   detailCard: {
-    backgroundColor: POPUP_BG,
+    backgroundColor: '#0F1117',
     borderRadius: BORDER_RADIUS,
     padding: 24,
     borderWidth: 1,

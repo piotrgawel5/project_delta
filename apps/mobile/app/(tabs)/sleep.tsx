@@ -23,8 +23,6 @@ import Animated, {
   Extrapolation,
   useAnimatedReaction,
   runOnJS,
-  withTiming,
-  Easing,
   SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Rect, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
@@ -32,8 +30,16 @@ import { SleepCalendar } from '../../components/sleep/SleepCalendar';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
 import { transformToHypnogramStages } from '@lib/sleepTransform';
 import { getSleepScoreGrade, brightenColor } from '@lib/sleepColors';
-import { formatTime } from '@lib/sleepFormatters';
-import MetricCard from '@components/sleep/MetricCard';
+import {
+  formatHours,
+  formatMinutesToTimeLabel,
+  formatTimeParts,
+  formatTimeWithMeridiem,
+} from '@lib/sleepFormatters';
+import { addDays, dateKey, isSameDay, normalizeDate } from '@lib/sleepDateUtils';
+import { useSleepGradient } from '@lib/useSleepGradient';
+import { MetricDetailSheet } from '@components/sleep/MetricDetailSheet';
+import { SleepMetricsList, SleepMetricItem, MetricSheetData } from '@components/sleep/dashboard/SleepMetricsList';
 
 // Colors
 const BG_PRIMARY = '#0B0B0D';
@@ -47,6 +53,11 @@ const BG_WIDTH = SCREEN_W;
 const BG_HEIGHT = SCREEN_H;
 const UI_RADIUS = 36;
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
+const padToSeven = <T,>(values: T[], fill: T) => {
+  if (values.length >= 7) return values.slice(-7);
+  return Array(7 - values.length).fill(fill).concat(values);
+};
 
 const GradientBackground = React.memo(function GradientBackground({
   baseColor,
@@ -104,25 +115,6 @@ export default function SleepScreen() {
     checkHealthConnectStatus,
   } = useSleepStore();
 
-  const normalizeDate = useCallback((date: Date) => {
-    const d = new Date(date);
-    d.setHours(12, 0, 0, 0);
-    return d;
-  }, []);
-
-  const dateKey = useCallback((date: Date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }, []);
-
-  const addDays = useCallback((date: Date, days: number) => {
-    const next = new Date(date);
-    next.setDate(next.getDate() + days);
-    return next;
-  }, []);
-
   const [selectedDate, setSelectedDate] = useState(() => {
     return normalizeDate(new Date());
   });
@@ -134,13 +126,9 @@ export default function SleepScreen() {
   const [activeIndex, setActiveIndex] = useState(0);
   const selectedYear = selectedDate.getFullYear();
   const selectedMonth = selectedDate.getMonth();
-  const gradientProgress = useSharedValue(1);
-  const [gradientBase, setGradientBase] = useState('#000000');
-  const [gradientOverlay, setGradientOverlay] = useState('#000000');
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
-  const [gradientDateKey, setGradientDateKey] = useState(() => dateKey(selectedDate));
-  const gradientInitialized = useRef(false);
+  const [activeMetric, setActiveMetric] = useState<MetricSheetData | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -174,11 +162,6 @@ export default function SleepScreen() {
     opacity: interpolate(scrollY.value, [0, 40], [0, 1], Extrapolation.CLAMP),
   }));
 
-  const formatHours = (totalMinutes: number, decimals = 1) => {
-    if (!totalMinutes) return '0.0';
-    return (totalMinutes / 60).toFixed(decimals);
-  };
-
   const currentData = useMemo(() => {
     const targetDateStr = dateKey(selectedDate);
 
@@ -210,7 +193,7 @@ export default function SleepScreen() {
 
   // Metrics
   const durationMinutes = hi?.duration_minutes || 0;
-  const durationHoursValue = durationMinutes ? (durationMinutes / 60).toFixed(2) : '--';
+  const durationHoursValue = durationMinutes ? formatHours(durationMinutes, 2) : '--';
   const sleepEfficiency = durationMinutes
     ? Math.min(100, Math.round((durationMinutes / 480) * 100))
     : 0;
@@ -220,10 +203,32 @@ export default function SleepScreen() {
   const deepPct = durationMinutes ? Math.round((deepMin / durationMinutes) * 100) : 0;
   const remPct = durationMinutes ? Math.round((remMin / durationMinutes) * 100) : 0;
   const lightPct = durationMinutes ? Math.round((lightMin / durationMinutes) * 100) : 0;
+  const stageItems = useMemo(() => {
+    if (!durationMinutes) return [];
+    return [
+      {
+        label: 'Deep',
+        value: `${formatHours(deepMin)}h`,
+        percent: deepPct,
+        color: '#34D399',
+      },
+      {
+        label: 'REM',
+        value: `${formatHours(remMin)}h`,
+        percent: remPct,
+        color: '#F472B6',
+      },
+      {
+        label: 'Light',
+        value: `${formatHours(lightMin)}h`,
+        percent: lightPct,
+        color: '#FBBF24',
+      },
+    ];
+  }, [deepMin, remMin, lightMin, deepPct, remPct, lightPct, durationMinutes]);
 
-  // Times
-  const startTime = hi?.start_time ? new Date(hi.start_time) : null;
-  const endTime = hi?.end_time ? new Date(hi.end_time) : null;
+  const bedtimeParts = formatTimeParts(hi?.start_time);
+  const wakeParts = formatTimeParts(hi?.end_time);
 
   // Memoize sleep score grade to avoid redundant calculations
   const sleepScoreGrade = useMemo(
@@ -255,11 +260,6 @@ export default function SleepScreen() {
   }, [weeklyHistory]);
 
   const trendData = useMemo(() => {
-    const padToSeven = (values: Array<number | null>) => {
-      if (values.length >= 7) return values.slice(-7);
-      return Array(7 - values.length).fill(null).concat(values);
-    };
-
     const toBedMinutes = (iso?: string | null) => {
       if (!iso) return null;
       const d = new Date(iso);
@@ -275,21 +275,219 @@ export default function SleepScreen() {
     };
 
     return {
-      duration: padToSeven(weeklySeries.map((item) => item.duration_minutes ?? null)),
+      duration: padToSeven(weeklySeries.map((item) => item.duration_minutes ?? null), null),
       efficiency: padToSeven(
         weeklySeries.map((item) =>
           item.duration_minutes
             ? Math.min(100, Math.round((item.duration_minutes / 480) * 100))
             : null
-        )
+        ),
+        null
       ),
-      deep: padToSeven(weeklySeries.map((item) => item.deep_sleep_minutes ?? null)),
-      rem: padToSeven(weeklySeries.map((item) => item.rem_sleep_minutes ?? null)),
-      light: padToSeven(weeklySeries.map((item) => item.light_sleep_minutes ?? null)),
-      bed: padToSeven(weeklySeries.map((item) => toBedMinutes(item.start_time))),
-      wake: padToSeven(weeklySeries.map((item) => toWakeMinutes(item.end_time))),
+      deep: padToSeven(weeklySeries.map((item) => item.deep_sleep_minutes ?? null), null),
+      rem: padToSeven(weeklySeries.map((item) => item.rem_sleep_minutes ?? null), null),
+      light: padToSeven(weeklySeries.map((item) => item.light_sleep_minutes ?? null), null),
+      bed: padToSeven(weeklySeries.map((item) => toBedMinutes(item.start_time)), null),
+      wake: padToSeven(weeklySeries.map((item) => toWakeMinutes(item.end_time)), null),
     };
   }, [weeklySeries]);
+
+  const weekLabels = useMemo(
+    () =>
+      padToSeven(
+        weeklySeries.map((item) => {
+          const d = new Date(item.date);
+          return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+        }),
+        '--'
+      ),
+    [weeklySeries]
+  );
+
+  const metricCards = useMemo<SleepMetricItem[]>(() => {
+    const formatHoursRow = (value: number | null) =>
+      typeof value === 'number' ? `${formatHours(value)}h` : '--';
+    const formatPercentRow = (value: number | null) =>
+      typeof value === 'number' ? `${value}%` : '--';
+    const formatTimeRow = (value: number | null) => formatMinutesToTimeLabel(value);
+
+    const buildRows = (values: Array<number | null>, formatter: (value: number | null) => string) =>
+      weekLabels.map((label, index) => ({
+        label,
+        value: formatter(values[index] ?? null),
+      }));
+
+    const stageRows = weekLabels.map((label, index) => {
+      const deep = trendData.deep[index];
+      const rem = trendData.rem[index];
+      const light = trendData.light[index];
+      const hasAny = [deep, rem, light].some((v) => typeof v === 'number');
+      return {
+        label,
+        value: hasAny
+          ? `D ${formatHours(deep ?? 0)}h / R ${formatHours(rem ?? 0)}h / L ${formatHours(light ?? 0)}h`
+          : '--',
+      };
+    });
+
+    const totalSubtitle = durationMinutes
+      ? durationMinutes >= 420
+        ? 'Above goal'
+        : 'Below goal'
+      : 'No data';
+
+    const efficiencySubtitle = durationMinutes
+      ? sleepEfficiency >= 85
+        ? 'Excellent'
+        : sleepEfficiency >= 70
+          ? 'Good'
+          : 'Low'
+      : 'No data';
+
+    return [
+      {
+        id: 'total',
+        label: 'Total Sleep',
+        value: durationHoursValue,
+        unit: durationMinutes ? 'hr' : undefined,
+        status: durationMinutes >= 420 ? 'up' : durationMinutes > 0 ? 'down' : 'neutral',
+        subLabel: totalSubtitle,
+        accent: '#7DD3FC',
+        icon: 'moon',
+        trend: trendData.duration,
+        chartType: 'bars',
+        sheet: {
+          id: 'total',
+          title: 'Total Sleep',
+          value: durationHoursValue,
+          unit: durationMinutes ? 'hr' : undefined,
+          subtitle: totalSubtitle,
+          accent: '#7DD3FC',
+          chartType: 'bars',
+          trend: trendData.duration,
+          rows: buildRows(trendData.duration, formatHoursRow),
+        },
+      },
+      {
+        id: 'efficiency',
+        label: 'Efficiency',
+        value: durationMinutes ? `${sleepEfficiency}` : '--',
+        unit: durationMinutes ? '%' : undefined,
+        status: durationMinutes
+          ? sleepEfficiency >= 85
+            ? 'up'
+            : sleepEfficiency >= 70
+              ? 'neutral'
+              : 'down'
+          : 'neutral',
+        subLabel: efficiencySubtitle,
+        accent: '#C4B5FD',
+        icon: 'speedometer',
+        trend: trendData.efficiency,
+        chartType: 'dots',
+        dotThreshold: 85,
+        sheet: {
+          id: 'efficiency',
+          title: 'Efficiency',
+          value: durationMinutes ? `${sleepEfficiency}` : '--',
+          unit: durationMinutes ? '%' : undefined,
+          subtitle: efficiencySubtitle,
+          accent: '#C4B5FD',
+          chartType: 'dots',
+          dotThreshold: 85,
+          trend: trendData.efficiency,
+          rows: buildRows(trendData.efficiency, formatPercentRow),
+        },
+      },
+      {
+        id: 'stages',
+        label: 'Sleep Stages',
+        value: durationMinutes ? durationHoursValue : '--',
+        unit: durationMinutes ? 'hr' : undefined,
+        status: 'neutral',
+        subLabel: durationMinutes ? 'Stage breakdown' : 'No data',
+        accent: '#A7F3D0',
+        icon: 'layers',
+        chartType: 'stages',
+        stages: stageItems,
+        showDays: false,
+        sheet: {
+          id: 'stages',
+          title: 'Sleep Stages',
+          value: durationMinutes ? durationHoursValue : '--',
+          unit: durationMinutes ? 'hr' : undefined,
+          subtitle: durationMinutes ? 'Weekly stage mix' : 'No data',
+          accent: '#A7F3D0',
+          chartType: 'bars',
+          trend: trendData.duration,
+          rows: stageRows,
+        },
+      },
+      {
+        id: 'bed',
+        label: 'Fell Asleep',
+        value: bedtimeParts.time,
+        unit: bedtimeParts.meridiem,
+        status: 'neutral',
+        subLabel: 'Bedtime',
+        accent: '#93C5FD',
+        icon: 'bed',
+        trend: trendData.bed,
+        chartType: 'line',
+        sheet: {
+          id: 'bed',
+          title: 'Fell Asleep',
+          value: formatTimeWithMeridiem(hi?.start_time),
+          subtitle: 'Bedtime',
+          accent: '#93C5FD',
+          chartType: 'line',
+          trend: trendData.bed,
+          rows: buildRows(trendData.bed, formatTimeRow),
+        },
+      },
+      {
+        id: 'wake',
+        label: 'Woke Up',
+        value: wakeParts.time,
+        unit: wakeParts.meridiem,
+        status: 'neutral',
+        subLabel: 'Wake time',
+        accent: '#FDBA74',
+        icon: 'alarm',
+        trend: trendData.wake,
+        chartType: 'ticks',
+        sheet: {
+          id: 'wake',
+          title: 'Woke Up',
+          value: formatTimeWithMeridiem(hi?.end_time),
+          subtitle: 'Wake time',
+          accent: '#FDBA74',
+          chartType: 'ticks',
+          trend: trendData.wake,
+          rows: buildRows(trendData.wake, formatTimeRow),
+        },
+      },
+    ];
+  }, [
+    bedtimeParts.meridiem,
+    bedtimeParts.time,
+    durationHoursValue,
+    durationMinutes,
+    hi?.end_time,
+    hi?.start_time,
+    sleepEfficiency,
+    stageItems,
+    trendData.bed,
+    trendData.deep,
+    trendData.duration,
+    trendData.efficiency,
+    trendData.light,
+    trendData.rem,
+    trendData.wake,
+    wakeParts.meridiem,
+    wakeParts.time,
+    weekLabels,
+  ]);
 
   const historyByDate = useMemo(() => {
     const map = new Map<string, any>();
@@ -317,41 +515,17 @@ export default function SleepScreen() {
     [cachedHistory, historyByDate]
   );
 
-  const setGradientImmediate = useCallback((color: string) => {
-    setGradientBase(color);
-    setGradientOverlay(color);
-    gradientProgress.value = 1;
-  }, []);
-
-  const animateGradientTo = useCallback((color: string) => {
-    setGradientBase(gradientOverlay);
-    setGradientOverlay(color);
-    gradientProgress.value = 0;
-    gradientProgress.value = withTiming(1, {
-      duration: 600,
-      easing: Easing.out(Easing.cubic),
+  const { gradientBase, gradientOverlay, gradientProgress, gradientKey, setGradientKey } =
+    useSleepGradient({
+      initialKey: dateKey(selectedDate),
+      defaultColor: BG_PRIMARY,
+      getColorForKey: getGradientColorForKey,
     });
-  }, [gradientOverlay]);
 
-  useEffect(() => {
-    if (gradientInitialized.current) return;
-    const initial = getGradientColorForKey(gradientDateKey);
-    setGradientImmediate(initial);
-    gradientInitialized.current = true;
-  }, [getGradientColorForKey, gradientDateKey, setGradientImmediate]);
-
-  useEffect(() => {
-    if (!gradientInitialized.current) return;
-    const target = getGradientColorForKey(gradientDateKey);
-    if (gradientOverlay !== target && gradientProgress.value >= 1) {
-      setGradientImmediate(target);
-    }
-  }, [getGradientColorForKey, gradientDateKey, setGradientImmediate, gradientOverlay]);
-
-  const isSameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
+  const resolvedSheetChartType =
+    activeMetric?.chartType && activeMetric.chartType !== 'stages'
+      ? activeMetric.chartType
+      : 'bars';
 
   const monthDates = useMemo(() => {
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
@@ -378,11 +552,9 @@ export default function SleepScreen() {
     if (next && !isSameDay(next, selectedDate)) {
       setSelectedDate(next);
       setActiveIndex(index);
-      setGradientDateKey(dateKey(next));
     }
-    const nextKey = next ? dateKey(next) : gradientDateKey;
-    const targetColor = getGradientColorForKey(nextKey);
-    animateGradientTo(targetColor);
+    const nextKey = next ? dateKey(next) : gradientKey;
+    setGradientKey(nextKey, true);
     navigation.getParent()?.setOptions({ swipeEnabled: true });
   };
 
@@ -496,9 +668,7 @@ export default function SleepScreen() {
           onDateSelect={(date) => {
             const normalized = normalizeDate(date);
             setSelectedDate(normalized);
-            setGradientDateKey(dateKey(normalized));
-            const targetColor = getGradientColorForKey(dateKey(normalized));
-            animateGradientTo(targetColor);
+            setGradientKey(dateKey(normalized), true);
           }}
           history={weeklyHistory}
         />
@@ -517,6 +687,20 @@ export default function SleepScreen() {
           }}
           date={selectedDate}
           userId={user?.id || ''}
+        />
+
+        <MetricDetailSheet
+          isVisible={!!activeMetric}
+          onClose={() => setActiveMetric(null)}
+          title={activeMetric?.title || ''}
+          value={activeMetric?.value || '--'}
+          unit={activeMetric?.unit}
+          subtitle={activeMetric?.subtitle}
+          accent={activeMetric?.accent || '#7DD3FC'}
+          chartType={resolvedSheetChartType}
+          dotThreshold={activeMetric?.dotThreshold}
+          trend={activeMetric?.trend}
+          rows={activeMetric?.rows}
         />
 
         {/* Swipeable Title Section */}
@@ -597,104 +781,12 @@ export default function SleepScreen() {
         <View style={styles.contentWrap}>
           {hasData ? (
             <>
-              {/* Metrics Grid */}
-              <View style={styles.metricsGrid}>
-                <MetricCard
-                  label="Total Sleep"
-                  value={durationHoursValue}
-                  unit={durationMinutes ? 'hr' : undefined}
-                  status={durationMinutes >= 420 ? 'up' : durationMinutes > 0 ? 'down' : 'neutral'}
-                  subLabel={durationMinutes ? (durationMinutes >= 420 ? 'Above goal' : 'Below goal') : 'No data'}
-                  accent="#7DD3FC"
-                  trend={trendData.duration}
-                  chartType="bars"
-                  onPress={() => {}}
-                />
-
-                <MetricCard
-                  label="Efficiency"
-                  value={durationMinutes ? `${sleepEfficiency}` : '--'}
-                  unit={durationMinutes ? '%' : undefined}
-                  status={
-                    durationMinutes
-                      ? sleepEfficiency >= 85
-                        ? 'up'
-                        : sleepEfficiency >= 70
-                          ? 'neutral'
-                          : 'down'
-                      : 'neutral'
-                  }
-                  subLabel={
-                    durationMinutes
-                      ? sleepEfficiency >= 85
-                        ? 'Excellent'
-                        : sleepEfficiency >= 70
-                          ? 'Good'
-                          : 'Low'
-                      : 'No data'
-                  }
-                  accent="#C4B5FD"
-                  trend={trendData.efficiency}
-                  chartType="dots"
-                  dotThreshold={85}
-                  onPress={() => {}}
-                />
-
-                <MetricCard
-                  label="Deep Sleep"
-                  value={deepMin ? formatHours(deepMin) : '--'}
-                  unit={deepMin ? 'hr' : undefined}
-                  status="neutral"
-                  subLabel={durationMinutes ? `${deepPct}% of sleep` : 'No data'}
-                  accent="#34D399"
-                  trend={trendData.deep}
-                  chartType="bars"
-                />
-
-                <MetricCard
-                  label="REM Sleep"
-                  value={remMin ? formatHours(remMin) : '--'}
-                  unit={remMin ? 'hr' : undefined}
-                  status="neutral"
-                  subLabel={durationMinutes ? `${remPct}% of sleep` : 'No data'}
-                  accent="#F472B6"
-                  trend={trendData.rem}
-                  chartType="bars"
-                />
-
-                <MetricCard
-                  label="Light Sleep"
-                  value={lightMin ? formatHours(lightMin) : '--'}
-                  unit={lightMin ? 'hr' : undefined}
-                  status="neutral"
-                  subLabel={durationMinutes ? `${lightPct}% of sleep` : 'No data'}
-                  accent="#FBBF24"
-                  trend={trendData.light}
-                  chartType="bars"
-                />
-
-                <MetricCard
-                  label="Fell Asleep"
-                  value={formatTime(hi?.start_time).replace(/(AM|PM)/, '')}
-                  unit={startTime ? (startTime.getHours() >= 12 ? 'PM' : 'AM') : undefined}
-                  status="neutral"
-                  subLabel="Bedtime"
-                  accent="#93C5FD"
-                  trend={trendData.bed}
-                  chartType="bars"
-                />
-
-                <MetricCard
-                  label="Woke Up"
-                  value={formatTime(hi?.end_time).replace(/(AM|PM)/, '')}
-                  unit={endTime ? (endTime.getHours() >= 12 ? 'PM' : 'AM') : undefined}
-                  status="neutral"
-                  subLabel="Wake time"
-                  accent="#FDBA74"
-                  trend={trendData.wake}
-                  chartType="bars"
-                />
-              </View>
+              <SleepMetricsList
+                metrics={metricCards}
+                onMetricPress={(metric) => {
+                  setActiveMetric(metric);
+                }}
+              />
 
               {/* Chart Section */}
               <View style={styles.chartSection}>
@@ -717,8 +809,12 @@ export default function SleepScreen() {
 
                 {/* Time Labels for Chart */}
                 <View style={styles.chartTimeLabels}>
-                  <Text style={styles.chartTimeText}>{formatTime(hi?.start_time)}</Text>
-                  <Text style={styles.chartTimeText}>{formatTime(hi?.end_time)}</Text>
+                  <Text style={styles.chartTimeText}>
+                    {formatTimeWithMeridiem(hi?.start_time)}
+                  </Text>
+                  <Text style={styles.chartTimeText}>
+                    {formatTimeWithMeridiem(hi?.end_time)}
+                  </Text>
                 </View>
               </View>
             </>
@@ -877,11 +973,6 @@ const styles = StyleSheet.create({
     color: 'black',
     fontSize: 14,
     fontWeight: '700',
-  },
-  metricsGrid: {
-    flexDirection: 'column',
-    gap: 12,
-    marginBottom: 32,
   },
   chartSection: {
     marginBottom: 40,
