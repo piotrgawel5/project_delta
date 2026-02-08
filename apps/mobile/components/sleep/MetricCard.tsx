@@ -101,7 +101,7 @@ const buildLinePath = (data: TrendValue[]) => {
   return { path, end: points[points.length - 1] };
 };
 
-export default function MetricCard({
+function MetricCard({
   label,
   value,
   unit,
@@ -304,6 +304,60 @@ export default function MetricCard({
     </View>
   );
 }
+
+const areTrendEqual = (a?: TrendValue[], b?: TrendValue[]) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+};
+
+const areStagesEqual = (a?: StageItem[], b?: StageItem[]) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const sa = a[i];
+    const sb = b[i];
+    if (!sa || !sb) return false;
+    if (
+      sa.label !== sb.label ||
+      sa.value !== sb.value ||
+      sa.percent !== sb.percent ||
+      sa.color !== sb.color
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const arePropsEqual = (prev: MetricCardProps, next: MetricCardProps) => {
+  if (
+    prev.label !== next.label ||
+    prev.value !== next.value ||
+    prev.unit !== next.unit ||
+    prev.status !== next.status ||
+    prev.subLabel !== next.subLabel ||
+    prev.accent !== next.accent ||
+    prev.chartType !== next.chartType ||
+    prev.dotThreshold !== next.dotThreshold ||
+    prev.icon !== next.icon ||
+    prev.showDays !== next.showDays
+  ) {
+    return false;
+  }
+
+  if (!areTrendEqual(prev.trend, next.trend)) return false;
+  if (!areStagesEqual(prev.stages, next.stages)) return false;
+
+  return true;
+};
+
+export default React.memo(MetricCard, arePropsEqual);
 
 const styles = StyleSheet.create({
   wrapper: {

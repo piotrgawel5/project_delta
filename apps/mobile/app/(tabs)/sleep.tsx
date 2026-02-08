@@ -126,6 +126,10 @@ export default function SleepScreen() {
   const [activeIndex, setActiveIndex] = useState(0);
   const selectedYear = selectedDate.getFullYear();
   const selectedMonth = selectedDate.getMonth();
+  const currentMonthKey = useMemo(
+    () => `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`,
+    [selectedYear, selectedMonth]
+  );
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
   const [activeMetric, setActiveMetric] = useState<MetricSheetData | null>(null);
@@ -711,17 +715,14 @@ export default function SleepScreen() {
     (weeklyHistory || []).forEach((item) => {
       map.set(item.date, item);
     });
-    if (monthlyData) {
-      Object.keys(monthlyData).forEach((monthKey) => {
-        (monthlyData[monthKey] || []).forEach((item) => {
-          if (!map.has(item.date)) {
-            map.set(item.date, item);
-          }
-        });
-      });
-    }
+    const monthRecords = monthlyData?.[currentMonthKey] || [];
+    monthRecords.forEach((item) => {
+      if (!map.has(item.date)) {
+        map.set(item.date, item);
+      }
+    });
     return map;
-  }, [weeklyHistory, monthlyData]);
+  }, [weeklyHistory, monthlyData, currentMonthKey]);
 
   const getGradientColorForKey = useCallback(
     (key: string) => {
@@ -782,9 +783,9 @@ export default function SleepScreen() {
   useEffect(() => {
     if (!monthDates.length) return;
     const initialMin = Math.max(0, activeIndex - 4);
-    const initialMax = Math.min(monthDates.length - 1, activeIndex);
+    const initialMax = Math.min(monthDates.length - 1, activeIndex + 4);
     setCacheRange({ min: initialMin, max: initialMax });
-  }, [monthDates.length, activeIndex]);
+  }, [monthDates.length]);
 
   useEffect(() => {
     if (!monthDates.length) return;
