@@ -174,11 +174,9 @@ export default function SleepScreen() {
     opacity: interpolate(scrollY.value, [0, 40], [0, 1], Extrapolation.CLAMP),
   }));
 
-  // Helper to format minutes into H M
-  const formatDuration = (totalMinutes: number) => {
-    const h = Math.floor(totalMinutes / 60);
-    const m = Math.round(totalMinutes % 60);
-    return { h, m };
+  const formatHours = (totalMinutes: number, decimals = 1) => {
+    if (!totalMinutes) return '0.0';
+    return (totalMinutes / 60).toFixed(decimals);
   };
 
   const currentData = useMemo(() => {
@@ -211,9 +209,17 @@ export default function SleepScreen() {
   const hasData = !!hi;
 
   // Metrics
-  const duration = formatDuration(hi?.duration_minutes || 0);
-  const restorativeMin = (hi?.deep_sleep_minutes || 0) + (hi?.rem_sleep_minutes || 0);
-  const restorative = formatDuration(restorativeMin);
+  const durationMinutes = hi?.duration_minutes || 0;
+  const durationHoursValue = durationMinutes ? (durationMinutes / 60).toFixed(2) : '--';
+  const sleepEfficiency = durationMinutes
+    ? Math.min(100, Math.round((durationMinutes / 480) * 100))
+    : 0;
+  const deepMin = hi?.deep_sleep_minutes || 0;
+  const remMin = hi?.rem_sleep_minutes || 0;
+  const lightMin = hi?.light_sleep_minutes || 0;
+  const deepPct = durationMinutes ? Math.round((deepMin / durationMinutes) * 100) : 0;
+  const remPct = durationMinutes ? Math.round((remMin / durationMinutes) * 100) : 0;
+  const lightPct = durationMinutes ? Math.round((lightMin / durationMinutes) * 100) : 0;
 
   // Times
   const startTime = hi?.start_time ? new Date(hi.start_time) : null;
@@ -240,28 +246,50 @@ export default function SleepScreen() {
     });
   }, [hi]);
 
-  // Compute sparkline data from weekly history (last 7 days, chronological order)
-  const sparklineData = useMemo(() => {
+  const weeklySeries = useMemo(() => {
     const history = weeklyHistory || [];
-    if (history.length < 2) {
-      return { duration: undefined, restorative: undefined };
-    }
-
-    // Sort chronologically (oldest first) for proper sparkline trend
-    const sorted = [...history]
+    if (!history.length) return [];
+    return [...history]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(-7); // Last 7 days
+      .slice(-7);
+  }, [weeklyHistory]);
 
-    const durationData = sorted.map((item) => item.duration_minutes || 0);
-    const restorativeData = sorted.map(
-      (item) => (item.deep_sleep_minutes || 0) + (item.rem_sleep_minutes || 0)
-    );
+  const trendData = useMemo(() => {
+    const padToSeven = (values: Array<number | null>) => {
+      if (values.length >= 7) return values.slice(-7);
+      return Array(7 - values.length).fill(null).concat(values);
+    };
+
+    const toBedMinutes = (iso?: string | null) => {
+      if (!iso) return null;
+      const d = new Date(iso);
+      let minutes = d.getHours() * 60 + d.getMinutes();
+      if (minutes < 12 * 60) minutes += 24 * 60;
+      return minutes;
+    };
+
+    const toWakeMinutes = (iso?: string | null) => {
+      if (!iso) return null;
+      const d = new Date(iso);
+      return d.getHours() * 60 + d.getMinutes();
+    };
 
     return {
-      duration: durationData.length >= 2 ? durationData : undefined,
-      restorative: restorativeData.length >= 2 ? restorativeData : undefined,
+      duration: padToSeven(weeklySeries.map((item) => item.duration_minutes ?? null)),
+      efficiency: padToSeven(
+        weeklySeries.map((item) =>
+          item.duration_minutes
+            ? Math.min(100, Math.round((item.duration_minutes / 480) * 100))
+            : null
+        )
+      ),
+      deep: padToSeven(weeklySeries.map((item) => item.deep_sleep_minutes ?? null)),
+      rem: padToSeven(weeklySeries.map((item) => item.rem_sleep_minutes ?? null)),
+      light: padToSeven(weeklySeries.map((item) => item.light_sleep_minutes ?? null)),
+      bed: padToSeven(weeklySeries.map((item) => toBedMinutes(item.start_time))),
+      wake: padToSeven(weeklySeries.map((item) => toWakeMinutes(item.end_time))),
     };
-  }, [weeklyHistory]);
+  }, [weeklySeries]);
 
   const historyByDate = useMemo(() => {
     const map = new Map<string, any>();
@@ -572,35 +600,99 @@ export default function SleepScreen() {
               {/* Metrics Grid */}
               <View style={styles.metricsGrid}>
                 <MetricCard
-                  label="Sleep Duration"
-                  value={`${duration.h}h ${duration.m}m`}
-                  status={duration.h >= 7 ? 'up' : 'neutral'}
-                  sparkline={sparklineData.duration}
-                  onPress={() => {
-                    /* open detail or chart */
-                  }}
+                  label="Total Sleep"
+                  value={durationHoursValue}
+                  unit={durationMinutes ? 'hr' : undefined}
+                  status={durationMinutes >= 420 ? 'up' : durationMinutes > 0 ? 'down' : 'neutral'}
+                  subLabel={durationMinutes ? (durationMinutes >= 420 ? 'Above goal' : 'Below goal') : 'No data'}
+                  accent="#7DD3FC"
+                  trend={trendData.duration}
+                  chartType="bars"
+                  onPress={() => {}}
                 />
 
                 <MetricCard
-                  label="Restorative"
-                  value={`${restorative.h}h ${restorative.m}m`}
-                  status={restorative.h >= 2 ? 'up' : 'neutral'}
-                  sparkline={sparklineData.restorative}
+                  label="Efficiency"
+                  value={durationMinutes ? `${sleepEfficiency}` : '--'}
+                  unit={durationMinutes ? '%' : undefined}
+                  status={
+                    durationMinutes
+                      ? sleepEfficiency >= 85
+                        ? 'up'
+                        : sleepEfficiency >= 70
+                          ? 'neutral'
+                          : 'down'
+                      : 'neutral'
+                  }
+                  subLabel={
+                    durationMinutes
+                      ? sleepEfficiency >= 85
+                        ? 'Excellent'
+                        : sleepEfficiency >= 70
+                          ? 'Good'
+                          : 'Low'
+                      : 'No data'
+                  }
+                  accent="#C4B5FD"
+                  trend={trendData.efficiency}
+                  chartType="dots"
+                  dotThreshold={85}
                   onPress={() => {}}
+                />
+
+                <MetricCard
+                  label="Deep Sleep"
+                  value={deepMin ? formatHours(deepMin) : '--'}
+                  unit={deepMin ? 'hr' : undefined}
+                  status="neutral"
+                  subLabel={durationMinutes ? `${deepPct}% of sleep` : 'No data'}
+                  accent="#34D399"
+                  trend={trendData.deep}
+                  chartType="bars"
+                />
+
+                <MetricCard
+                  label="REM Sleep"
+                  value={remMin ? formatHours(remMin) : '--'}
+                  unit={remMin ? 'hr' : undefined}
+                  status="neutral"
+                  subLabel={durationMinutes ? `${remPct}% of sleep` : 'No data'}
+                  accent="#F472B6"
+                  trend={trendData.rem}
+                  chartType="bars"
+                />
+
+                <MetricCard
+                  label="Light Sleep"
+                  value={lightMin ? formatHours(lightMin) : '--'}
+                  unit={lightMin ? 'hr' : undefined}
+                  status="neutral"
+                  subLabel={durationMinutes ? `${lightPct}% of sleep` : 'No data'}
+                  accent="#FBBF24"
+                  trend={trendData.light}
+                  chartType="bars"
                 />
 
                 <MetricCard
                   label="Fell Asleep"
                   value={formatTime(hi?.start_time).replace(/(AM|PM)/, '')}
-                  unit={startTime ? (startTime.getHours() >= 12 ? 'PM ' : 'AM ') : undefined}
+                  unit={startTime ? (startTime.getHours() >= 12 ? 'PM' : 'AM') : undefined}
                   status="neutral"
+                  subLabel="Bedtime"
+                  accent="#93C5FD"
+                  trend={trendData.bed}
+                  chartType="bars"
                 />
 
                 <MetricCard
                   label="Woke Up"
                   value={formatTime(hi?.end_time).replace(/(AM|PM)/, '')}
-                  unit={endTime ? (endTime.getHours() >= 12 ? 'PM ' : 'AM ') : undefined}
+                  unit={endTime ? (endTime.getHours() >= 12 ? 'PM' : 'AM') : undefined}
                   status="neutral"
+                  subLabel="Wake time"
+                  accent="#FDBA74"
+                  trend={trendData.wake}
+                  chartType="bars"
                 />
               </View>
 
@@ -787,10 +879,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12, // keep visual rhythm
+    flexDirection: 'column',
+    gap: 12,
     marginBottom: 32,
   },
   chartSection: {
