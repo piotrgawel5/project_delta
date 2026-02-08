@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   cancelAnimation,
   Easing,
@@ -16,8 +16,10 @@ type UseSleepGradientArgs = {
 
 type UseSleepGradientResult = {
   gradientBase: string;
-  gradientOverlay: string;
-  gradientProgress: SharedValue<number>;
+  overlayAColor: string;
+  overlayBColor: string;
+  overlayAOpacity: SharedValue<number>;
+  overlayBOpacity: SharedValue<number>;
   gradientKey: string;
   setGradientKey: (key: string, animate?: boolean) => void;
 };
@@ -27,8 +29,13 @@ export const useSleepGradient = ({
   defaultColor,
   getColorForKey,
 }: UseSleepGradientArgs): UseSleepGradientResult => {
-  const gradientProgress = useSharedValue(1);
-  const [colors, setColors] = useState({ base: defaultColor, overlay: defaultColor });
+  const overlayAOpacity = useSharedValue(1);
+  const overlayBOpacity = useSharedValue(0);
+  const [colors, setColors] = useState({
+    base: defaultColor,
+    overlayA: defaultColor,
+    overlayB: defaultColor,
+  });
   const [gradientKey, setGradientKeyState] = useState(initialKey);
   const initialized = useRef(false);
   const currentRef = useRef(defaultColor);
@@ -36,38 +43,82 @@ export const useSleepGradient = ({
   const pendingRef = useRef<string | null>(null);
   const animationIdRef = useRef(0);
   const animateToRef = useRef<(color: string) => void>(() => {});
-  const pendingAnimRef = useRef<{ id: number; base: string; overlay: string } | null>(
-    null
-  );
+  const activeLayerRef = useRef<'A' | 'B'>('A');
+
   const setImmediate = useCallback((color: string) => {
-    cancelAnimation(gradientProgress);
+    cancelAnimation(overlayAOpacity);
+    cancelAnimation(overlayBOpacity);
     animatingRef.current = false;
     pendingRef.current = null;
-    pendingAnimRef.current = null;
     currentRef.current = color;
-    setColors({ base: color, overlay: color });
-    gradientProgress.value = 1;
+    activeLayerRef.current = 'A';
+    setColors({ base: color, overlayA: color, overlayB: color });
+    overlayAOpacity.value = 1;
+    overlayBOpacity.value = 0;
   }, []);
 
-  const handleAnimationEnd = useCallback((id: number) => {
-    if (id !== animationIdRef.current) return;
-    animatingRef.current = false;
-    currentRef.current = colors.overlay;
-    const pending = pendingRef.current;
-    pendingRef.current = null;
-    if (pending && pending !== currentRef.current) {
-      animateToRef.current(pending);
-    }
-  }, [colors.overlay]);
+  const handleAnimationEnd = useCallback(
+    (id: number) => {
+      if (id !== animationIdRef.current) return;
+      animatingRef.current = false;
+      const active = activeLayerRef.current;
+      const currentColor = active === 'A' ? colors.overlayA : colors.overlayB;
+      currentRef.current = currentColor;
+      setColors((prev) => ({
+        base: currentColor,
+        overlayA: prev.overlayA,
+        overlayB: prev.overlayB,
+      }));
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      if (pending && pending !== currentRef.current) {
+        animateToRef.current(pending);
+      }
+    },
+    [colors.overlayA, colors.overlayB]
+  );
 
   const animateTo = useCallback((color: string) => {
     const currentOverlay = currentRef.current;
-    cancelAnimation(gradientProgress);
+    cancelAnimation(overlayAOpacity);
+    cancelAnimation(overlayBOpacity);
     animatingRef.current = true;
     animationIdRef.current += 1;
     const animationId = animationIdRef.current;
-    setColors({ base: currentOverlay, overlay: color });
-    pendingAnimRef.current = { id: animationId, base: currentOverlay, overlay: color };
+    const nextLayer = activeLayerRef.current === 'A' ? 'B' : 'A';
+    activeLayerRef.current = nextLayer;
+
+    setColors((prev) => ({
+      base: currentOverlay,
+      overlayA: nextLayer === 'A' ? color : prev.overlayA,
+      overlayB: nextLayer === 'B' ? color : prev.overlayB,
+    }));
+
+    if (nextLayer === 'A') {
+      overlayAOpacity.value = 0;
+      overlayBOpacity.value = 1;
+      overlayAOpacity.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) });
+      overlayBOpacity.value = withTiming(
+        0,
+        { duration: 600, easing: Easing.out(Easing.cubic) },
+        (finished) => {
+          if (!finished) return;
+          runOnJS(handleAnimationEnd)(animationId);
+        }
+      );
+    } else {
+      overlayBOpacity.value = 0;
+      overlayAOpacity.value = 1;
+      overlayBOpacity.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) });
+      overlayAOpacity.value = withTiming(
+        0,
+        { duration: 600, easing: Easing.out(Easing.cubic) },
+        (finished) => {
+          if (!finished) return;
+          runOnJS(handleAnimationEnd)(animationId);
+        }
+      );
+    }
   }, []);
 
   animateToRef.current = animateTo;
@@ -99,35 +150,12 @@ export const useSleepGradient = ({
     initialized.current = true;
   }, [getColorForKey, gradientKey, setImmediate]);
 
-  useLayoutEffect(() => {
-    const pending = pendingAnimRef.current;
-    if (!pending) return;
-    if (pending.id !== animationIdRef.current) {
-      pendingAnimRef.current = null;
-      return;
-    }
-    if (colors.base !== pending.base || colors.overlay !== pending.overlay) return;
-    pendingAnimRef.current = null;
-    gradientProgress.value = 0;
-    gradientProgress.value = withTiming(
-      1,
-      {
-        duration: 600,
-        easing: Easing.out(Easing.cubic),
-      },
-      (finished) => {
-        if (!finished) return;
-        runOnJS(handleAnimationEnd)(pending.id);
-      }
-    );
-  }, [colors.base, colors.overlay]);
-
-  useEffect(() => {}, []);
-
   return {
     gradientBase: colors.base,
-    gradientOverlay: colors.overlay,
-    gradientProgress,
+    overlayAColor: colors.overlayA,
+    overlayBColor: colors.overlayB,
+    overlayAOpacity,
+    overlayBOpacity,
     gradientKey,
     setGradientKey,
   };

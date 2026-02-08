@@ -59,15 +59,22 @@ const padToSeven = <T,>(values: T[], fill: T) => {
 
 const GradientBackground = React.memo(function GradientBackground({
   baseColor,
-  overlayColor,
-  progress,
+  overlayAColor,
+  overlayBColor,
+  overlayAOpacity,
+  overlayBOpacity,
 }: {
   baseColor: string;
-  overlayColor: string;
-  progress: SharedValue<number>;
+  overlayAColor: string;
+  overlayBColor: string;
+  overlayAOpacity: SharedValue<number>;
+  overlayBOpacity: SharedValue<number>;
 }) {
-  const overlayStyle = useAnimatedStyle(() => ({
-    opacity: progress.value,
+  const overlayAStyle = useAnimatedStyle(() => ({
+    opacity: overlayAOpacity.value,
+  }));
+  const overlayBStyle = useAnimatedStyle(() => ({
+    opacity: overlayBOpacity.value,
   }));
 
   return (
@@ -77,9 +84,16 @@ const GradientBackground = React.memo(function GradientBackground({
         locations={GRADIENT_LOCATIONS}
         style={StyleSheet.absoluteFill}
       />
-      <Animated.View style={[StyleSheet.absoluteFill, overlayStyle]}>
+      <Animated.View style={[StyleSheet.absoluteFill, overlayAStyle]}>
         <LinearGradient
-          colors={[overlayColor, BG_PRIMARY, BG_PRIMARY]}
+          colors={[overlayAColor, BG_PRIMARY, BG_PRIMARY]}
+          locations={GRADIENT_LOCATIONS}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+      <Animated.View style={[StyleSheet.absoluteFill, overlayBStyle]}>
+        <LinearGradient
+          colors={[overlayBColor, BG_PRIMARY, BG_PRIMARY]}
           locations={GRADIENT_LOCATIONS}
           style={StyleSheet.absoluteFill}
         />
@@ -723,12 +737,19 @@ export default function SleepScreen() {
     [cachedHistory, historyByDate]
   );
 
-  const { gradientBase, gradientOverlay, gradientProgress, gradientKey, setGradientKey } =
-    useSleepGradient({
-      initialKey: dateKey(selectedDate),
-      defaultColor: BG_PRIMARY,
-      getColorForKey: getGradientColorForKey,
-    });
+  const {
+    gradientBase,
+    overlayAColor,
+    overlayBColor,
+    overlayAOpacity,
+    overlayBOpacity,
+    gradientKey,
+    setGradientKey,
+  } = useSleepGradient({
+    initialKey: dateKey(selectedDate),
+    defaultColor: BG_PRIMARY,
+    getColorForKey: getGradientColorForKey,
+  });
 
   const resolvedSheetChartType =
     activeMetric?.chartType && activeMetric.chartType !== 'stages'
@@ -848,8 +869,10 @@ export default function SleepScreen() {
       {/* Background Gradient */}
       <GradientBackground
         baseColor={gradientBase}
-        overlayColor={gradientOverlay}
-        progress={gradientProgress}
+        overlayAColor={overlayAColor}
+        overlayBColor={overlayBColor}
+        overlayAOpacity={overlayAOpacity}
+        overlayBOpacity={overlayBOpacity}
       />
 
       {/* Sticky Header */}
