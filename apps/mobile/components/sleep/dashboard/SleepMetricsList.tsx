@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import MetricCard, { MetricCardProps } from '@components/sleep/MetricCard';
+import { MetricInsight, MetricRecommendation } from '@components/sleep/MetricDetailSheet';
 
 export type MetricSheetRow = {
   label: string;
@@ -13,11 +14,14 @@ export type MetricSheetData = {
   value: string;
   unit?: string;
   subtitle?: string;
+  analysis?: string;
   accent: string;
   chartType?: MetricCardProps['chartType'];
   dotThreshold?: number;
   trend?: Array<number | null | undefined>;
   rows?: MetricSheetRow[];
+  insights?: MetricInsight[];
+  recommendations?: MetricRecommendation[];
 };
 
 export type SleepMetricItem = MetricCardProps & {

@@ -305,6 +305,24 @@ export default function SleepScreen() {
   );
 
   const metricCards = useMemo<SleepMetricItem[]>(() => {
+    const stats = (values: Array<number | null>) => {
+      const numeric = values.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+      if (!numeric.length) return null;
+      const avg = numeric.reduce((sum, v) => sum + v, 0) / numeric.length;
+      const min = Math.min(...numeric);
+      const max = Math.max(...numeric);
+      const delta = numeric.length > 1 ? numeric[numeric.length - 1] - numeric[0] : 0;
+      const variance =
+        numeric.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / numeric.length;
+      const std = Math.sqrt(variance);
+      return { avg, min, max, delta, std };
+    };
+
+    const formatMinutesDelta = (minutes: number) => `${Math.round(minutes)} min`;
+    const formatHoursValue = (minutes: number) => `${formatHours(minutes)}h`;
+    const formatPercentValue = (value: number) => `${Math.round(value)}%`;
+    const formatTimeValue = (minutes: number) => formatMinutesToTimeLabel(minutes);
+
     const formatHoursRow = (value: number | null) =>
       typeof value === 'number' ? `${formatHours(value)}h` : '--';
     const formatPercentRow = (value: number | null) =>
@@ -330,12 +348,14 @@ export default function SleepScreen() {
       };
     });
 
+    const totalStats = stats(trendData.duration);
     const totalSubtitle = durationMinutes
       ? durationMinutes >= 420
         ? 'Above goal'
         : 'Below goal'
       : 'No data';
 
+    const efficiencyStats = stats(trendData.efficiency);
     const efficiencySubtitle = durationMinutes
       ? sleepEfficiency >= 85
         ? 'Excellent'
@@ -343,6 +363,12 @@ export default function SleepScreen() {
           ? 'Good'
           : 'Low'
       : 'No data';
+
+    const bedtimeStats = stats(trendData.bed);
+    const wakeStats = stats(trendData.wake);
+    const deepStats = stats(trendData.deep);
+    const remStats = stats(trendData.rem);
+    const lightStats = stats(trendData.light);
 
     return [
       {
@@ -362,10 +388,52 @@ export default function SleepScreen() {
           value: durationHoursValue,
           unit: durationMinutes ? 'hr' : undefined,
           subtitle: totalSubtitle,
+          analysis: totalStats
+            ? `You averaged ${formatHoursValue(totalStats.avg)} over the last week, with a range from ${formatHoursValue(totalStats.min)} to ${formatHoursValue(totalStats.max)}. Consistency was ${formatHoursValue(totalStats.std)}.`
+            : 'No weekly sleep duration data available yet.',
           accent: '#7DD3FC',
           chartType: 'bars',
           trend: trendData.duration,
           rows: buildRows(trendData.duration, formatHoursRow),
+          insights: totalStats
+            ? [
+                {
+                  title: '7-day avg',
+                  value: formatHoursValue(totalStats.avg),
+                  caption: 'Across last week',
+                  tone: totalStats.avg >= 420 ? 'positive' : 'neutral',
+                },
+                {
+                  title: 'Best night',
+                  value: formatHoursValue(totalStats.max),
+                  caption: 'Longest sleep',
+                },
+                {
+                  title: 'Consistency',
+                  value: formatHoursValue(totalStats.std),
+                  caption: 'Night-to-night',
+                },
+              ]
+            : [],
+          recommendations:
+            totalStats && totalStats.avg < 420
+              ? [
+                  {
+                    title: 'Extend sleep window',
+                    detail:
+                      'Aim for 7–8 hours by moving bedtime 20–30 minutes earlier for the next week.',
+                  },
+                  {
+                    title: 'Protect wind-down',
+                    detail: 'Keep screens off in the last 30 minutes to fall asleep faster.',
+                  },
+                ]
+              : [
+                  {
+                    title: 'Maintain rhythm',
+                    detail: 'Keep your current schedule steady to preserve recovery gains.',
+                  },
+                ],
         },
       },
       {
@@ -392,11 +460,52 @@ export default function SleepScreen() {
           value: durationMinutes ? `${sleepEfficiency}` : '--',
           unit: durationMinutes ? '%' : undefined,
           subtitle: efficiencySubtitle,
+          analysis: efficiencyStats
+            ? `Your average sleep efficiency was ${formatPercentValue(efficiencyStats.avg)}, with a best night at ${formatPercentValue(efficiencyStats.max)}. Lower efficiency often comes from frequent awakenings.`
+            : 'No efficiency data available yet.',
           accent: '#C4B5FD',
           chartType: 'dots',
           dotThreshold: 85,
           trend: trendData.efficiency,
           rows: buildRows(trendData.efficiency, formatPercentRow),
+          insights: efficiencyStats
+            ? [
+                {
+                  title: '7-day avg',
+                  value: formatPercentValue(efficiencyStats.avg),
+                  caption: efficiencyStats.avg >= 85 ? 'Excellent' : 'Room to improve',
+                  tone: efficiencyStats.avg >= 85 ? 'positive' : 'neutral',
+                },
+                {
+                  title: 'Best night',
+                  value: formatPercentValue(efficiencyStats.max),
+                  caption: 'Peak efficiency',
+                },
+                {
+                  title: 'Consistency',
+                  value: `${Math.round(efficiencyStats.std)}%`,
+                  caption: 'Night-to-night',
+                },
+              ]
+            : [],
+          recommendations:
+            efficiencyStats && efficiencyStats.avg < 85
+              ? [
+                  {
+                    title: 'Reduce disruptions',
+                    detail: 'Keep the room cool and dark and avoid caffeine after mid‑afternoon.',
+                  },
+                  {
+                    title: 'Set a buffer',
+                    detail: 'Allow 20 minutes of calm before bed to ease sleep onset.',
+                  },
+                ]
+              : [
+                  {
+                    title: 'Keep it steady',
+                    detail: 'Your efficiency is strong. Maintain a consistent bedtime routine.',
+                  },
+                ],
         },
       },
       {
@@ -417,10 +526,44 @@ export default function SleepScreen() {
           value: durationMinutes ? durationHoursValue : '--',
           unit: durationMinutes ? 'hr' : undefined,
           subtitle: durationMinutes ? 'Weekly stage mix' : 'No data',
+          analysis:
+            durationMinutes && deepStats && remStats && lightStats
+              ? `On average, deep sleep was ${formatHoursValue(deepStats.avg)} and REM was ${formatHoursValue(remStats.avg)}. Light sleep made up the remainder at ${formatHoursValue(lightStats.avg)}.`
+              : 'Stage data is unavailable for this week.',
           accent: '#A7F3D0',
           chartType: 'bars',
           trend: trendData.duration,
           rows: stageRows,
+          insights:
+            deepStats && remStats && lightStats
+              ? [
+                  {
+                    title: 'Avg Deep',
+                    value: formatHoursValue(deepStats.avg),
+                    caption: 'Restorative',
+                  },
+                  {
+                    title: 'Avg REM',
+                    value: formatHoursValue(remStats.avg),
+                    caption: 'Mental recovery',
+                  },
+                  {
+                    title: 'Avg Light',
+                    value: formatHoursValue(lightStats.avg),
+                    caption: 'Baseline',
+                  },
+                ]
+              : [],
+          recommendations: [
+            {
+              title: 'Protect deep sleep',
+              detail: 'Avoid late heavy meals and keep your room cool to preserve deep stages.',
+            },
+            {
+              title: 'Support REM',
+              detail: 'Keep wake times consistent to stabilize REM cycles.',
+            },
+          ],
         },
       },
       {
@@ -439,10 +582,47 @@ export default function SleepScreen() {
           title: 'Fell Asleep',
           value: formatTimeWithMeridiem(hi?.start_time),
           subtitle: 'Bedtime',
+          analysis: bedtimeStats
+            ? `Your average bedtime was ${formatTimeValue(bedtimeStats.avg)}. Bedtime varied by about ${formatMinutesDelta(bedtimeStats.std)} across the week.`
+            : 'No bedtime data available yet.',
           accent: '#93C5FD',
           chartType: 'line',
           trend: trendData.bed,
           rows: buildRows(trendData.bed, formatTimeRow),
+          insights: bedtimeStats
+            ? [
+                {
+                  title: 'Average',
+                  value: formatTimeValue(bedtimeStats.avg),
+                  caption: 'Typical bedtime',
+                },
+                {
+                  title: 'Earliest',
+                  value: formatTimeValue(bedtimeStats.min),
+                  caption: 'Best night',
+                },
+                {
+                  title: 'Variability',
+                  value: formatMinutesDelta(bedtimeStats.std),
+                  caption: 'Spread',
+                  tone: bedtimeStats.std <= 30 ? 'positive' : 'neutral',
+                },
+              ]
+            : [],
+          recommendations:
+            bedtimeStats && bedtimeStats.std > 45
+              ? [
+                  {
+                    title: 'Tighten window',
+                    detail: 'Keep bedtime within a 30–45 minute window for better consistency.',
+                  },
+                ]
+              : [
+                  {
+                    title: 'Stay consistent',
+                    detail: 'Your bedtime rhythm is steady. Keep the same wind‑down routine.',
+                  },
+                ],
         },
       },
       {
@@ -461,10 +641,47 @@ export default function SleepScreen() {
           title: 'Woke Up',
           value: formatTimeWithMeridiem(hi?.end_time),
           subtitle: 'Wake time',
+          analysis: wakeStats
+            ? `Your average wake time was ${formatTimeValue(wakeStats.avg)}. Variability across the week was ${formatMinutesDelta(wakeStats.std)}.`
+            : 'No wake time data available yet.',
           accent: '#FDBA74',
           chartType: 'ticks',
           trend: trendData.wake,
           rows: buildRows(trendData.wake, formatTimeRow),
+          insights: wakeStats
+            ? [
+                {
+                  title: 'Average',
+                  value: formatTimeValue(wakeStats.avg),
+                  caption: 'Typical wake',
+                },
+                {
+                  title: 'Latest',
+                  value: formatTimeValue(wakeStats.max),
+                  caption: 'Longest sleep-in',
+                },
+                {
+                  title: 'Variability',
+                  value: formatMinutesDelta(wakeStats.std),
+                  caption: 'Spread',
+                  tone: wakeStats.std <= 30 ? 'positive' : 'neutral',
+                },
+              ]
+            : [],
+          recommendations:
+            wakeStats && wakeStats.std > 45
+              ? [
+                  {
+                    title: 'Anchor wake time',
+                    detail: 'Try to wake within 30 minutes every day to stabilize your rhythm.',
+                  },
+                ]
+              : [
+                  {
+                    title: 'Keep the anchor',
+                    detail: 'Your wake time is consistent. Keep it steady.',
+                  },
+                ],
         },
       },
     ];
@@ -701,6 +918,9 @@ export default function SleepScreen() {
           dotThreshold={activeMetric?.dotThreshold}
           trend={activeMetric?.trend}
           rows={activeMetric?.rows}
+          insights={activeMetric?.insights}
+          recommendations={activeMetric?.recommendations}
+          analysis={activeMetric?.analysis}
         />
 
         {/* Swipeable Title Section */}
