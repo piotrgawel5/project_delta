@@ -85,4 +85,3 @@ supabase/.temp/
 # =========================
 *.orig
 *.bak
-.agent/

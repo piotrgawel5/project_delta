@@ -20,10 +20,14 @@ const H_GUTTER = 20;
 const GAP = 16;
 const CARD_WIDTH = Math.floor((SCREEN_W - H_GUTTER * 2 - GAP) / 2);
 const CARD_RADIUS = 36;
+const CARD_BG = '#000000';
+const CARD_STROKE = 'rgba(255,255,255,0.08)';
+const TEXT_SECONDARY = 'rgba(255,255,255,0.7)';
+const TEXT_TERTIARY = 'rgba(255,255,255,0.45)';
 
 // Sparkline dimensions
 const SPARKLINE_W = CARD_WIDTH - 28; // Full width minus padding
-const SPARKLINE_H = 32;
+const SPARKLINE_H = 36;
 
 export type MetricCardProps = {
   label: string;
@@ -85,7 +89,7 @@ export default function MetricCard({
     const min = Math.min(...sparkline);
     const max = Math.max(...sparkline);
     const range = max === min ? 1 : max - min;
-    const padding = 2; // Vertical padding
+    const padding = 4; // Vertical padding
 
     const points = sparkline.map((v, i) => ({
       x: (i / (sparkline.length - 1)) * SPARKLINE_W,
@@ -106,7 +110,7 @@ export default function MetricCard({
     const maxVal = Math.max(...sparkline!);
     const range = maxVal - minVal || 1;
     const dotX = SPARKLINE_W;
-    const dotY = 2 + (1 - (lastValue - minVal) / range) * (SPARKLINE_H - 4);
+    const dotY = 4 + (1 - (lastValue - minVal) / range) * (SPARKLINE_H - 8);
 
     return (
       <View style={styles.sparklineContainer}>
@@ -116,10 +120,17 @@ export default function MetricCard({
           viewBox={`0 0 ${SPARKLINE_W + 10} ${SPARKLINE_H}`}>
           <Defs>
             <SvgGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={meta.color} stopOpacity="0.35" />
+              <Stop offset="0" stopColor={meta.color} stopOpacity="0.4" />
               <Stop offset="1" stopColor={meta.color} stopOpacity="0" />
             </SvgGradient>
           </Defs>
+
+          {/* baseline */}
+          <Path
+            d={`M 0 ${SPARKLINE_H - 1} L ${SPARKLINE_W} ${SPARKLINE_H - 1}`}
+            stroke="rgba(255,255,255,0.08)"
+            strokeWidth={1}
+          />
 
           {/* Gradient fill area */}
           <Path d={sparklinePaths.areaPath} fill={`url(#${gradientId})`} />
@@ -135,11 +146,14 @@ export default function MetricCard({
           />
 
           {/* End dot */}
-          <Circle cx={dotX} cy={dotY} r={3} fill={meta.color} />
+          <Circle cx={dotX} cy={dotY} r={3.5} fill={meta.color} />
+          <Circle cx={dotX} cy={dotY} r={6} fill={meta.color} opacity={0.12} />
         </Svg>
       </View>
     );
   };
+
+  const sparklineLabel = sparklinePaths ? 'Last 7 days' : 'No trend data';
 
   return (
     <View style={styles.wrapper}>
@@ -151,6 +165,12 @@ export default function MetricCard({
         ]}
         android_ripple={{ color: 'rgba(255,255,255,0.04)', borderless: false }}
         onPress={onPress}>
+        <LinearGradient
+          colors={[meta.color + '26', 'transparent']}
+          start={[0.2, 0]}
+          end={[0.8, 1]}
+          style={styles.cardGlow}
+        />
         <LinearGradient
           colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.01)']}
           start={[0, 0]}
@@ -193,10 +213,8 @@ export default function MetricCard({
 
         {/* Sparkline or placeholder */}
         <View style={sparklinePaths ? styles.rowBottomStacked : styles.rowBottom}>
-          {sparklinePaths ? renderSparkline() : <Text style={styles.subText}>Last 7 days</Text>}
-          <View style={[styles.weekBadge, sparklinePaths && styles.weekBadgeBelow]}>
-            <Text style={styles.weekBadgeText}>Week view</Text>
-          </View>
+          {sparklinePaths ? renderSparkline() : <Text style={styles.subText}>{sparklineLabel}</Text>}
+          <Text style={styles.sparklineCaption}>{sparklineLabel}</Text>
         </View>
       </Pressable>
     </View>
@@ -207,19 +225,27 @@ const styles = StyleSheet.create({
   wrapper: {
     marginBottom: 12,
   },
+  cardGlow: {
+    position: 'absolute',
+    left: -30,
+    right: -30,
+    top: -40,
+    height: 90,
+    borderRadius: 60,
+  },
   card: {
     borderRadius: CARD_RADIUS,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: 'rgba(14,14,16,0.7)',
+    backgroundColor: CARD_BG,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: CARD_STROKE,
     // soft elevation
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOpacity: 0.3,
+        shadowOpacity: 0.28,
         shadowRadius: 12,
         shadowOffset: { height: 6, width: 0 },
       },
@@ -254,7 +280,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   label: {
-    color: 'rgba(255,255,255,0.78)',
+    color: TEXT_SECONDARY,
     fontSize: 12,
     fontWeight: '600',
     maxWidth: CARD_WIDTH * 0.6,
@@ -278,12 +304,12 @@ const styles = StyleSheet.create({
   },
   valueText: {
     color: 'white',
-    fontSize: 36,
+    fontSize: 34,
     fontWeight: '700',
     letterSpacing: -0.8,
   },
   unitText: {
-    color: 'rgba(255,255,255,0.78)',
+    color: TEXT_SECONDARY,
     fontSize: 14,
     marginLeft: 6,
   },
@@ -296,28 +322,13 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'flex-start',
   },
-  sparklineWrapper: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-  },
-  weekBadge: {
-    marginLeft: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  weekBadgeBelow: {
-    marginLeft: 0,
-    marginTop: 6,
-  },
-  weekBadgeText: {
-    color: 'rgba(255,255,255,0.7)',
+  sparklineCaption: {
+    color: TEXT_TERTIARY,
     fontSize: 10,
     fontWeight: '600',
-    letterSpacing: 0.2,
+    marginTop: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   sparklineContainer: {
     flex: 1,
@@ -327,7 +338,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   subText: {
-    color: 'rgba(255,255,255,0.45)',
+    color: TEXT_TERTIARY,
     fontSize: 11,
     fontWeight: '600',
   },

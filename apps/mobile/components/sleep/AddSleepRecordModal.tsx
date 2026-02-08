@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Modal, Dimensions, Pressable } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle, Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import Animated, {
   useSharedValue,
   useAnimatedProps,
@@ -25,10 +25,11 @@ const KNOB_HALF = KNOB_SIZE / 2;
 
 // Visual Constants
 const BORDER_RADIUS = 36;
-const CARD_BG = '#1C1C1E';
-const POPUP_BG = '#2C2C2E';
-const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.6)';
-const BTN_COLOR = '#818CF8';
+const CARD_BG = '#000000';
+const POPUP_BG = '#0B0B0D';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.65)';
+const STROKE = 'rgba(255,255,255,0.08)';
+const BTN_SOLID = '#F8FAFC';
 
 interface AddSleepRecordModalProps {
   isVisible: boolean;
@@ -347,10 +348,10 @@ export const AddSleepRecordModal = ({
                 <View style={styles.sliderContainer}>
                   <Svg width={SLIDER_SIZE} height={SLIDER_SIZE}>
                     <Defs>
-                      <LinearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <SvgGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                         <Stop offset="0" stopColor="#8E86FF" />
                         <Stop offset="1" stopColor="#A855F7" />
-                      </LinearGradient>
+                      </SvgGradient>
                     </Defs>
                     <Circle
                       cx={CENTER}
@@ -448,6 +449,8 @@ const styles = StyleSheet.create({
   gestureRoot: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
   sheet: {
     backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: STROKE,
     borderTopLeftRadius: BORDER_RADIUS,
     borderTopRightRadius: BORDER_RADIUS,
     shadowColor: '#000',
@@ -472,7 +475,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   title: { color: 'white', fontSize: 19, fontWeight: '700' },
-  closeBtn: { padding: 6, backgroundColor: POPUP_BG, borderRadius: BORDER_RADIUS },
+  closeBtn: { padding: 6, backgroundColor: POPUP_BG, borderRadius: BORDER_RADIUS, borderWidth: 1, borderColor: STROKE },
   content: { alignItems: 'center', paddingHorizontal: 20 },
   sliderContainer: {
     width: SLIDER_SIZE,
@@ -491,7 +494,7 @@ const styles = StyleSheet.create({
     width: KNOB_SIZE,
     height: KNOB_SIZE,
     borderRadius: KNOB_SIZE / 2,
-    backgroundColor: 'white',
+    backgroundColor: '#F8FAFC',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -515,22 +518,23 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: STROKE,
   },
   timeItem: { flex: 1, alignItems: 'center' },
   timeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
   timeLabelText: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '500' },
   timeValue: { color: 'white', fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  divider: { width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 12 },
+  divider: { width: 1, height: 36, backgroundColor: STROKE, marginHorizontal: 12 },
   saveBtn: {
-    backgroundColor: BTN_COLOR,
     width: '100%',
-    height: 50,
+    height: 52,
     borderRadius: BORDER_RADIUS,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: BTN_SOLID,
   },
-  saveBtnText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  saveBtnText: { color: '#000', fontSize: 16, fontWeight: '700' },
 });

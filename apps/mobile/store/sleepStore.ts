@@ -763,7 +763,19 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                         new Date(b.date).getTime() - new Date(a.date).getTime()
                     );
                 }
-                return { weeklyHistory: updated.slice(0, 30) };
+                const monthKey = date.substring(0, 7);
+                const monthExisting = state.monthlyData[monthKey] || [];
+                const monthMap = new Map<string, SleepData>();
+                monthExisting.forEach((r) => monthMap.set(r.date, r));
+                monthMap.set(date, sleepRecord);
+
+                return {
+                    weeklyHistory: updated.slice(0, 30),
+                    monthlyData: {
+                        ...state.monthlyData,
+                        [monthKey]: Array.from(monthMap.values()),
+                    },
+                };
             });
 
             // 2. Save to API - use 'source' field for validation schema

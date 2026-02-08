@@ -36,8 +36,12 @@ import { formatTime } from '@lib/sleepFormatters';
 import MetricCard from '@components/sleep/MetricCard';
 
 // Colors
-const BG_PRIMARY = '#000000';
-const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
+const BG_PRIMARY = '#0B0B0D';
+const SURFACE = '#141419';
+const SURFACE_ALT = '#1B1B21';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.68)';
+const TEXT_TERTIARY = 'rgba(255, 255, 255, 0.45)';
+const STROKE = 'rgba(255, 255, 255, 0.08)';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const BG_WIDTH = SCREEN_W;
 const BG_HEIGHT = SCREEN_H;
@@ -96,6 +100,7 @@ export default function SleepScreen() {
     loading,
     fetchSleepData,
     fetchSleepDataRange,
+    forceSaveManualSleep,
     checkHealthConnectStatus,
   } = useSleepStore();
 
@@ -322,9 +327,13 @@ export default function SleepScreen() {
 
   const monthDates = useMemo(() => {
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    const today = normalizeDate(new Date());
+    const isCurrentMonth =
+      selectedYear === today.getFullYear() && selectedMonth === today.getMonth();
+    const maxDay = isCurrentMonth ? today.getDate() : lastDay;
     return Array.from({ length: lastDay }, (_, i) =>
       normalizeDate(new Date(selectedYear, selectedMonth, i + 1))
-    );
+    ).filter((d) => d.getDate() <= maxDay);
   }, [selectedYear, selectedMonth]);
 
   useEffect(() => {
@@ -470,10 +479,13 @@ export default function SleepScreen() {
           isVisible={isAddModalVisible}
           onClose={() => setIsAddModalVisible(false)}
           onSave={async (start, end) => {
-            console.log('Save record:', start, end);
-            // In a real app this would trigger store.forceSaveManualSleep
-            // For now, UI only as requested.
-            return true;
+            if (!user?.id) return false;
+            const success = await forceSaveManualSleep(
+              user.id,
+              start.toISOString(),
+              end.toISOString()
+            );
+            return success;
           }}
           date={selectedDate}
           userId={user?.id || ''}
@@ -692,7 +704,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: UI_RADIUS,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: STROKE,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -730,15 +744,17 @@ const styles = StyleSheet.create({
   emptyState: {
     borderRadius: UI_RADIUS,
     padding: 22,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: SURFACE_ALT,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: STROKE,
   },
   emptyBadge: {
     width: 44,
     height: 44,
     borderRadius: UI_RADIUS,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: STROKE,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -750,7 +766,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptyCopy: {
-    color: TEXT_SECONDARY,
+    color: TEXT_TERTIARY,
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 16,
@@ -760,7 +776,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'white',
+    backgroundColor: '#F8FAFC',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: UI_RADIUS,

@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI Creator"
+  short_description: "Create modern Expo React Native UI screens"
+  default_prompt: "Design and implement modern mobile UI in Expo React Native, with charts, navigation, and sheets inspired by The Outsiders app and iOS/One UI aesthetics."

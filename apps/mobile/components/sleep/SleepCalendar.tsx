@@ -30,11 +30,11 @@ import { useAuthStore } from '@store/authStore';
 import { getSleepScoreGrade } from '@lib/sleepColors';
 
 // Colors & Visual Constants
-const CARD_BG = '#1C1C1E';
-const POPUP_BG = '#2C2C2E';
+const CARD_BG = '#141419';
+const POPUP_BG = '#1B1B21';
 const TEXT_PRIMARY = '#FFFFFF';
-const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.5)';
-const TEXT_DISABLED = 'rgba(255, 255, 255, 0.3)';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.65)';
+const TEXT_DISABLED = 'rgba(255, 255, 255, 0.35)';
 const ACCENT_COLOR = '#818CF8'; // Indigo 400 - Brighter accent
 
 // Neon Colors for OLED Contrast
@@ -50,6 +50,7 @@ const NEON_COLORS = {
 };
 
 const BORDER_RADIUS = 36;
+const STROKE = 'rgba(255,255,255,0.08)';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface SleepCalendarProps {
@@ -457,6 +458,8 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
     borderTopLeftRadius: BORDER_RADIUS,
     borderTopRightRadius: BORDER_RADIUS,
+    borderWidth: 1,
+    borderColor: STROKE,
     overflow: 'hidden',
     width: '100%',
   },
@@ -473,7 +476,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: { color: 'white', fontSize: 20, fontWeight: '700' },
-  closeBtn: { padding: 8, backgroundColor: POPUP_BG, borderRadius: BORDER_RADIUS },
+  closeBtn: {
+    padding: 8,
+    backgroundColor: POPUP_BG,
+    borderRadius: BORDER_RADIUS,
+    borderWidth: 1,
+    borderColor: STROKE,
+  },
 
   controlsSection: { paddingHorizontal: 20, marginBottom: 20 },
   segmentedContainer: {
@@ -482,6 +491,8 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS,
     padding: 4,
     height: 48,
+    borderWidth: 1,
+    borderColor: STROKE,
   },
   segmentBtn: { flex: 1, borderRadius: BORDER_RADIUS, justifyContent: 'center', alignItems: 'center' },
   segmentBtnActive: {
@@ -502,7 +513,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   navTitle: { color: 'white', fontSize: 17, fontWeight: '600' },
-  arrowBtn: { padding: 8, borderRadius: BORDER_RADIUS, backgroundColor: POPUP_BG },
+  arrowBtn: {
+    padding: 8,
+    borderRadius: BORDER_RADIUS,
+    backgroundColor: POPUP_BG,
+    borderWidth: 1,
+    borderColor: STROKE,
+  },
 
   // Month Grid
   gridContainer: { paddingHorizontal: 20, paddingBottom: 10 },
@@ -563,7 +580,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS,
     padding: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: STROKE,
   },
   detailCardIndicator: {
     position: 'absolute',
@@ -589,7 +606,7 @@ const styles = StyleSheet.create({
   dcMetricValue: { fontSize: 24, fontWeight: '700', color: 'white' },
   dcUnit: { fontSize: 14, fontWeight: '500', color: TEXT_SECONDARY },
   dcLabel: { fontSize: 13, color: TEXT_SECONDARY, fontWeight: '500' },
-  dcDivider: { width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.1)' },
+  dcDivider: { width: 1, height: 40, backgroundColor: STROKE },
 
   wcEmpty: { color: TEXT_DISABLED, fontSize: 15, textAlign: 'center', marginTop: 10 },
 });
