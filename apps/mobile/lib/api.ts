@@ -4,14 +4,15 @@ import { supabase } from "./supabase";
 // Production API URL (Render deployment)
 const RENDER_API_URL = "https://project-delta-3mqz.onrender.com";
 
-// Local development URLs (uncomment to use local Docker/server instead)
+// Local development URLs (uncomment and change API_URL below to use local Docker/server)
 // const LOCALHOST = Platform.select({
 //     android: "http://10.0.2.2:3000",
 //     ios: "http://localhost:3000",
 //     default: "http://localhost:3000",
 // });
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || RENDER_API_URL;
+// Use Render deployment URL (change to LOCALHOST for local development)
+const API_URL = RENDER_API_URL;
 
 console.log("[API] Base URL:", API_URL);
 
