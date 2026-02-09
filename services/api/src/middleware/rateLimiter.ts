@@ -40,7 +40,7 @@ const onLimitReached = (req: Request, _res: Response, options: Options) => {
 export const globalLimiter = rateLimit({
     skip: () => true,
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100,
+    max: 1000,
     standardHeaders: true,
     legacyHeaders: false,
     message: rateLimitResponse("Too many requests, please try again later."),
@@ -57,7 +57,7 @@ export const globalLimiter = rateLimit({
 export const authLimiter = rateLimit({
     skip: () => true,
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 10,
+    max: 100,
     standardHeaders: true,
     legacyHeaders: false,
     message: rateLimitResponse(
@@ -76,7 +76,7 @@ export const authLimiter = rateLimit({
 export const userWriteLimiter = rateLimit({
     skip: () => true,
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 30,
+    max: 300,
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: getUserKey,
@@ -94,7 +94,7 @@ export const userWriteLimiter = rateLimit({
 export const userReadLimiter = rateLimit({
     skip: () => true,
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100,
+    max: 1000,
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: getUserKey,
@@ -112,7 +112,7 @@ export const userReadLimiter = rateLimit({
 export const sensitiveOpLimiter = rateLimit({
     skip: () => true,
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 5,
+    max: 50,
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: getUserKey,
@@ -132,7 +132,7 @@ export const sensitiveOpLimiter = rateLimit({
 export const burstLimiter = rateLimit({
     skip: () => true,
     windowMs: 10 * 1000, // 10 seconds
-    max: 10,
+    max: 100,
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: getUserKey,

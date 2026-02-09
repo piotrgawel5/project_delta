@@ -1,15 +1,17 @@
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
 
-// Use localhost for emulator/simulator
-// For physical device, set EXPO_PUBLIC_API_URL to your computer's local IP (e.g., http://192.168.1.x:3000)
-const LOCALHOST = Platform.select({
-    android: "http://10.0.2.2:3000",
-    ios: "http://localhost:3000",
-    default: "http://localhost:3000",
-});
+// Production API URL (Render deployment)
+const RENDER_API_URL = "https://project-delta-3mqz.onrender.com";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || LOCALHOST;
+// Local development URLs (uncomment to use local Docker/server instead)
+// const LOCALHOST = Platform.select({
+//     android: "http://10.0.2.2:3000",
+//     ios: "http://localhost:3000",
+//     default: "http://localhost:3000",
+// });
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || RENDER_API_URL;
 
 console.log("[API] Base URL:", API_URL);
 
