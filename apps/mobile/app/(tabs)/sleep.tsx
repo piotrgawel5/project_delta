@@ -51,10 +51,23 @@ const BG_WIDTH = SCREEN_W;
 const BG_HEIGHT = SCREEN_H;
 const UI_RADIUS = 36;
 const GRADIENT_LOCATIONS = [0, 0.55, 1] as const;
-const GRADIENT_SWIPE_DELAY_MS = 250;
 const padToSeven = <T,>(values: T[], fill: T) => {
   if (values.length >= 7) return values.slice(-7);
   return Array(7 - values.length).fill(fill).concat(values);
+};
+
+const toBedMinutes = (iso?: string | null) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  let minutes = d.getHours() * 60 + d.getMinutes();
+  if (minutes < 12 * 60) minutes += 24 * 60;
+  return minutes;
+};
+
+const toWakeMinutes = (iso?: string | null) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return d.getHours() * 60 + d.getMinutes();
 };
 
 const GradientBackground = React.memo(function GradientBackground({
@@ -136,7 +149,6 @@ export default function SleepScreen() {
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
   const [activeMetric, setActiveMetric] = useState<MetricSheetData | null>(null);
-  const gradientDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -237,6 +249,8 @@ export default function SleepScreen() {
 
   const bedtimeParts = formatTimeParts(hi?.start_time);
   const wakeParts = formatTimeParts(hi?.end_time);
+  const currentBedMinutes = toBedMinutes(hi?.start_time);
+  const currentWakeMinutes = toWakeMinutes(hi?.end_time);
 
   // Memoize sleep score grade to avoid redundant calculations
   const sleepScoreGrade = useMemo(
@@ -268,20 +282,6 @@ export default function SleepScreen() {
   }, [weeklyHistory]);
 
   const trendData = useMemo(() => {
-    const toBedMinutes = (iso?: string | null) => {
-      if (!iso) return null;
-      const d = new Date(iso);
-      let minutes = d.getHours() * 60 + d.getMinutes();
-      if (minutes < 12 * 60) minutes += 24 * 60;
-      return minutes;
-    };
-
-    const toWakeMinutes = (iso?: string | null) => {
-      if (!iso) return null;
-      const d = new Date(iso);
-      return d.getHours() * 60 + d.getMinutes();
-    };
-
     return {
       duration: padToSeven(weeklySeries.map((item) => item.duration_minutes ?? null), null),
       efficiency: padToSeven(
@@ -306,6 +306,18 @@ export default function SleepScreen() {
         weeklySeries.map((item) => {
           const d = new Date(item.date);
           return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+        }),
+        '--'
+      ),
+    [weeklySeries]
+  );
+
+  const weekShortLabels = useMemo(
+    () =>
+      padToSeven(
+        weeklySeries.map((item) => {
+          const d = new Date(item.date);
+          return d.toLocaleDateString('en-US', { weekday: 'short' });
         }),
         '--'
       ),
@@ -402,6 +414,14 @@ export default function SleepScreen() {
           accent: '#7DD3FC',
           chartType: 'bars',
           trend: trendData.duration,
+          trendLabels: weekShortLabels,
+          currentValue: durationMinutes || undefined,
+          range: {
+            min: 420,
+            max: 540,
+            label: '7-9 hr',
+            note: 'Adult target window',
+          },
           rows: buildRows(trendData.duration, formatHoursRow),
           insights: totalStats
             ? [
@@ -475,6 +495,14 @@ export default function SleepScreen() {
           chartType: 'dots',
           dotThreshold: 85,
           trend: trendData.efficiency,
+          trendLabels: weekShortLabels,
+          currentValue: durationMinutes ? sleepEfficiency : undefined,
+          range: {
+            min: 85,
+            max: 95,
+            label: '85-95%',
+            note: 'High quality sleep',
+          },
           rows: buildRows(trendData.efficiency, formatPercentRow),
           insights: efficiencyStats
             ? [
@@ -541,6 +569,12 @@ export default function SleepScreen() {
           accent: '#A7F3D0',
           chartType: 'bars',
           trend: trendData.duration,
+          trendLabels: weekShortLabels,
+          segments: stageItems,
+          range: {
+            label: 'Typical mix',
+            note: 'Deep 13-23% | REM 20-25% | Light 50-60%',
+          },
           rows: stageRows,
           insights:
             deepStats && remStats && lightStats
@@ -596,6 +630,19 @@ export default function SleepScreen() {
           accent: '#93C5FD',
           chartType: 'line',
           trend: trendData.bed,
+          trendLabels: weekShortLabels,
+          currentValue: currentBedMinutes ?? undefined,
+          range: bedtimeStats
+            ? {
+                min: bedtimeStats.avg - 45,
+                max: bedtimeStats.avg + 45,
+                label: 'Within 45 min',
+                note: 'Consistency target',
+              }
+            : {
+                label: 'Within 45 min',
+                note: 'Consistency target',
+              },
           rows: buildRows(trendData.bed, formatTimeRow),
           insights: bedtimeStats
             ? [
@@ -655,6 +702,19 @@ export default function SleepScreen() {
           accent: '#FDBA74',
           chartType: 'ticks',
           trend: trendData.wake,
+          trendLabels: weekShortLabels,
+          currentValue: currentWakeMinutes ?? undefined,
+          range: wakeStats
+            ? {
+                min: Math.max(0, wakeStats.avg - 30),
+                max: Math.min(24 * 60, wakeStats.avg + 30),
+                label: 'Within 30 min',
+                note: 'Consistency target',
+              }
+            : {
+                label: 'Within 30 min',
+                note: 'Consistency target',
+              },
           rows: buildRows(trendData.wake, formatTimeRow),
           insights: wakeStats
             ? [
@@ -709,9 +769,12 @@ export default function SleepScreen() {
     trendData.light,
     trendData.rem,
     trendData.wake,
+    currentBedMinutes,
+    currentWakeMinutes,
     wakeParts.meridiem,
     wakeParts.time,
     weekLabels,
+    weekShortLabels,
   ]);
 
   const historyByDate = useMemo(() => {
@@ -783,28 +846,13 @@ export default function SleepScreen() {
       setActiveIndex(index);
     }
     const nextKey = next ? dateKey(next) : gradientKey;
-    if (gradientDelayRef.current) {
-      clearTimeout(gradientDelayRef.current);
-      gradientDelayRef.current = null;
-    }
-    gradientDelayRef.current = setTimeout(() => {
-      setGradientKey(nextKey, true);
-      gradientDelayRef.current = null;
-    }, GRADIENT_SWIPE_DELAY_MS);
+    setGradientKey(nextKey, true);
     navigation.getParent()?.setOptions({ swipeEnabled: true });
   };
 
   useEffect(() => {
     navigation.getParent()?.setOptions({ swipeEnabled: true });
   }, [navigation]);
-
-  useEffect(() => {
-    return () => {
-      if (gradientDelayRef.current) {
-        clearTimeout(gradientDelayRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (!monthDates.length) return;
@@ -946,10 +994,14 @@ export default function SleepScreen() {
           chartType={resolvedSheetChartType}
           dotThreshold={activeMetric?.dotThreshold}
           trend={activeMetric?.trend}
+          trendLabels={activeMetric?.trendLabels}
           rows={activeMetric?.rows}
           insights={activeMetric?.insights}
           recommendations={activeMetric?.recommendations}
           analysis={activeMetric?.analysis}
+          range={activeMetric?.range}
+          currentValue={activeMetric?.currentValue}
+          segments={activeMetric?.segments}
         />
 
         {/* Swipeable Title Section */}
@@ -972,10 +1024,6 @@ export default function SleepScreen() {
             updateCellsBatchingPeriod={50}
             removeClippedSubviews
             onScrollBeginDrag={() => {
-              if (gradientDelayRef.current) {
-                clearTimeout(gradientDelayRef.current);
-                gradientDelayRef.current = null;
-              }
               navigation.getParent()?.setOptions({ swipeEnabled: false });
             }}
             onMomentumScrollEnd={(event) => handlePagerEnd(event.nativeEvent.contentOffset.x)}
@@ -983,10 +1031,6 @@ export default function SleepScreen() {
               navigation.getParent()?.setOptions({ swipeEnabled: true });
             }}
             onTouchStart={() => {
-              if (gradientDelayRef.current) {
-                clearTimeout(gradientDelayRef.current);
-                gradientDelayRef.current = null;
-              }
               navigation.getParent()?.setOptions({ swipeEnabled: false });
             }}
             onTouchEnd={() => {
