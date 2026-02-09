@@ -26,30 +26,38 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SleepCalendar } from '../../components/sleep/SleepCalendar';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
-import { transformToHypnogramStages } from '@lib/sleepTransform';
 import { getSleepScoreGrade, brightenColor } from '@lib/sleepColors';
 import {
   formatHours,
-  formatMinutesToTimeLabel,
   formatTimeParts,
   formatTimeWithMeridiem,
 } from '@lib/sleepFormatters';
 import { addDays, dateKey, isSameDay, normalizeDate } from '@lib/sleepDateUtils';
 import { useSleepGradient } from '@lib/useSleepGradient';
-import { MetricDetailSheet } from '@components/sleep/MetricDetailSheet';
-import { SleepMetricsList, SleepMetricItem, MetricSheetData } from '@components/sleep/dashboard/SleepMetricsList';
+import { SleepMetricsList, SleepMetricItem } from '@components/sleep/dashboard/SleepMetricsList';
 
 // Colors
 const BG_PRIMARY = '#0B0B0D';
-const SURFACE = '#141419';
 const SURFACE_ALT = '#1B1B21';
+const SHEET_BG = '#000000';
 const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.68)';
 const TEXT_TERTIARY = 'rgba(255, 255, 255, 0.45)';
 const STROKE = 'rgba(255, 255, 255, 0.08)';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const BG_WIDTH = SCREEN_W;
-const BG_HEIGHT = SCREEN_H;
-const UI_RADIUS = 36;
+const SHEET_PADDING_X = 20;
+const SHEET_PADDING_TOP = 24;
+const SHEET_INNER_RADIUS = 24;
+const SHEET_RADIUS = SHEET_INNER_RADIUS + SHEET_PADDING_X;
+const ICON_BUTTON_SIZE = 44;
+const ICON_BUTTON_RADIUS = ICON_BUTTON_SIZE / 2;
+const EMPTY_STATE_PADDING = 22;
+const EMPTY_STATE_INNER_RADIUS = 8;
+const EMPTY_STATE_RADIUS = EMPTY_STATE_INNER_RADIUS + EMPTY_STATE_PADDING;
+const EMPTY_BADGE_SIZE = 44;
+const EMPTY_BADGE_RADIUS = EMPTY_BADGE_SIZE / 2;
+const EMPTY_BUTTON_PADDING_Y = 10;
+const EMPTY_BUTTON_INNER_RADIUS = 8;
+const EMPTY_BUTTON_RADIUS = EMPTY_BUTTON_INNER_RADIUS + EMPTY_BUTTON_PADDING_Y;
 const GRADIENT_LOCATIONS = [0, 0.55, 1] as const;
 const padToSeven = <T,>(values: T[], fill: T) => {
   if (values.length >= 7) return values.slice(-7);
@@ -148,7 +156,6 @@ export default function SleepScreen() {
   );
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
-  const [activeMetric, setActiveMetric] = useState<MetricSheetData | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -249,29 +256,6 @@ export default function SleepScreen() {
 
   const bedtimeParts = formatTimeParts(hi?.start_time);
   const wakeParts = formatTimeParts(hi?.end_time);
-  const currentBedMinutes = toBedMinutes(hi?.start_time);
-  const currentWakeMinutes = toWakeMinutes(hi?.end_time);
-
-  // Memoize sleep score grade to avoid redundant calculations
-  const sleepScoreGrade = useMemo(
-    () => getSleepScoreGrade(currentData.historyItem?.sleep_score ?? 0),
-    [currentData.historyItem?.sleep_score]
-  );
-
-
-  // Transform aggregate sleep data into hypnogram-compatible stages
-  const hypnogramStages = useMemo(() => {
-    if (!hi) return [];
-    return transformToHypnogramStages({
-      start_time: hi.start_time,
-      end_time: hi.end_time,
-      duration_minutes: hi.duration_minutes,
-      deep_sleep_minutes: hi.deep_sleep_minutes,
-      rem_sleep_minutes: hi.rem_sleep_minutes,
-      light_sleep_minutes: hi.light_sleep_minutes,
-      awake_minutes: hi.awake_minutes,
-    });
-  }, [hi]);
 
   const weeklySeries = useMemo(() => {
     const history = weeklyHistory || [];
@@ -300,82 +284,13 @@ export default function SleepScreen() {
     };
   }, [weeklySeries]);
 
-  const weekLabels = useMemo(
-    () =>
-      padToSeven(
-        weeklySeries.map((item) => {
-          const d = new Date(item.date);
-          return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
-        }),
-        '--'
-      ),
-    [weeklySeries]
-  );
-
-  const weekShortLabels = useMemo(
-    () =>
-      padToSeven(
-        weeklySeries.map((item) => {
-          const d = new Date(item.date);
-          return d.toLocaleDateString('en-US', { weekday: 'short' });
-        }),
-        '--'
-      ),
-    [weeklySeries]
-  );
-
   const metricCards = useMemo<SleepMetricItem[]>(() => {
-    const stats = (values: Array<number | null>) => {
-      const numeric = values.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
-      if (!numeric.length) return null;
-      const avg = numeric.reduce((sum, v) => sum + v, 0) / numeric.length;
-      const min = Math.min(...numeric);
-      const max = Math.max(...numeric);
-      const delta = numeric.length > 1 ? numeric[numeric.length - 1] - numeric[0] : 0;
-      const variance =
-        numeric.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / numeric.length;
-      const std = Math.sqrt(variance);
-      return { avg, min, max, delta, std };
-    };
-
-    const formatMinutesDelta = (minutes: number) => `${Math.round(minutes)} min`;
-    const formatHoursValue = (minutes: number) => `${formatHours(minutes)}h`;
-    const formatPercentValue = (value: number) => `${Math.round(value)}%`;
-    const formatTimeValue = (minutes: number) => formatMinutesToTimeLabel(minutes);
-
-    const formatHoursRow = (value: number | null) =>
-      typeof value === 'number' ? `${formatHours(value)}h` : '--';
-    const formatPercentRow = (value: number | null) =>
-      typeof value === 'number' ? `${value}%` : '--';
-    const formatTimeRow = (value: number | null) => formatMinutesToTimeLabel(value);
-
-    const buildRows = (values: Array<number | null>, formatter: (value: number | null) => string) =>
-      weekLabels.map((label, index) => ({
-        label,
-        value: formatter(values[index] ?? null),
-      }));
-
-    const stageRows = weekLabels.map((label, index) => {
-      const deep = trendData.deep[index];
-      const rem = trendData.rem[index];
-      const light = trendData.light[index];
-      const hasAny = [deep, rem, light].some((v) => typeof v === 'number');
-      return {
-        label,
-        value: hasAny
-          ? `D ${formatHours(deep ?? 0)}h / R ${formatHours(rem ?? 0)}h / L ${formatHours(light ?? 0)}h`
-          : '--',
-      };
-    });
-
-    const totalStats = stats(trendData.duration);
     const totalSubtitle = durationMinutes
       ? durationMinutes >= 420
         ? 'Above goal'
         : 'Below goal'
       : 'No data';
 
-    const efficiencyStats = stats(trendData.efficiency);
     const efficiencySubtitle = durationMinutes
       ? sleepEfficiency >= 85
         ? 'Excellent'
@@ -383,12 +298,6 @@ export default function SleepScreen() {
           ? 'Good'
           : 'Low'
       : 'No data';
-
-    const bedtimeStats = stats(trendData.bed);
-    const wakeStats = stats(trendData.wake);
-    const deepStats = stats(trendData.deep);
-    const remStats = stats(trendData.rem);
-    const lightStats = stats(trendData.light);
 
     return [
       {
@@ -402,67 +311,8 @@ export default function SleepScreen() {
         icon: 'moon',
         trend: trendData.duration,
         chartType: 'bars',
-        sheet: {
-          id: 'total',
-          title: 'Total Sleep',
-          value: durationHoursValue,
-          unit: durationMinutes ? 'hr' : undefined,
-          subtitle: totalSubtitle,
-          analysis: totalStats
-            ? `You averaged ${formatHoursValue(totalStats.avg)} over the last week, with a range from ${formatHoursValue(totalStats.min)} to ${formatHoursValue(totalStats.max)}. Consistency was ${formatHoursValue(totalStats.std)}.`
-            : 'No weekly sleep duration data available yet.',
-          accent: '#7DD3FC',
-          chartType: 'bars',
-          trend: trendData.duration,
-          trendLabels: weekShortLabels,
-          currentValue: durationMinutes || undefined,
-          range: {
-            min: 420,
-            max: 540,
-            label: '7-9 hr',
-            note: 'Adult target window',
-          },
-          rows: buildRows(trendData.duration, formatHoursRow),
-          insights: totalStats
-            ? [
-                {
-                  title: '7-day avg',
-                  value: formatHoursValue(totalStats.avg),
-                  caption: 'Across last week',
-                  tone: totalStats.avg >= 420 ? 'positive' : 'neutral',
-                },
-                {
-                  title: 'Best night',
-                  value: formatHoursValue(totalStats.max),
-                  caption: 'Longest sleep',
-                },
-                {
-                  title: 'Consistency',
-                  value: formatHoursValue(totalStats.std),
-                  caption: 'Night-to-night',
-                },
-              ]
-            : [],
-          recommendations:
-            totalStats && totalStats.avg < 420
-              ? [
-                  {
-                    title: 'Extend sleep window',
-                    detail:
-                      'Aim for 7–8 hours by moving bedtime 20–30 minutes earlier for the next week.',
-                  },
-                  {
-                    title: 'Protect wind-down',
-                    detail: 'Keep screens off in the last 30 minutes to fall asleep faster.',
-                  },
-                ]
-              : [
-                  {
-                    title: 'Maintain rhythm',
-                    detail: 'Keep your current schedule steady to preserve recovery gains.',
-                  },
-                ],
-        },
+        dataDate: selectedDate,
+        selectedDate,
       },
       {
         id: 'efficiency',
@@ -482,67 +332,8 @@ export default function SleepScreen() {
         trend: trendData.efficiency,
         chartType: 'dots',
         dotThreshold: 85,
-        sheet: {
-          id: 'efficiency',
-          title: 'Efficiency',
-          value: durationMinutes ? `${sleepEfficiency}` : '--',
-          unit: durationMinutes ? '%' : undefined,
-          subtitle: efficiencySubtitle,
-          analysis: efficiencyStats
-            ? `Your average sleep efficiency was ${formatPercentValue(efficiencyStats.avg)}, with a best night at ${formatPercentValue(efficiencyStats.max)}. Lower efficiency often comes from frequent awakenings.`
-            : 'No efficiency data available yet.',
-          accent: '#C4B5FD',
-          chartType: 'dots',
-          dotThreshold: 85,
-          trend: trendData.efficiency,
-          trendLabels: weekShortLabels,
-          currentValue: durationMinutes ? sleepEfficiency : undefined,
-          range: {
-            min: 85,
-            max: 95,
-            label: '85-95%',
-            note: 'High quality sleep',
-          },
-          rows: buildRows(trendData.efficiency, formatPercentRow),
-          insights: efficiencyStats
-            ? [
-                {
-                  title: '7-day avg',
-                  value: formatPercentValue(efficiencyStats.avg),
-                  caption: efficiencyStats.avg >= 85 ? 'Excellent' : 'Room to improve',
-                  tone: efficiencyStats.avg >= 85 ? 'positive' : 'neutral',
-                },
-                {
-                  title: 'Best night',
-                  value: formatPercentValue(efficiencyStats.max),
-                  caption: 'Peak efficiency',
-                },
-                {
-                  title: 'Consistency',
-                  value: `${Math.round(efficiencyStats.std)}%`,
-                  caption: 'Night-to-night',
-                },
-              ]
-            : [],
-          recommendations:
-            efficiencyStats && efficiencyStats.avg < 85
-              ? [
-                  {
-                    title: 'Reduce disruptions',
-                    detail: 'Keep the room cool and dark and avoid caffeine after mid‑afternoon.',
-                  },
-                  {
-                    title: 'Set a buffer',
-                    detail: 'Allow 20 minutes of calm before bed to ease sleep onset.',
-                  },
-                ]
-              : [
-                  {
-                    title: 'Keep it steady',
-                    detail: 'Your efficiency is strong. Maintain a consistent bedtime routine.',
-                  },
-                ],
-        },
+        dataDate: selectedDate,
+        selectedDate,
       },
       {
         id: 'stages',
@@ -556,57 +347,8 @@ export default function SleepScreen() {
         chartType: 'stages',
         stages: stageItems,
         showDays: false,
-        sheet: {
-          id: 'stages',
-          title: 'Sleep Stages',
-          value: durationMinutes ? durationHoursValue : '--',
-          unit: durationMinutes ? 'hr' : undefined,
-          subtitle: durationMinutes ? 'Weekly stage mix' : 'No data',
-          analysis:
-            durationMinutes && deepStats && remStats && lightStats
-              ? `On average, deep sleep was ${formatHoursValue(deepStats.avg)} and REM was ${formatHoursValue(remStats.avg)}. Light sleep made up the remainder at ${formatHoursValue(lightStats.avg)}.`
-              : 'Stage data is unavailable for this week.',
-          accent: '#A7F3D0',
-          chartType: 'bars',
-          trend: trendData.duration,
-          trendLabels: weekShortLabels,
-          segments: stageItems,
-          range: {
-            label: 'Typical mix',
-            note: 'Deep 13-23% | REM 20-25% | Light 50-60%',
-          },
-          rows: stageRows,
-          insights:
-            deepStats && remStats && lightStats
-              ? [
-                  {
-                    title: 'Avg Deep',
-                    value: formatHoursValue(deepStats.avg),
-                    caption: 'Restorative',
-                  },
-                  {
-                    title: 'Avg REM',
-                    value: formatHoursValue(remStats.avg),
-                    caption: 'Mental recovery',
-                  },
-                  {
-                    title: 'Avg Light',
-                    value: formatHoursValue(lightStats.avg),
-                    caption: 'Baseline',
-                  },
-                ]
-              : [],
-          recommendations: [
-            {
-              title: 'Protect deep sleep',
-              detail: 'Avoid late heavy meals and keep your room cool to preserve deep stages.',
-            },
-            {
-              title: 'Support REM',
-              detail: 'Keep wake times consistent to stabilize REM cycles.',
-            },
-          ],
-        },
+        dataDate: selectedDate,
+        selectedDate,
       },
       {
         id: 'bed',
@@ -619,66 +361,8 @@ export default function SleepScreen() {
         icon: 'bed',
         trend: trendData.bed,
         chartType: 'line',
-        sheet: {
-          id: 'bed',
-          title: 'Fell Asleep',
-          value: formatTimeWithMeridiem(hi?.start_time),
-          subtitle: 'Bedtime',
-          analysis: bedtimeStats
-            ? `Your average bedtime was ${formatTimeValue(bedtimeStats.avg)}. Bedtime varied by about ${formatMinutesDelta(bedtimeStats.std)} across the week.`
-            : 'No bedtime data available yet.',
-          accent: '#93C5FD',
-          chartType: 'line',
-          trend: trendData.bed,
-          trendLabels: weekShortLabels,
-          currentValue: currentBedMinutes ?? undefined,
-          range: bedtimeStats
-            ? {
-                min: bedtimeStats.avg - 45,
-                max: bedtimeStats.avg + 45,
-                label: 'Within 45 min',
-                note: 'Consistency target',
-              }
-            : {
-                label: 'Within 45 min',
-                note: 'Consistency target',
-              },
-          rows: buildRows(trendData.bed, formatTimeRow),
-          insights: bedtimeStats
-            ? [
-                {
-                  title: 'Average',
-                  value: formatTimeValue(bedtimeStats.avg),
-                  caption: 'Typical bedtime',
-                },
-                {
-                  title: 'Earliest',
-                  value: formatTimeValue(bedtimeStats.min),
-                  caption: 'Best night',
-                },
-                {
-                  title: 'Variability',
-                  value: formatMinutesDelta(bedtimeStats.std),
-                  caption: 'Spread',
-                  tone: bedtimeStats.std <= 30 ? 'positive' : 'neutral',
-                },
-              ]
-            : [],
-          recommendations:
-            bedtimeStats && bedtimeStats.std > 45
-              ? [
-                  {
-                    title: 'Tighten window',
-                    detail: 'Keep bedtime within a 30–45 minute window for better consistency.',
-                  },
-                ]
-              : [
-                  {
-                    title: 'Stay consistent',
-                    detail: 'Your bedtime rhythm is steady. Keep the same wind‑down routine.',
-                  },
-                ],
-        },
+        dataDate: selectedDate,
+        selectedDate,
       },
       {
         id: 'wake',
@@ -691,66 +375,8 @@ export default function SleepScreen() {
         icon: 'alarm',
         trend: trendData.wake,
         chartType: 'ticks',
-        sheet: {
-          id: 'wake',
-          title: 'Woke Up',
-          value: formatTimeWithMeridiem(hi?.end_time),
-          subtitle: 'Wake time',
-          analysis: wakeStats
-            ? `Your average wake time was ${formatTimeValue(wakeStats.avg)}. Variability across the week was ${formatMinutesDelta(wakeStats.std)}.`
-            : 'No wake time data available yet.',
-          accent: '#FDBA74',
-          chartType: 'ticks',
-          trend: trendData.wake,
-          trendLabels: weekShortLabels,
-          currentValue: currentWakeMinutes ?? undefined,
-          range: wakeStats
-            ? {
-                min: Math.max(0, wakeStats.avg - 30),
-                max: Math.min(24 * 60, wakeStats.avg + 30),
-                label: 'Within 30 min',
-                note: 'Consistency target',
-              }
-            : {
-                label: 'Within 30 min',
-                note: 'Consistency target',
-              },
-          rows: buildRows(trendData.wake, formatTimeRow),
-          insights: wakeStats
-            ? [
-                {
-                  title: 'Average',
-                  value: formatTimeValue(wakeStats.avg),
-                  caption: 'Typical wake',
-                },
-                {
-                  title: 'Latest',
-                  value: formatTimeValue(wakeStats.max),
-                  caption: 'Longest sleep-in',
-                },
-                {
-                  title: 'Variability',
-                  value: formatMinutesDelta(wakeStats.std),
-                  caption: 'Spread',
-                  tone: wakeStats.std <= 30 ? 'positive' : 'neutral',
-                },
-              ]
-            : [],
-          recommendations:
-            wakeStats && wakeStats.std > 45
-              ? [
-                  {
-                    title: 'Anchor wake time',
-                    detail: 'Try to wake within 30 minutes every day to stabilize your rhythm.',
-                  },
-                ]
-              : [
-                  {
-                    title: 'Keep the anchor',
-                    detail: 'Your wake time is consistent. Keep it steady.',
-                  },
-                ],
-        },
+        dataDate: selectedDate,
+        selectedDate,
       },
     ];
   }, [
@@ -758,23 +384,14 @@ export default function SleepScreen() {
     bedtimeParts.time,
     durationHoursValue,
     durationMinutes,
-    hi?.end_time,
-    hi?.start_time,
     sleepEfficiency,
     stageItems,
     trendData.bed,
-    trendData.deep,
     trendData.duration,
     trendData.efficiency,
-    trendData.light,
-    trendData.rem,
     trendData.wake,
-    currentBedMinutes,
-    currentWakeMinutes,
     wakeParts.meridiem,
     wakeParts.time,
-    weekLabels,
-    weekShortLabels,
   ]);
 
   const historyByDate = useMemo(() => {
@@ -814,10 +431,6 @@ export default function SleepScreen() {
     getColorForKey: getGradientColorForKey,
   });
 
-  const resolvedSheetChartType =
-    activeMetric?.chartType && activeMetric.chartType !== 'stages'
-      ? activeMetric.chartType
-      : 'bars';
 
   const monthDates = useMemo(() => {
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
@@ -983,26 +596,6 @@ export default function SleepScreen() {
           userId={user?.id || ''}
         />
 
-        <MetricDetailSheet
-          isVisible={!!activeMetric}
-          onClose={() => setActiveMetric(null)}
-          title={activeMetric?.title || ''}
-          value={activeMetric?.value || '--'}
-          unit={activeMetric?.unit}
-          subtitle={activeMetric?.subtitle}
-          accent={activeMetric?.accent || '#7DD3FC'}
-          chartType={resolvedSheetChartType}
-          dotThreshold={activeMetric?.dotThreshold}
-          trend={activeMetric?.trend}
-          trendLabels={activeMetric?.trendLabels}
-          rows={activeMetric?.rows}
-          insights={activeMetric?.insights}
-          recommendations={activeMetric?.recommendations}
-          analysis={activeMetric?.analysis}
-          range={activeMetric?.range}
-          currentValue={activeMetric?.currentValue}
-          segments={activeMetric?.segments}
-        />
 
         {/* Swipeable Title Section */}
         <View style={styles.pagerWrap}>
@@ -1079,65 +672,57 @@ export default function SleepScreen() {
           />
         </View>
 
-        <View style={styles.contentWrap}>
-          {hasData ? (
-            <>
-              <SleepMetricsList
-                metrics={metricCards}
-                onMetricPress={(metric) => {
-                  setActiveMetric(metric);
-                }}
-              />
+        <View
+          style={[
+            styles.bottomSheet,
+            { paddingBottom: Math.max(120, insets.bottom + 80) },
+          ]}>
+          <View style={styles.bottomSheetContent}>
+            {hasData ? (
+              <>
+                <SleepMetricsList metrics={metricCards} />
 
-              {/* Chart Section */}
-              <View style={styles.chartSection}>
-                <View style={styles.labelRow}>
-                  <Text style={styles.chartTitle}>Sleep Stages</Text>
-                  <Ionicons
-                    name="information-circle"
-                    size={16}
-                    color={TEXT_SECONDARY}
-                    style={{ marginLeft: 6 }}
-                  />
+                {/* Chart Section */}
+                <View style={styles.chartSection}>
+                  <View style={styles.labelRow}>
+                    <Text style={styles.chartTitle}>Sleep Stages</Text>
+                    <Ionicons
+                      name="information-circle"
+                      size={16}
+                      color={TEXT_SECONDARY}
+                      style={{ marginLeft: 6 }}
+                    />
+                  </View>
+
+                  {/* Time Labels for Chart */}
+                  <View style={styles.chartTimeLabels}>
+                    <Text style={styles.chartTimeText}>
+                      {formatTimeWithMeridiem(hi?.start_time)}
+                    </Text>
+                    <Text style={styles.chartTimeText}>
+                      {formatTimeWithMeridiem(hi?.end_time)}
+                    </Text>
+                  </View>
                 </View>
-
-                {/*   <HypnogramChart
-                  stages={hypnogramStages}
-                  startTime={hi?.start_time || new Date().toISOString()}
-                  endTime={hi?.end_time || new Date().toISOString()}
-                  height={180}
-                /> */}
-
-                {/* Time Labels for Chart */}
-                <View style={styles.chartTimeLabels}>
-                  <Text style={styles.chartTimeText}>
-                    {formatTimeWithMeridiem(hi?.start_time)}
-                  </Text>
-                  <Text style={styles.chartTimeText}>
-                    {formatTimeWithMeridiem(hi?.end_time)}
-                  </Text>
+              </>
+            ) : (
+              <View style={styles.emptyState}>
+                <View style={styles.emptyBadge}>
+                  <Ionicons name="moon-outline" size={22} color={TEXT_SECONDARY} />
                 </View>
+                <Text style={styles.emptyTitle}>No sleep data</Text>
+                <Text style={styles.emptyCopy}>
+                  Add a sleep record for this day to unlock metrics and trends.
+                </Text>
+                <Pressable style={styles.emptyButton} onPress={() => setIsAddModalVisible(true)}>
+                  <Text style={styles.emptyButtonText}>Add data</Text>
+                  <Ionicons name="add" size={18} color="black" />
+                </Pressable>
               </View>
-            </>
-          ) : (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyBadge}>
-                <Ionicons name="moon-outline" size={22} color={TEXT_SECONDARY} />
-              </View>
-              <Text style={styles.emptyTitle}>No sleep data</Text>
-              <Text style={styles.emptyCopy}>
-                Add a sleep record for this day to unlock metrics and trends.
-              </Text>
-              <Pressable style={styles.emptyButton} onPress={() => setIsAddModalVisible(true)}>
-                <Text style={styles.emptyButtonText}>Add data</Text>
-                <Ionicons name="add" size={18} color="black" />
-              </Pressable>
-            </View>
-          )}
+            )}
+          </View>
         </View>
 
-        {/* Bottom Tab Bar Placeholder Spacer */}
-        <View style={{ height: 100 }} />
       </Animated.ScrollView>
     </View>
   );
@@ -1153,10 +738,22 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   contentWrap: {
-    paddingHorizontal: 20,
+    paddingHorizontal: SHEET_PADDING_X,
   },
   pagerWrap: {
     marginBottom: 24,
+  },
+  bottomSheet: {
+    width: '100%',
+    backgroundColor: SHEET_BG,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
+    paddingTop: SHEET_PADDING_TOP,
+    minHeight: SCREEN_H,
+    overflow: 'hidden',
+  },
+  bottomSheetContent: {
+    paddingHorizontal: SHEET_PADDING_X,
   },
   pagerItem: {
     width: SCREEN_W,
@@ -1190,9 +787,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: UI_RADIUS,
+    width: ICON_BUTTON_SIZE,
+    height: ICON_BUTTON_SIZE,
+    borderRadius: ICON_BUTTON_RADIUS,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderColor: STROKE,
@@ -1231,16 +828,16 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   emptyState: {
-    borderRadius: UI_RADIUS,
-    padding: 22,
+    borderRadius: EMPTY_STATE_RADIUS,
+    padding: EMPTY_STATE_PADDING,
     backgroundColor: SURFACE_ALT,
     borderWidth: 1,
     borderColor: STROKE,
   },
   emptyBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: UI_RADIUS,
+    width: EMPTY_BADGE_SIZE,
+    height: EMPTY_BADGE_SIZE,
+    borderRadius: EMPTY_BADGE_RADIUS,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: STROKE,
@@ -1267,8 +864,8 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: '#F8FAFC',
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: UI_RADIUS,
+    paddingVertical: EMPTY_BUTTON_PADDING_Y,
+    borderRadius: EMPTY_BUTTON_RADIUS,
   },
   emptyButtonText: {
     color: 'black',
@@ -1293,3 +890,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
+

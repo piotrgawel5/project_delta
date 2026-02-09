@@ -24,7 +24,20 @@ const KNOB_SIZE = 32;
 const KNOB_HALF = KNOB_SIZE / 2;
 
 // Visual Constants
-const BORDER_RADIUS = 30;
+const SHEET_PADDING = 20;
+const SHEET_INNER_RADIUS = 12;
+const SHEET_RADIUS = SHEET_INNER_RADIUS + SHEET_PADDING;
+const CONTROL_PADDING = 14;
+const CONTROL_INNER_RADIUS = 8;
+const CONTROL_RADIUS = CONTROL_INNER_RADIUS + CONTROL_PADDING;
+const CLOSE_BTN_PADDING = 6;
+const CLOSE_BTN_INNER_RADIUS = 6;
+const CLOSE_BTN_RADIUS = CLOSE_BTN_INNER_RADIUS + CLOSE_BTN_PADDING;
+const HANDLE_HEIGHT = 5;
+const HANDLE_RADIUS = HANDLE_HEIGHT / 2;
+const SAVE_BTN_PADDING_Y = 12;
+const SAVE_BTN_INNER_RADIUS = 10;
+const SAVE_BTN_RADIUS = SAVE_BTN_INNER_RADIUS + SAVE_BTN_PADDING_Y;
 const CARD_BG = '#000000';
 const POPUP_BG = '#0B0B0D';
 const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
@@ -452,8 +465,8 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
     borderWidth: 1,
     borderColor: STROKE,
-    borderTopLeftRadius: BORDER_RADIUS,
-    borderTopRightRadius: BORDER_RADIUS,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.25,
@@ -468,7 +481,12 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   handleContainer: { alignItems: 'center', marginBottom: 8 },
-  handle: { width: 36, height: 5, backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: BORDER_RADIUS },
+  handle: {
+    width: 36,
+    height: HANDLE_HEIGHT,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: HANDLE_RADIUS,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -479,7 +497,7 @@ const styles = StyleSheet.create({
   closeBtn: {
     padding: 6,
     backgroundColor: '#0F1117',
-    borderRadius: BORDER_RADIUS,
+    borderRadius: CLOSE_BTN_RADIUS,
     borderWidth: 1,
     borderColor: STROKE,
   },
@@ -522,8 +540,8 @@ const styles = StyleSheet.create({
   timeRow: {
     flexDirection: 'row',
     backgroundColor: '#0F1117',
-    borderRadius: BORDER_RADIUS,
-    padding: 14,
+    borderRadius: CONTROL_RADIUS,
+    padding: CONTROL_PADDING,
     width: '100%',
     marginBottom: 16,
     borderWidth: 1,
@@ -537,7 +555,7 @@ const styles = StyleSheet.create({
   saveBtn: {
     width: '100%',
     height: 52,
-    borderRadius: BORDER_RADIUS,
+    borderRadius: SAVE_BTN_RADIUS,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',

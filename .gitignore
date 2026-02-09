@@ -79,6 +79,7 @@ supabase/.temp/
 !.vscode/settings.json
 !.vscode/extensions.json
 .idea/
+codex*
 
 # =========================
 # OS / Misc

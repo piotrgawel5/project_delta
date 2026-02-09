@@ -4,6 +4,12 @@ import { Ionicons } from '@expo/vector-icons';
 
 const CELL_SIZE = 40;
 const SPACING = 8;
+const CONTAINER_PADDING = 16;
+const CONTAINER_INNER_RADIUS = 8;
+const CONTAINER_RADIUS = CONTAINER_INNER_RADIUS + CONTAINER_PADDING;
+const TODAY_CELL_RADIUS = Math.round(CELL_SIZE * 0.2 + SPACING);
+const INDICATOR_SIZE = 6;
+const INDICATOR_RADIUS = INDICATOR_SIZE / 2;
 
 interface DayData {
   date: string;
@@ -108,9 +114,9 @@ export function MonthView({ currentDate, onChangeMonth, onSelectDay, data }: Mon
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
+    padding: CONTAINER_PADDING,
     backgroundColor: '#1A1A1A',
-    borderRadius: 16,
+    borderRadius: CONTAINER_RADIUS,
   },
   header: {
     flexDirection: 'row',
@@ -150,7 +156,7 @@ const styles = StyleSheet.create({
   },
   todayCell: {
     backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 8,
+    borderRadius: TODAY_CELL_RADIUS,
   },
   dayText: {
     color: '#E0E0E0',
@@ -162,9 +168,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   indicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: INDICATOR_SIZE,
+    height: INDICATOR_SIZE,
+    borderRadius: INDICATOR_RADIUS,
     marginTop: 4,
   },
 });
