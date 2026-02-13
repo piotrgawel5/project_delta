@@ -33,8 +33,8 @@ const TEXT_TERTIARY = 'rgba(235,235,245,0.4)';
 const MINI_BAR_MAX = 32;
 const MINI_BAR_MIN = 8;
 const MINI_BAR_WIDTH = 6;
-const TICK_WIDTH = 3;
-const CHART_W = 140;
+const TICK_WIDTH = 6;
+const CHART_W = 144 - CARD_PADDING_X * 2;
 const CHART_H = 34;
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const ICON_BADGE_SIZE = 22;
@@ -66,7 +66,9 @@ export type MetricCardProps = {
 
 const padToSeven = (values: TrendValue[]) => {
   if (values.length >= 7) return values.slice(-7);
-  return Array(7 - values.length).fill(null).concat(values);
+  return Array(7 - values.length)
+    .fill(null)
+    .concat(values);
 };
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
@@ -88,10 +90,7 @@ const formatShortDate = (value: Date | string) => {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
 };
 
-const getRelativeDateLabel = (
-  value?: Date | string | null,
-  selected?: Date | string | null
-) => {
+const getRelativeDateLabel = (value?: Date | string | null, selected?: Date | string | null) => {
   const key = toDateKey(value);
   if (!key) return null;
   const selectedKey = toDateKey(selected);
@@ -226,10 +225,7 @@ function MetricCard({
           <View style={styles.labelRow}>
             {icon ? (
               <View
-                style={[
-                  styles.iconBadge,
-                  { backgroundColor: iconBg, borderColor: iconBorder },
-                ]}>
+                style={[styles.iconBadge, { backgroundColor: iconBg, borderColor: iconBorder }]}>
                 <Ionicons name={icon} size={14} color={accentColor} />
               </View>
             ) : (
@@ -256,14 +252,8 @@ function MetricCard({
                 </Text>
                 {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
               </View>
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: withAlpha(meta.color, '26') },
-                ]}>
-                <Text style={[styles.statusBadgeText, { color: meta.color }]}>
-                  {statusText}
-                </Text>
+              <View style={[styles.statusBadge, { backgroundColor: withAlpha(meta.color, '26') }]}>
+                <Text style={[styles.statusBadgeText, { color: meta.color }]}>{statusText}</Text>
               </View>
             </View>
 
@@ -306,11 +296,7 @@ function MetricCard({
                 </Text>
                 {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
               </View>
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: withAlpha(meta.color, '26') },
-                ]}>
+              <View style={[styles.statusBadge, { backgroundColor: withAlpha(meta.color, '26') }]}>
                 <Text style={[styles.statusBadgeText, { color: meta.color }]} numberOfLines={1}>
                   {statusText}
                 </Text>
@@ -335,35 +321,28 @@ function MetricCard({
                   ))}
                 </View>
               ) : chartType === 'line' ? (
-            <Svg width={CHART_W} height={CHART_H}>
-              <Defs>
-                <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0%" stopColor="rgba(94,92,230,0.2)" stopOpacity="1" />
-                  <Stop offset="100%" stopColor="rgba(94,92,230,0)" stopOpacity="1" />
-                </SvgLinearGradient>
-              </Defs>
-              {lineAreaPath ? (
-                <Path d={lineAreaPath} fill={`url(#${gradientId})`} />
-              ) : null}
-              {linePath ? (
-                <>
-                  <Path
-                    d={linePath.path}
-                    stroke={accentColor}
-                    strokeWidth={3}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <Circle
-                    cx={linePath.end.x}
-                    cy={linePath.end.y}
-                    r={3}
-                    fill={accentColor}
-                  />
-                </>
-              ) : null}
-            </Svg>
+                <Svg width={CHART_W} height={CHART_H}>
+                  <Defs>
+                    <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0%" stopColor="rgba(94,92,230,0.2)" stopOpacity="1" />
+                      <Stop offset="100%" stopColor="rgba(94,92,230,0)" stopOpacity="1" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  {lineAreaPath ? <Path d={lineAreaPath} fill={`url(#${gradientId})`} /> : null}
+                  {linePath ? (
+                    <>
+                      <Path
+                        d={linePath.path}
+                        stroke={accentColor}
+                        strokeWidth={3}
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <Circle cx={linePath.end.x} cy={linePath.end.y} r={3} fill={accentColor} />
+                    </>
+                  ) : null}
+                </Svg>
               ) : (
                 <View style={chartType === 'ticks' ? styles.ticksRow : styles.barsRow}>
                   {barHeights.map((height, index) => (
@@ -573,7 +552,7 @@ const styles = StyleSheet.create({
   barsRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 6,
+    gap: 10.5,
   },
   barTrack: {
     width: MINI_BAR_WIDTH,
@@ -591,7 +570,7 @@ const styles = StyleSheet.create({
   ticksRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 6,
+    gap: 10.5,
   },
   tickTrack: {
     width: TICK_WIDTH,

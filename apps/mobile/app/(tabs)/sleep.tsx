@@ -7,6 +7,7 @@ import {
   Pressable,
   Dimensions,
   FlatList,
+  LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/authStore';
@@ -18,8 +19,6 @@ import Animated, {
   useSharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
-  interpolate,
-  Extrapolation,
   useAnimatedReaction,
   runOnJS,
   SharedValue,
@@ -27,11 +26,7 @@ import Animated, {
 import { SleepCalendar } from '../../components/sleep/SleepCalendar';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
 import { getSleepScoreGrade, brightenColor } from '@lib/sleepColors';
-import {
-  formatHours,
-  formatTimeParts,
-  formatTimeWithMeridiem,
-} from '@lib/sleepFormatters';
+import { formatHours, formatTimeParts, formatTimeWithMeridiem } from '@lib/sleepFormatters';
 import { addDays, dateKey, isSameDay, normalizeDate } from '@lib/sleepDateUtils';
 import { useSleepGradient } from '@lib/useSleepGradient';
 import { SleepMetricsList, SleepMetricItem } from '@components/sleep/dashboard/SleepMetricsList';
@@ -61,7 +56,9 @@ const EMPTY_BUTTON_RADIUS = EMPTY_BUTTON_INNER_RADIUS + EMPTY_BUTTON_PADDING_Y;
 const GRADIENT_LOCATIONS = [0, 0.55, 1] as const;
 const padToSeven = <T,>(values: T[], fill: T) => {
   if (values.length >= 7) return values.slice(-7);
-  return Array(7 - values.length).fill(fill).concat(values);
+  return Array(7 - values.length)
+    .fill(fill)
+    .concat(values);
 };
 
 const toBedMinutes = (iso?: string | null) => {
@@ -132,7 +129,6 @@ export default function SleepScreen() {
   const {
     weeklyHistory,
     monthlyData,
-    loading,
     fetchSleepData,
     fetchSleepDataRange,
     forceSaveManualSleep,
@@ -145,7 +141,8 @@ export default function SleepScreen() {
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [isHeaderInteractable, setIsHeaderInteractable] = useState(false);
+  const [topSectionHeight, setTopSectionHeight] = useState(0);
+  const [isTopOverlayFront, setIsTopOverlayFront] = useState(true);
   const pagerRef = useRef<FlatList<Date>>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const selectedYear = selectedDate.getFullYear();
@@ -162,7 +159,7 @@ export default function SleepScreen() {
       checkHealthConnectStatus();
       fetchSleepData(user.id);
     }
-  }, [user?.id]);
+  }, [checkHealthConnectStatus, fetchSleepData, user?.id]);
 
   const onRefresh = useCallback(async () => {
     if (user?.id) {
@@ -170,24 +167,25 @@ export default function SleepScreen() {
       await fetchSleepData(user.id);
       setRefreshing(false);
     }
-  }, [user?.id]);
+  }, [fetchSleepData, user?.id]);
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y;
   });
 
   useAnimatedReaction(
-    () => scrollY.value > 20,
-    (isScrolled, prev) => {
-      if (isScrolled !== prev) {
-        runOnJS(setIsHeaderInteractable)(isScrolled);
+    () => scrollY.value <= 2,
+    (isFront, prev) => {
+      if (isFront !== prev) {
+        runOnJS(setIsTopOverlayFront)(isFront);
       }
     }
   );
 
-  const headerStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 40], [0, 1], Extrapolation.CLAMP),
-  }));
+  const handleTopSectionLayout = useCallback((event: LayoutChangeEvent) => {
+    const measuredHeight = Math.round(event.nativeEvent.layout.height);
+    setTopSectionHeight((prev) => (prev === measuredHeight ? prev : measuredHeight));
+  }, []);
 
   const currentData = useMemo(() => {
     const targetDateStr = dateKey(selectedDate);
@@ -213,7 +211,7 @@ export default function SleepScreen() {
         year: 'numeric',
       }),
     };
-  }, [selectedDate, weeklyHistory, monthlyData, dateKey]);
+  }, [selectedDate, weeklyHistory, monthlyData]);
 
   const hi = currentData.historyItem;
   const hasData = !!hi;
@@ -267,7 +265,10 @@ export default function SleepScreen() {
 
   const trendData = useMemo(() => {
     return {
-      duration: padToSeven(weeklySeries.map((item) => item.duration_minutes ?? null), null),
+      duration: padToSeven(
+        weeklySeries.map((item) => item.duration_minutes ?? null),
+        null
+      ),
       efficiency: padToSeven(
         weeklySeries.map((item) =>
           item.duration_minutes
@@ -276,11 +277,26 @@ export default function SleepScreen() {
         ),
         null
       ),
-      deep: padToSeven(weeklySeries.map((item) => item.deep_sleep_minutes ?? null), null),
-      rem: padToSeven(weeklySeries.map((item) => item.rem_sleep_minutes ?? null), null),
-      light: padToSeven(weeklySeries.map((item) => item.light_sleep_minutes ?? null), null),
-      bed: padToSeven(weeklySeries.map((item) => toBedMinutes(item.start_time)), null),
-      wake: padToSeven(weeklySeries.map((item) => toWakeMinutes(item.end_time)), null),
+      deep: padToSeven(
+        weeklySeries.map((item) => item.deep_sleep_minutes ?? null),
+        null
+      ),
+      rem: padToSeven(
+        weeklySeries.map((item) => item.rem_sleep_minutes ?? null),
+        null
+      ),
+      light: padToSeven(
+        weeklySeries.map((item) => item.light_sleep_minutes ?? null),
+        null
+      ),
+      bed: padToSeven(
+        weeklySeries.map((item) => toBedMinutes(item.start_time)),
+        null
+      ),
+      wake: padToSeven(
+        weeklySeries.map((item) => toWakeMinutes(item.end_time)),
+        null
+      ),
     };
   }, [weeklySeries]);
 
@@ -384,6 +400,7 @@ export default function SleepScreen() {
     bedtimeParts.time,
     durationHoursValue,
     durationMinutes,
+    selectedDate,
     sleepEfficiency,
     stageItems,
     trendData.bed,
@@ -431,7 +448,6 @@ export default function SleepScreen() {
     getColorForKey: getGradientColorForKey,
   });
 
-
   const monthDates = useMemo(() => {
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
     const today = normalizeDate(new Date());
@@ -472,7 +488,7 @@ export default function SleepScreen() {
     const initialMin = Math.max(0, activeIndex - 4);
     const initialMax = Math.min(monthDates.length - 1, activeIndex + 4);
     setCacheRange({ min: initialMin, max: initialMax });
-  }, [monthDates.length]);
+  }, [activeIndex, monthDates.length]);
 
   useEffect(() => {
     if (!monthDates.length) return;
@@ -507,7 +523,7 @@ export default function SleepScreen() {
       const end = addDays(selectedDate, -1);
       fetchSleepDataRange(user.id, start, end);
     }
-  }, [activeIndex, cacheRange, selectedDate, user?.id, fetchSleepDataRange, addDays, monthDates.length]);
+  }, [activeIndex, cacheRange, selectedDate, user?.id, fetchSleepDataRange, monthDates.length]);
 
   useEffect(() => {
     if (!monthDates.length) return;
@@ -523,7 +539,7 @@ export default function SleepScreen() {
     if (next.size !== cachedHistory.size) {
       setCachedHistory(next);
     }
-  }, [cacheRange, monthDates, historyByDate, dateKey]);
+  }, [cacheRange, monthDates, historyByDate, cachedHistory]);
 
   return (
     <View style={styles.container}>
@@ -536,21 +552,16 @@ export default function SleepScreen() {
         overlayBOpacity={overlayBOpacity}
       />
 
-      {/* Sticky Header */}
-      <Animated.View
-        pointerEvents={isHeaderInteractable ? 'auto' : 'none'}
-        style={[styles.stickyHeader, { paddingTop: insets.top }, headerStyle]}>
-        <LinearGradient colors={['#000000', 'rgba(0,0,0,0)']} style={StyleSheet.absoluteFill} />
-        <View style={styles.stickyHeaderContent} />
-      </Animated.View>
-
-      <Animated.ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 20 }]}
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />
-        }>
+      <View
+        pointerEvents={isTopOverlayFront ? 'auto' : 'none'}
+        onLayout={handleTopSectionLayout}
+        style={[
+          styles.fixedTopSection,
+          {
+            paddingTop: insets.top + 20,
+            zIndex: isTopOverlayFront ? 3 : 0,
+          },
+        ]}>
         <View style={styles.contentWrap}>
           {/* Navigation Row */}
           <View style={styles.navRow}>
@@ -567,36 +578,6 @@ export default function SleepScreen() {
             </View>
           </View>
         </View>
-
-        <SleepCalendar
-          isVisible={isCalendarVisible}
-          onClose={() => setIsCalendarVisible(false)}
-          selectedDate={selectedDate}
-          onDateSelect={(date) => {
-            const normalized = normalizeDate(date);
-            setSelectedDate(normalized);
-            setGradientKey(dateKey(normalized), true);
-          }}
-          history={weeklyHistory}
-        />
-
-        <AddSleepRecordModal
-          isVisible={isAddModalVisible}
-          onClose={() => setIsAddModalVisible(false)}
-          onSave={async (start, end) => {
-            if (!user?.id) return false;
-            const success = await forceSaveManualSleep(
-              user.id,
-              start.toISOString(),
-              end.toISOString()
-            );
-            return success;
-          }}
-          date={selectedDate}
-          userId={user?.id || ''}
-        />
-
-
         {/* Swipeable Title Section */}
         <View style={styles.pagerWrap}>
           <FlatList
@@ -643,10 +624,7 @@ export default function SleepScreen() {
                     <View style={styles.labelRow}>
                       <Ionicons name="moon" size={16} color={brightenColor(itemGrade.color)} />
                       <Text
-                        style={[
-                          styles.sectionLabel,
-                          { color: brightenColor(itemGrade.color) },
-                        ]}>
+                        style={[styles.sectionLabel, { color: brightenColor(itemGrade.color) }]}>
                         Sleep
                       </Text>
                     </View>
@@ -671,40 +649,21 @@ export default function SleepScreen() {
             }}
           />
         </View>
+      </View>
 
-        <View
-          style={[
-            styles.bottomSheet,
-            { paddingBottom: Math.max(120, insets.bottom + 80) },
-          ]}>
+      <Animated.ScrollView
+        style={styles.sheetScroll}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: topSectionHeight }]}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />
+        }>
+        <View style={[styles.bottomSheet, { paddingBottom: Math.max(120, insets.bottom + 80) }]}>
           <View style={styles.bottomSheetContent}>
             {hasData ? (
-              <>
-                <SleepMetricsList metrics={metricCards} />
-
-                {/* Chart Section */}
-                <View style={styles.chartSection}>
-                  <View style={styles.labelRow}>
-                    <Text style={styles.chartTitle}>Sleep Stages</Text>
-                    <Ionicons
-                      name="information-circle"
-                      size={16}
-                      color={TEXT_SECONDARY}
-                      style={{ marginLeft: 6 }}
-                    />
-                  </View>
-
-                  {/* Time Labels for Chart */}
-                  <View style={styles.chartTimeLabels}>
-                    <Text style={styles.chartTimeText}>
-                      {formatTimeWithMeridiem(hi?.start_time)}
-                    </Text>
-                    <Text style={styles.chartTimeText}>
-                      {formatTimeWithMeridiem(hi?.end_time)}
-                    </Text>
-                  </View>
-                </View>
-              </>
+              <SleepMetricsList metrics={metricCards} />
             ) : (
               <View style={styles.emptyState}>
                 <View style={styles.emptyBadge}>
@@ -722,8 +681,35 @@ export default function SleepScreen() {
             )}
           </View>
         </View>
-
       </Animated.ScrollView>
+
+      <SleepCalendar
+        isVisible={isCalendarVisible}
+        onClose={() => setIsCalendarVisible(false)}
+        selectedDate={selectedDate}
+        onDateSelect={(date) => {
+          const normalized = normalizeDate(date);
+          setSelectedDate(normalized);
+          setGradientKey(dateKey(normalized), true);
+        }}
+        history={weeklyHistory}
+      />
+
+      <AddSleepRecordModal
+        isVisible={isAddModalVisible}
+        onClose={() => setIsAddModalVisible(false)}
+        onSave={async (start, end) => {
+          if (!user?.id) return false;
+          const success = await forceSaveManualSleep(
+            user.id,
+            start.toISOString(),
+            end.toISOString()
+          );
+          return success;
+        }}
+        date={selectedDate}
+        userId={user?.id || ''}
+      />
     </View>
   );
 }
@@ -739,6 +725,15 @@ const styles = StyleSheet.create({
   },
   contentWrap: {
     paddingHorizontal: SHEET_PADDING_X,
+  },
+  fixedTopSection: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  sheetScroll: {
+    zIndex: 1,
   },
   pagerWrap: {
     marginBottom: 24,
@@ -758,24 +753,6 @@ const styles = StyleSheet.create({
   pagerItem: {
     width: SCREEN_W,
     paddingHorizontal: 20,
-  },
-  stickyHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    alignItems: 'center',
-    paddingBottom: 10,
-  },
-  stickyHeaderContent: {
-    height: 44,
-    justifyContent: 'center',
-  },
-  stickyTitle: {
-    color: 'white',
-    fontSize: 17,
-    fontWeight: '600',
   },
   navRow: {
     flexDirection: 'row',
@@ -890,4 +867,3 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
-

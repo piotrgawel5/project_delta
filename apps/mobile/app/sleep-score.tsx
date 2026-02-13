@@ -71,7 +71,12 @@ export default function SleepScoreScreen() {
   };
 
   const ringProgress = useSharedValue(0);
-  const barAnimations = SCORE_FACTORS.map(() => useSharedValue(0));
+  const barAnimations = [
+    useSharedValue(0),
+    useSharedValue(0),
+    useSharedValue(0),
+    useSharedValue(0),
+  ];
 
   useEffect(() => {
     ringProgress.value = withTiming(scores.total / 100, {
@@ -215,7 +220,7 @@ export default function SleepScoreScreen() {
         {/* Insight Card */}
         <Animated.View entering={FadeInDown.delay(500).duration(400)}>
           <View style={styles.insightCard}>
-            <Text style={styles.insightTitle}>Tonight's Goal</Text>
+            <Text style={styles.insightTitle}>Tonight&apos;s Goal</Text>
             <Text style={styles.insightText}>
               Try to get to bed by 10:30 PM to improve your consistency score. Aim for at least 7
               hours of sleep.
