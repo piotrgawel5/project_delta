@@ -16,11 +16,6 @@ interface WeeklyBarChartProps {
   onSelectDay: (index: number) => void;
 }
 
-const CHART_PADDING = 20;
-const CHART_INNER_RADIUS = 4;
-const CHART_RADIUS = CHART_INNER_RADIUS + CHART_PADDING;
-const BAR_TRACK_RADIUS = 10;
-
 export const WeeklyBarChart = ({ data, selectedIndex, onSelectDay }: WeeklyBarChartProps) => {
   return (
     <View style={styles.container}>
@@ -39,17 +34,10 @@ export const WeeklyBarChart = ({ data, selectedIndex, onSelectDay }: WeeklyBarCh
                   style={[styles.barFill, { height: `${Math.max(barHeightPct, 5)}%` }]}
                 />
               </View>
+              <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
+                {item.day[0]}
+              </Text>
             </Pressable>
-          );
-        })}
-      </View>
-      <View style={styles.labelsRow}>
-        {data.map((item, index) => {
-          const isSelected = index === selectedIndex;
-          return (
-            <Text key={`${item.date}-label`} style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
-              {item.day[0]}
-            </Text>
           );
         })}
       </View>
@@ -73,41 +61,30 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     height: 120,
     backgroundColor: '#1C1C1E',
-    borderRadius: CHART_RADIUS,
-    padding: CHART_PADDING,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    padding: 16,
   },
   dayColumn: {
     alignItems: 'center',
     justifyContent: 'flex-end',
     flex: 1,
-    gap: 4,
-  },
-  labelsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: CHART_PADDING,
-    marginTop: 6,
+    gap: 8,
   },
   barTrack: {
     flex: 1,
-    width: '65%',
+    width: 6,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: BAR_TRACK_RADIUS,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 3,
   },
   barFill: {
     width: '100%',
-    borderTopLeftRadius: BAR_TRACK_RADIUS,
-    borderTopRightRadius: BAR_TRACK_RADIUS,
+    borderRadius: 3,
   },
   dayLabel: {
-    color: 'rgba(235,235,245,0.6)',
+    color: '#8E8E93',
     fontSize: 12,
     fontWeight: '500',
-    flex: 1,
-    textAlign: 'center',
   },
   dayLabelSelected: {
     color: '#fff',

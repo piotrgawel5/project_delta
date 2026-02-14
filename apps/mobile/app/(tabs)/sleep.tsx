@@ -7,7 +7,6 @@ import {
   Pressable,
   Dimensions,
   FlatList,
-  LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/authStore';
@@ -19,104 +18,69 @@ import Animated, {
   useSharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
+  useAnimatedProps,
+  interpolate,
+  Extrapolation,
   useAnimatedReaction,
   runOnJS,
+  withTiming,
+  Easing,
   SharedValue,
 } from 'react-native-reanimated';
+import Svg, { Rect, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { SleepCalendar } from '../../components/sleep/SleepCalendar';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
+import { transformToHypnogramStages } from '@lib/sleepTransform';
 import { getSleepScoreGrade, brightenColor } from '@lib/sleepColors';
-import { formatHours, formatTimeParts, formatTimeWithMeridiem } from '@lib/sleepFormatters';
-import { addDays, dateKey, isSameDay, normalizeDate } from '@lib/sleepDateUtils';
-import { useSleepGradient } from '@lib/useSleepGradient';
-import { SleepMetricsList, SleepMetricItem } from '@components/sleep/dashboard/SleepMetricsList';
+import { formatTime } from '@lib/sleepFormatters';
+import MetricCard from '@components/sleep/MetricCard';
 
 // Colors
-const BG_PRIMARY = '#0B0B0D';
-const SURFACE_ALT = '#1B1B21';
-const SHEET_BG = '#000000';
-const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.68)';
-const TEXT_TERTIARY = 'rgba(255, 255, 255, 0.45)';
-const STROKE = 'rgba(255, 255, 255, 0.08)';
+const BG_PRIMARY = '#000000';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const SHEET_PADDING_X = 20;
-const SHEET_PADDING_TOP = 24;
-const SHEET_INNER_RADIUS = 24;
-const SHEET_RADIUS = SHEET_INNER_RADIUS + SHEET_PADDING_X;
-const ICON_BUTTON_SIZE = 44;
-const ICON_BUTTON_RADIUS = ICON_BUTTON_SIZE / 2;
-const EMPTY_STATE_PADDING = 22;
-const EMPTY_STATE_INNER_RADIUS = 8;
-const EMPTY_STATE_RADIUS = EMPTY_STATE_INNER_RADIUS + EMPTY_STATE_PADDING;
-const EMPTY_BADGE_SIZE = 44;
-const EMPTY_BADGE_RADIUS = EMPTY_BADGE_SIZE / 2;
-const EMPTY_BUTTON_PADDING_Y = 10;
-const EMPTY_BUTTON_INNER_RADIUS = 8;
-const EMPTY_BUTTON_RADIUS = EMPTY_BUTTON_INNER_RADIUS + EMPTY_BUTTON_PADDING_Y;
-const GRADIENT_LOCATIONS = [0, 0.55, 1] as const;
-const padToSeven = <T,>(values: T[], fill: T) => {
-  if (values.length >= 7) return values.slice(-7);
-  return Array(7 - values.length)
-    .fill(fill)
-    .concat(values);
-};
-
-const toBedMinutes = (iso?: string | null) => {
-  if (!iso) return null;
-  const d = new Date(iso);
-  let minutes = d.getHours() * 60 + d.getMinutes();
-  if (minutes < 12 * 60) minutes += 24 * 60;
-  return minutes;
-};
-
-const toWakeMinutes = (iso?: string | null) => {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return d.getHours() * 60 + d.getMinutes();
-};
+const BG_WIDTH = SCREEN_W;
+const BG_HEIGHT = SCREEN_H;
+const UI_RADIUS = 36;
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
 const GradientBackground = React.memo(function GradientBackground({
   baseColor,
-  overlayAColor,
-  overlayBColor,
-  overlayAOpacity,
-  overlayBOpacity,
+  overlayColor,
+  progress,
 }: {
   baseColor: string;
-  overlayAColor: string;
-  overlayBColor: string;
-  overlayAOpacity: SharedValue<number>;
-  overlayBOpacity: SharedValue<number>;
+  overlayColor: string;
+  progress: SharedValue<number>;
 }) {
-  const overlayAStyle = useAnimatedStyle(() => ({
-    opacity: overlayAOpacity.value,
-  }));
-  const overlayBStyle = useAnimatedStyle(() => ({
-    opacity: overlayBOpacity.value,
+  const animatedOverlayProps = useAnimatedProps(() => ({
+    opacity: progress.value,
   }));
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <LinearGradient
-        colors={[baseColor, BG_PRIMARY, BG_PRIMARY]}
-        locations={GRADIENT_LOCATIONS}
-        style={StyleSheet.absoluteFill}
+    <Svg width={BG_WIDTH} height={BG_HEIGHT} style={StyleSheet.absoluteFill}>
+      <Defs>
+        <SvgGradient id="sleepGradientBase" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={baseColor} />
+          <Stop offset="0.55" stopColor={BG_PRIMARY} />
+          <Stop offset="1" stopColor={BG_PRIMARY} />
+        </SvgGradient>
+        <SvgGradient id="sleepGradientOverlay" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={overlayColor} />
+          <Stop offset="0.55" stopColor={BG_PRIMARY} />
+          <Stop offset="1" stopColor={BG_PRIMARY} />
+        </SvgGradient>
+      </Defs>
+      <Rect x="0" y="0" width={BG_WIDTH} height={BG_HEIGHT} fill="url(#sleepGradientBase)" />
+      <AnimatedRect
+        x="0"
+        y="0"
+        width={BG_WIDTH}
+        height={BG_HEIGHT}
+        fill="url(#sleepGradientOverlay)"
+        animatedProps={animatedOverlayProps}
       />
-      <Animated.View style={[StyleSheet.absoluteFill, overlayAStyle]}>
-        <LinearGradient
-          colors={[overlayAColor, BG_PRIMARY, BG_PRIMARY]}
-          locations={GRADIENT_LOCATIONS}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
-      <Animated.View style={[StyleSheet.absoluteFill, overlayBStyle]}>
-        <LinearGradient
-          colors={[overlayBColor, BG_PRIMARY, BG_PRIMARY]}
-          locations={GRADIENT_LOCATIONS}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
-    </View>
+    </Svg>
   );
 });
 
@@ -129,11 +93,30 @@ export default function SleepScreen() {
   const {
     weeklyHistory,
     monthlyData,
+    loading,
     fetchSleepData,
     fetchSleepDataRange,
-    forceSaveManualSleep,
     checkHealthConnectStatus,
   } = useSleepStore();
+
+  const normalizeDate = useCallback((date: Date) => {
+    const d = new Date(date);
+    d.setHours(12, 0, 0, 0);
+    return d;
+  }, []);
+
+  const dateKey = useCallback((date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  const addDays = useCallback((date: Date, days: number) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+  }, []);
 
   const [selectedDate, setSelectedDate] = useState(() => {
     return normalizeDate(new Date());
@@ -141,25 +124,25 @@ export default function SleepScreen() {
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [topSectionHeight, setTopSectionHeight] = useState(0);
-  const [isTopOverlayFront, setIsTopOverlayFront] = useState(true);
+  const [isHeaderInteractable, setIsHeaderInteractable] = useState(false);
   const pagerRef = useRef<FlatList<Date>>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const selectedYear = selectedDate.getFullYear();
   const selectedMonth = selectedDate.getMonth();
-  const currentMonthKey = useMemo(
-    () => `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`,
-    [selectedYear, selectedMonth]
-  );
+  const gradientProgress = useSharedValue(1);
+  const [gradientBase, setGradientBase] = useState('#000000');
+  const [gradientOverlay, setGradientOverlay] = useState('#000000');
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
+  const [gradientDateKey, setGradientDateKey] = useState(() => dateKey(selectedDate));
+  const gradientInitialized = useRef(false);
 
   useEffect(() => {
     if (user?.id) {
       checkHealthConnectStatus();
       fetchSleepData(user.id);
     }
-  }, [checkHealthConnectStatus, fetchSleepData, user?.id]);
+  }, [user?.id]);
 
   const onRefresh = useCallback(async () => {
     if (user?.id) {
@@ -167,25 +150,31 @@ export default function SleepScreen() {
       await fetchSleepData(user.id);
       setRefreshing(false);
     }
-  }, [fetchSleepData, user?.id]);
+  }, [user?.id]);
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y;
   });
 
   useAnimatedReaction(
-    () => scrollY.value <= 2,
-    (isFront, prev) => {
-      if (isFront !== prev) {
-        runOnJS(setIsTopOverlayFront)(isFront);
+    () => scrollY.value > 20,
+    (isScrolled, prev) => {
+      if (isScrolled !== prev) {
+        runOnJS(setIsHeaderInteractable)(isScrolled);
       }
     }
   );
 
-  const handleTopSectionLayout = useCallback((event: LayoutChangeEvent) => {
-    const measuredHeight = Math.round(event.nativeEvent.layout.height);
-    setTopSectionHeight((prev) => (prev === measuredHeight ? prev : measuredHeight));
-  }, []);
+  const headerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 40], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  // Helper to format minutes into H M
+  const formatDuration = (totalMinutes: number) => {
+    const h = Math.floor(totalMinutes / 60);
+    const m = Math.round(totalMinutes % 60);
+    return { h, m };
+  };
 
   const currentData = useMemo(() => {
     const targetDateStr = dateKey(selectedDate);
@@ -211,219 +200,80 @@ export default function SleepScreen() {
         year: 'numeric',
       }),
     };
-  }, [selectedDate, weeklyHistory, monthlyData]);
+  }, [selectedDate, weeklyHistory, monthlyData, dateKey]);
 
   const hi = currentData.historyItem;
   const hasData = !!hi;
 
   // Metrics
-  const durationMinutes = hi?.duration_minutes || 0;
-  const durationHoursValue = durationMinutes ? formatHours(durationMinutes, 2) : '--';
-  const sleepEfficiency = durationMinutes
-    ? Math.min(100, Math.round((durationMinutes / 480) * 100))
-    : 0;
-  const deepMin = hi?.deep_sleep_minutes || 0;
-  const remMin = hi?.rem_sleep_minutes || 0;
-  const lightMin = hi?.light_sleep_minutes || 0;
-  const deepPct = durationMinutes ? Math.round((deepMin / durationMinutes) * 100) : 0;
-  const remPct = durationMinutes ? Math.round((remMin / durationMinutes) * 100) : 0;
-  const lightPct = durationMinutes ? Math.round((lightMin / durationMinutes) * 100) : 0;
-  const stageItems = useMemo(() => {
-    if (!durationMinutes) return [];
-    return [
-      {
-        label: 'Deep',
-        value: `${formatHours(deepMin)}h`,
-        percent: deepPct,
-        color: '#34D399',
-      },
-      {
-        label: 'REM',
-        value: `${formatHours(remMin)}h`,
-        percent: remPct,
-        color: '#F472B6',
-      },
-      {
-        label: 'Light',
-        value: `${formatHours(lightMin)}h`,
-        percent: lightPct,
-        color: '#FBBF24',
-      },
-    ];
-  }, [deepMin, remMin, lightMin, deepPct, remPct, lightPct, durationMinutes]);
+  const duration = formatDuration(hi?.duration_minutes || 0);
+  const restorativeMin = (hi?.deep_sleep_minutes || 0) + (hi?.rem_sleep_minutes || 0);
+  const restorative = formatDuration(restorativeMin);
 
-  const bedtimeParts = formatTimeParts(hi?.start_time);
-  const wakeParts = formatTimeParts(hi?.end_time);
+  // Times
+  const startTime = hi?.start_time ? new Date(hi.start_time) : null;
+  const endTime = hi?.end_time ? new Date(hi.end_time) : null;
 
-  const weeklySeries = useMemo(() => {
+  // Memoize sleep score grade to avoid redundant calculations
+  const sleepScoreGrade = useMemo(
+    () => getSleepScoreGrade(currentData.historyItem?.sleep_score ?? 0),
+    [currentData.historyItem?.sleep_score]
+  );
+
+
+  // Transform aggregate sleep data into hypnogram-compatible stages
+  const hypnogramStages = useMemo(() => {
+    if (!hi) return [];
+    return transformToHypnogramStages({
+      start_time: hi.start_time,
+      end_time: hi.end_time,
+      duration_minutes: hi.duration_minutes,
+      deep_sleep_minutes: hi.deep_sleep_minutes,
+      rem_sleep_minutes: hi.rem_sleep_minutes,
+      light_sleep_minutes: hi.light_sleep_minutes,
+      awake_minutes: hi.awake_minutes,
+    });
+  }, [hi]);
+
+  // Compute sparkline data from weekly history (last 7 days, chronological order)
+  const sparklineData = useMemo(() => {
     const history = weeklyHistory || [];
-    if (!history.length) return [];
-    return [...history]
+    if (history.length < 2) {
+      return { duration: undefined, restorative: undefined };
+    }
+
+    // Sort chronologically (oldest first) for proper sparkline trend
+    const sorted = [...history]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(-7);
-  }, [weeklyHistory]);
+      .slice(-7); // Last 7 days
 
-  const trendData = useMemo(() => {
+    const durationData = sorted.map((item) => item.duration_minutes || 0);
+    const restorativeData = sorted.map(
+      (item) => (item.deep_sleep_minutes || 0) + (item.rem_sleep_minutes || 0)
+    );
+
     return {
-      duration: padToSeven(
-        weeklySeries.map((item) => item.duration_minutes ?? null),
-        null
-      ),
-      efficiency: padToSeven(
-        weeklySeries.map((item) =>
-          item.duration_minutes
-            ? Math.min(100, Math.round((item.duration_minutes / 480) * 100))
-            : null
-        ),
-        null
-      ),
-      deep: padToSeven(
-        weeklySeries.map((item) => item.deep_sleep_minutes ?? null),
-        null
-      ),
-      rem: padToSeven(
-        weeklySeries.map((item) => item.rem_sleep_minutes ?? null),
-        null
-      ),
-      light: padToSeven(
-        weeklySeries.map((item) => item.light_sleep_minutes ?? null),
-        null
-      ),
-      bed: padToSeven(
-        weeklySeries.map((item) => toBedMinutes(item.start_time)),
-        null
-      ),
-      wake: padToSeven(
-        weeklySeries.map((item) => toWakeMinutes(item.end_time)),
-        null
-      ),
+      duration: durationData.length >= 2 ? durationData : undefined,
+      restorative: restorativeData.length >= 2 ? restorativeData : undefined,
     };
-  }, [weeklySeries]);
-
-  const metricCards = useMemo<SleepMetricItem[]>(() => {
-    const totalSubtitle = durationMinutes
-      ? durationMinutes >= 420
-        ? 'Above goal'
-        : 'Below goal'
-      : 'No data';
-
-    const efficiencySubtitle = durationMinutes
-      ? sleepEfficiency >= 85
-        ? 'Excellent'
-        : sleepEfficiency >= 70
-          ? 'Good'
-          : 'Low'
-      : 'No data';
-
-    return [
-      {
-        id: 'total',
-        label: 'Total Sleep',
-        value: durationHoursValue,
-        unit: durationMinutes ? 'hr' : undefined,
-        status: durationMinutes >= 420 ? 'up' : durationMinutes > 0 ? 'down' : 'neutral',
-        subLabel: totalSubtitle,
-        accent: '#7DD3FC',
-        icon: 'moon',
-        trend: trendData.duration,
-        chartType: 'bars',
-        dataDate: selectedDate,
-        selectedDate,
-      },
-      {
-        id: 'efficiency',
-        label: 'Efficiency',
-        value: durationMinutes ? `${sleepEfficiency}` : '--',
-        unit: durationMinutes ? '%' : undefined,
-        status: durationMinutes
-          ? sleepEfficiency >= 85
-            ? 'up'
-            : sleepEfficiency >= 70
-              ? 'neutral'
-              : 'down'
-          : 'neutral',
-        subLabel: efficiencySubtitle,
-        accent: '#C4B5FD',
-        icon: 'speedometer',
-        trend: trendData.efficiency,
-        chartType: 'dots',
-        dotThreshold: 85,
-        dataDate: selectedDate,
-        selectedDate,
-      },
-      {
-        id: 'stages',
-        label: 'Sleep Stages',
-        value: durationMinutes ? durationHoursValue : '--',
-        unit: durationMinutes ? 'hr' : undefined,
-        status: 'neutral',
-        subLabel: durationMinutes ? 'Stage breakdown' : 'No data',
-        accent: '#A7F3D0',
-        icon: 'layers',
-        chartType: 'stages',
-        stages: stageItems,
-        showDays: false,
-        dataDate: selectedDate,
-        selectedDate,
-      },
-      {
-        id: 'bed',
-        label: 'Fell Asleep',
-        value: bedtimeParts.time,
-        unit: bedtimeParts.meridiem,
-        status: 'neutral',
-        subLabel: 'Bedtime',
-        accent: '#93C5FD',
-        icon: 'bed',
-        trend: trendData.bed,
-        chartType: 'line',
-        dataDate: selectedDate,
-        selectedDate,
-      },
-      {
-        id: 'wake',
-        label: 'Woke Up',
-        value: wakeParts.time,
-        unit: wakeParts.meridiem,
-        status: 'neutral',
-        subLabel: 'Wake time',
-        accent: '#FDBA74',
-        icon: 'alarm',
-        trend: trendData.wake,
-        chartType: 'ticks',
-        dataDate: selectedDate,
-        selectedDate,
-      },
-    ];
-  }, [
-    bedtimeParts.meridiem,
-    bedtimeParts.time,
-    durationHoursValue,
-    durationMinutes,
-    selectedDate,
-    sleepEfficiency,
-    stageItems,
-    trendData.bed,
-    trendData.duration,
-    trendData.efficiency,
-    trendData.wake,
-    wakeParts.meridiem,
-    wakeParts.time,
-  ]);
+  }, [weeklyHistory]);
 
   const historyByDate = useMemo(() => {
     const map = new Map<string, any>();
     (weeklyHistory || []).forEach((item) => {
       map.set(item.date, item);
     });
-    const monthRecords = monthlyData?.[currentMonthKey] || [];
-    monthRecords.forEach((item) => {
-      if (!map.has(item.date)) {
-        map.set(item.date, item);
-      }
-    });
+    if (monthlyData) {
+      Object.keys(monthlyData).forEach((monthKey) => {
+        (monthlyData[monthKey] || []).forEach((item) => {
+          if (!map.has(item.date)) {
+            map.set(item.date, item);
+          }
+        });
+      });
+    }
     return map;
-  }, [weeklyHistory, monthlyData, currentMonthKey]);
+  }, [weeklyHistory, monthlyData]);
 
   const getGradientColorForKey = useCallback(
     (key: string) => {
@@ -434,29 +284,47 @@ export default function SleepScreen() {
     [cachedHistory, historyByDate]
   );
 
-  const {
-    gradientBase,
-    overlayAColor,
-    overlayBColor,
-    overlayAOpacity,
-    overlayBOpacity,
-    gradientKey,
-    setGradientKey,
-  } = useSleepGradient({
-    initialKey: dateKey(selectedDate),
-    defaultColor: BG_PRIMARY,
-    getColorForKey: getGradientColorForKey,
-  });
+  const setGradientImmediate = useCallback((color: string) => {
+    setGradientBase(color);
+    setGradientOverlay(color);
+    gradientProgress.value = 1;
+  }, []);
+
+  const animateGradientTo = useCallback((color: string) => {
+    setGradientBase(gradientOverlay);
+    setGradientOverlay(color);
+    gradientProgress.value = 0;
+    gradientProgress.value = withTiming(1, {
+      duration: 600,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [gradientOverlay]);
+
+  useEffect(() => {
+    if (gradientInitialized.current) return;
+    const initial = getGradientColorForKey(gradientDateKey);
+    setGradientImmediate(initial);
+    gradientInitialized.current = true;
+  }, [getGradientColorForKey, gradientDateKey, setGradientImmediate]);
+
+  useEffect(() => {
+    if (!gradientInitialized.current) return;
+    const target = getGradientColorForKey(gradientDateKey);
+    if (gradientOverlay !== target && gradientProgress.value >= 1) {
+      setGradientImmediate(target);
+    }
+  }, [getGradientColorForKey, gradientDateKey, setGradientImmediate, gradientOverlay]);
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
 
   const monthDates = useMemo(() => {
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-    const today = normalizeDate(new Date());
-    const isCurrentMonth =
-      selectedYear === today.getFullYear() && selectedMonth === today.getMonth();
-    const maxDay = isCurrentMonth ? today.getDate() : lastDay;
     return Array.from({ length: lastDay }, (_, i) =>
       normalizeDate(new Date(selectedYear, selectedMonth, i + 1))
-    ).filter((d) => d.getDate() <= maxDay);
+    );
   }, [selectedYear, selectedMonth]);
 
   useEffect(() => {
@@ -473,9 +341,11 @@ export default function SleepScreen() {
     if (next && !isSameDay(next, selectedDate)) {
       setSelectedDate(next);
       setActiveIndex(index);
+      setGradientDateKey(dateKey(next));
     }
-    const nextKey = next ? dateKey(next) : gradientKey;
-    setGradientKey(nextKey, true);
+    const nextKey = next ? dateKey(next) : gradientDateKey;
+    const targetColor = getGradientColorForKey(nextKey);
+    animateGradientTo(targetColor);
     navigation.getParent()?.setOptions({ swipeEnabled: true });
   };
 
@@ -486,9 +356,9 @@ export default function SleepScreen() {
   useEffect(() => {
     if (!monthDates.length) return;
     const initialMin = Math.max(0, activeIndex - 4);
-    const initialMax = Math.min(monthDates.length - 1, activeIndex + 4);
+    const initialMax = Math.min(monthDates.length - 1, activeIndex);
     setCacheRange({ min: initialMin, max: initialMax });
-  }, [activeIndex, monthDates.length]);
+  }, [monthDates.length, activeIndex]);
 
   useEffect(() => {
     if (!monthDates.length) return;
@@ -523,7 +393,7 @@ export default function SleepScreen() {
       const end = addDays(selectedDate, -1);
       fetchSleepDataRange(user.id, start, end);
     }
-  }, [activeIndex, cacheRange, selectedDate, user?.id, fetchSleepDataRange, monthDates.length]);
+  }, [activeIndex, cacheRange, selectedDate, user?.id, fetchSleepDataRange, addDays, monthDates.length]);
 
   useEffect(() => {
     if (!monthDates.length) return;
@@ -539,29 +409,32 @@ export default function SleepScreen() {
     if (next.size !== cachedHistory.size) {
       setCachedHistory(next);
     }
-  }, [cacheRange, monthDates, historyByDate, cachedHistory]);
+  }, [cacheRange, monthDates, historyByDate, dateKey]);
 
   return (
     <View style={styles.container}>
       {/* Background Gradient */}
       <GradientBackground
         baseColor={gradientBase}
-        overlayAColor={overlayAColor}
-        overlayBColor={overlayBColor}
-        overlayAOpacity={overlayAOpacity}
-        overlayBOpacity={overlayBOpacity}
+        overlayColor={gradientOverlay}
+        progress={gradientProgress}
       />
 
-      <View
-        pointerEvents={isTopOverlayFront ? 'auto' : 'none'}
-        onLayout={handleTopSectionLayout}
-        style={[
-          styles.fixedTopSection,
-          {
-            paddingTop: insets.top + 20,
-            zIndex: isTopOverlayFront ? 3 : 0,
-          },
-        ]}>
+      {/* Sticky Header */}
+      <Animated.View
+        pointerEvents={isHeaderInteractable ? 'auto' : 'none'}
+        style={[styles.stickyHeader, { paddingTop: insets.top }, headerStyle]}>
+        <LinearGradient colors={['#000000', 'rgba(0,0,0,0)']} style={StyleSheet.absoluteFill} />
+        <View style={styles.stickyHeaderContent} />
+      </Animated.View>
+
+      <Animated.ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 20 }]}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />
+        }>
         <View style={styles.contentWrap}>
           {/* Navigation Row */}
           <View style={styles.navRow}>
@@ -578,6 +451,34 @@ export default function SleepScreen() {
             </View>
           </View>
         </View>
+
+        <SleepCalendar
+          isVisible={isCalendarVisible}
+          onClose={() => setIsCalendarVisible(false)}
+          selectedDate={selectedDate}
+          onDateSelect={(date) => {
+            const normalized = normalizeDate(date);
+            setSelectedDate(normalized);
+            setGradientDateKey(dateKey(normalized));
+            const targetColor = getGradientColorForKey(dateKey(normalized));
+            animateGradientTo(targetColor);
+          }}
+          history={weeklyHistory}
+        />
+
+        <AddSleepRecordModal
+          isVisible={isAddModalVisible}
+          onClose={() => setIsAddModalVisible(false)}
+          onSave={async (start, end) => {
+            console.log('Save record:', start, end);
+            // In a real app this would trigger store.forceSaveManualSleep
+            // For now, UI only as requested.
+            return true;
+          }}
+          date={selectedDate}
+          userId={user?.id || ''}
+        />
+
         {/* Swipeable Title Section */}
         <View style={styles.pagerWrap}>
           <FlatList
@@ -624,7 +525,10 @@ export default function SleepScreen() {
                     <View style={styles.labelRow}>
                       <Ionicons name="moon" size={16} color={brightenColor(itemGrade.color)} />
                       <Text
-                        style={[styles.sectionLabel, { color: brightenColor(itemGrade.color) }]}>
+                        style={[
+                          styles.sectionLabel,
+                          { color: brightenColor(itemGrade.color) },
+                        ]}>
                         Sleep
                       </Text>
                     </View>
@@ -649,67 +553,91 @@ export default function SleepScreen() {
             }}
           />
         </View>
-      </View>
 
-      <Animated.ScrollView
-        style={styles.sheetScroll}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: topSectionHeight }]}
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />
-        }>
-        <View style={[styles.bottomSheet, { paddingBottom: Math.max(120, insets.bottom + 80) }]}>
-          <View style={styles.bottomSheetContent}>
-            {hasData ? (
-              <SleepMetricsList metrics={metricCards} />
-            ) : (
-              <View style={styles.emptyState}>
-                <View style={styles.emptyBadge}>
-                  <Ionicons name="moon-outline" size={22} color={TEXT_SECONDARY} />
-                </View>
-                <Text style={styles.emptyTitle}>No sleep data</Text>
-                <Text style={styles.emptyCopy}>
-                  Add a sleep record for this day to unlock metrics and trends.
-                </Text>
-                <Pressable style={styles.emptyButton} onPress={() => setIsAddModalVisible(true)}>
-                  <Text style={styles.emptyButtonText}>Add data</Text>
-                  <Ionicons name="add" size={18} color="black" />
-                </Pressable>
+        <View style={styles.contentWrap}>
+          {hasData ? (
+            <>
+              {/* Metrics Grid */}
+              <View style={styles.metricsGrid}>
+                <MetricCard
+                  label="Sleep Duration"
+                  value={`${duration.h}h ${duration.m}m`}
+                  status={duration.h >= 7 ? 'up' : 'neutral'}
+                  sparkline={sparklineData.duration}
+                  onPress={() => {
+                    /* open detail or chart */
+                  }}
+                />
+
+                <MetricCard
+                  label="Restorative"
+                  value={`${restorative.h}h ${restorative.m}m`}
+                  status={restorative.h >= 2 ? 'up' : 'neutral'}
+                  sparkline={sparklineData.restorative}
+                  onPress={() => {}}
+                />
+
+                <MetricCard
+                  label="Fell Asleep"
+                  value={formatTime(hi?.start_time).replace(/(AM|PM)/, '')}
+                  unit={startTime ? (startTime.getHours() >= 12 ? 'PM ' : 'AM ') : undefined}
+                  status="neutral"
+                />
+
+                <MetricCard
+                  label="Woke Up"
+                  value={formatTime(hi?.end_time).replace(/(AM|PM)/, '')}
+                  unit={endTime ? (endTime.getHours() >= 12 ? 'PM ' : 'AM ') : undefined}
+                  status="neutral"
+                />
               </View>
-            )}
-          </View>
+
+              {/* Chart Section */}
+              <View style={styles.chartSection}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.chartTitle}>Sleep Stages</Text>
+                  <Ionicons
+                    name="information-circle"
+                    size={16}
+                    color={TEXT_SECONDARY}
+                    style={{ marginLeft: 6 }}
+                  />
+                </View>
+
+                {/*   <HypnogramChart
+                  stages={hypnogramStages}
+                  startTime={hi?.start_time || new Date().toISOString()}
+                  endTime={hi?.end_time || new Date().toISOString()}
+                  height={180}
+                /> */}
+
+                {/* Time Labels for Chart */}
+                <View style={styles.chartTimeLabels}>
+                  <Text style={styles.chartTimeText}>{formatTime(hi?.start_time)}</Text>
+                  <Text style={styles.chartTimeText}>{formatTime(hi?.end_time)}</Text>
+                </View>
+              </View>
+            </>
+          ) : (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyBadge}>
+                <Ionicons name="moon-outline" size={22} color={TEXT_SECONDARY} />
+              </View>
+              <Text style={styles.emptyTitle}>No sleep data</Text>
+              <Text style={styles.emptyCopy}>
+                Add a sleep record for this day to unlock metrics and trends.
+              </Text>
+              <Pressable style={styles.emptyButton} onPress={() => setIsAddModalVisible(true)}>
+                <Text style={styles.emptyButtonText}>Add data</Text>
+                <Ionicons name="add" size={18} color="black" />
+              </Pressable>
+            </View>
+          )}
         </View>
+
+        {/* Bottom Tab Bar Placeholder Spacer */}
+        <View style={{ height: 100 }} />
       </Animated.ScrollView>
-
-      <SleepCalendar
-        isVisible={isCalendarVisible}
-        onClose={() => setIsCalendarVisible(false)}
-        selectedDate={selectedDate}
-        onDateSelect={(date) => {
-          const normalized = normalizeDate(date);
-          setSelectedDate(normalized);
-          setGradientKey(dateKey(normalized), true);
-        }}
-        history={weeklyHistory}
-      />
-
-      <AddSleepRecordModal
-        isVisible={isAddModalVisible}
-        onClose={() => setIsAddModalVisible(false)}
-        onSave={async (start, end) => {
-          if (!user?.id) return false;
-          const success = await forceSaveManualSleep(
-            user.id,
-            start.toISOString(),
-            end.toISOString()
-          );
-          return success;
-        }}
-        date={selectedDate}
-        userId={user?.id || ''}
-      />
     </View>
   );
 }
@@ -724,35 +652,32 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   contentWrap: {
-    paddingHorizontal: SHEET_PADDING_X,
-  },
-  fixedTopSection: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
-  sheetScroll: {
-    zIndex: 1,
+    paddingHorizontal: 20,
   },
   pagerWrap: {
     marginBottom: 24,
   },
-  bottomSheet: {
-    width: '100%',
-    backgroundColor: SHEET_BG,
-    borderTopLeftRadius: SHEET_RADIUS,
-    borderTopRightRadius: SHEET_RADIUS,
-    paddingTop: SHEET_PADDING_TOP,
-    minHeight: SCREEN_H,
-    overflow: 'hidden',
-  },
-  bottomSheetContent: {
-    paddingHorizontal: SHEET_PADDING_X,
-  },
   pagerItem: {
     width: SCREEN_W,
     paddingHorizontal: 20,
+  },
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    alignItems: 'center',
+    paddingBottom: 10,
+  },
+  stickyHeaderContent: {
+    height: 44,
+    justifyContent: 'center',
+  },
+  stickyTitle: {
+    color: 'white',
+    fontSize: 17,
+    fontWeight: '600',
   },
   navRow: {
     flexDirection: 'row',
@@ -764,12 +689,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   iconButton: {
-    width: ICON_BUTTON_SIZE,
-    height: ICON_BUTTON_SIZE,
-    borderRadius: ICON_BUTTON_RADIUS,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: STROKE,
+    width: 44,
+    height: 44,
+    borderRadius: UI_RADIUS,
+    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -805,19 +728,17 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   emptyState: {
-    borderRadius: EMPTY_STATE_RADIUS,
-    padding: EMPTY_STATE_PADDING,
-    backgroundColor: SURFACE_ALT,
-    borderWidth: 1,
-    borderColor: STROKE,
-  },
-  emptyBadge: {
-    width: EMPTY_BADGE_SIZE,
-    height: EMPTY_BADGE_SIZE,
-    borderRadius: EMPTY_BADGE_RADIUS,
+    borderRadius: UI_RADIUS,
+    padding: 22,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
-    borderColor: STROKE,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  emptyBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: UI_RADIUS,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -829,7 +750,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptyCopy: {
-    color: TEXT_TERTIARY,
+    color: TEXT_SECONDARY,
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 16,
@@ -839,15 +760,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: 'white',
     paddingHorizontal: 14,
-    paddingVertical: EMPTY_BUTTON_PADDING_Y,
-    borderRadius: EMPTY_BUTTON_RADIUS,
+    paddingVertical: 10,
+    borderRadius: UI_RADIUS,
   },
   emptyButtonText: {
     color: 'black',
     fontSize: 14,
     fontWeight: '700',
+  },
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12, // keep visual rhythm
+    marginBottom: 32,
   },
   chartSection: {
     marginBottom: 40,

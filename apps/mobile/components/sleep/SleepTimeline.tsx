@@ -4,22 +4,14 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import Svg, { Line, Rect, G, Path } from 'react-native-svg';
+import Animated, { FadeInDown, FadeOut, FadeIn } from 'react-native-reanimated';
+import Svg, { Line, Rect, G, Text as SvgText, Path } from 'react-native-svg';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TIMELINE_PADDING = 20;
-const TIMELINE_INNER_RADIUS = 4;
-const TIMELINE_RADIUS = TIMELINE_INNER_RADIUS + TIMELINE_PADDING;
 const TIMELINE_HEIGHT = 160; // Increased height for hypnogram
-const DOT_SIZE = 6;
-const DOT_RADIUS = DOT_SIZE / 2;
-const TOOLTIP_PADDING = 16;
-const TOOLTIP_INNER_RADIUS = 6;
-const TOOLTIP_RADIUS = TOOLTIP_INNER_RADIUS + TOOLTIP_PADDING;
 const CHART_HEIGHT = 100;
 const CHART_TOP_PADDING = 30;
-const Y_AXIS_WIDTH = 35;
 
 // Theme colors matching the design
 const STAGE_COLORS = {
@@ -247,16 +239,19 @@ export function SleepTimeline({ data }: SleepTimelineProps) {
             </Pressable>
           ))}
 
+          {/* X-Axis Labels */}
+          {labels.map((l, i) => (
+            <SvgText
+              key={'l-' + i}
+              x={l.x}
+              y={TIMELINE_HEIGHT - 10}
+              fill="rgba(255,255,255,0.4)"
+              fontSize="10"
+              textAnchor={l.anchor as any}>
+              {l.text}
+            </SvgText>
+          ))}
         </Svg>
-      </View>
-      <View style={styles.labelsRow}>
-        {labels.map((l) => (
-          <Text
-            key={`label-${l.anchor}`}
-            style={[styles.xLabel, l.anchor === 'end' && styles.xLabelEnd]}>
-            {l.text}
-          </Text>
-        ))}
       </View>
 
       {/* Tooltip */}
@@ -285,13 +280,11 @@ export function SleepTimeline({ data }: SleepTimelineProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: TIMELINE_RADIUS,
+    backgroundColor: '#1E1E24', // Use a card background
+    borderRadius: 24,
     padding: TIMELINE_PADDING,
     marginVertical: 10,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
   header: {
     flexDirection: 'row',
@@ -314,9 +307,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   dot: {
-    width: DOT_SIZE,
-    height: DOT_SIZE,
-    borderRadius: DOT_RADIUS,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   legendText: {
     color: 'rgba(255,255,255,0.5)',
@@ -331,7 +324,7 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    width: Y_AXIS_WIDTH,
+    width: 40,
     zIndex: 10,
   },
   yLabel: {
@@ -342,24 +335,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   svg: {
-    marginLeft: Y_AXIS_WIDTH, // Space for Y labels
+    marginLeft: 35, // Space for Y labels
     flex: 1,
-  },
-  labelsRow: {
-    marginTop: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingLeft: TIMELINE_PADDING + Y_AXIS_WIDTH,
-    paddingRight: TIMELINE_PADDING,
-  },
-  xLabel: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 10,
-    flex: 1,
-    textAlign: 'left',
-  },
-  xLabelEnd: {
-    textAlign: 'right',
   },
   modalOverlay: {
     flex: 1,
@@ -369,8 +346,8 @@ const styles = StyleSheet.create({
   },
   tooltip: {
     backgroundColor: '#2A2A35',
-    padding: TOOLTIP_PADDING,
-    borderRadius: TOOLTIP_RADIUS,
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },

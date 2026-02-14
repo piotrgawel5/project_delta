@@ -15,28 +15,6 @@ const ACCENT_PINK = '#F472B6';
 const ACCENT_BLUE = '#38BDF8';
 const ACCENT_ORANGE = '#F97316';
 
-const CARD_PADDING = 18;
-const CARD_INNER_RADIUS = 8;
-const CARD_RADIUS = CARD_INNER_RADIUS + CARD_PADDING;
-const BADGE_PADDING_Y = 5;
-const BADGE_INNER_RADIUS = 6;
-const BADGE_RADIUS = BADGE_INNER_RADIUS + BADGE_PADDING_Y;
-const SIGNAL_PADDING = 12;
-const SIGNAL_INNER_RADIUS = 6;
-const SIGNAL_RADIUS = SIGNAL_INNER_RADIUS + SIGNAL_PADDING;
-const RANK_BADGE_SIZE = 24;
-const RANK_BADGE_RADIUS = RANK_BADGE_SIZE / 2;
-const WEIGHT_BAR_HEIGHT = 4;
-const WEIGHT_BAR_RADIUS = WEIGHT_BAR_HEIGHT / 2;
-const PREDICTION_PADDING = 14;
-const PREDICTION_INNER_RADIUS = 6;
-const PREDICTION_RADIUS = PREDICTION_INNER_RADIUS + PREDICTION_PADDING;
-const PREDICTION_ICON_SIZE = 40;
-const PREDICTION_ICON_RADIUS = Math.round(PREDICTION_ICON_SIZE * 0.3);
-const CONFIDENCE_PADDING_Y = 3;
-const CONFIDENCE_INNER_RADIUS = 5;
-const CONFIDENCE_RADIUS = CONFIDENCE_INNER_RADIUS + CONFIDENCE_PADDING_Y;
-
 export interface ContributingSignal {
   factor: string;
   impact: 'positive' | 'negative' | 'neutral';
@@ -284,8 +262,8 @@ export function InsightCard({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: CARD_RADIUS,
-    padding: CARD_PADDING,
+    borderRadius: 20,
+    padding: 18,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: 'rgba(124, 58, 237, 0.15)',
@@ -308,8 +286,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(124, 58, 237, 0.2)',
     paddingHorizontal: 10,
-    paddingVertical: BADGE_PADDING_Y,
-    borderRadius: BADGE_RADIUS,
+    paddingVertical: 5,
+    borderRadius: 10,
     gap: 6,
   },
   aiBadgeText: {
@@ -350,14 +328,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: SIGNAL_RADIUS,
-    padding: SIGNAL_PADDING,
+    borderRadius: 12,
+    padding: 12,
     gap: 10,
   },
   rankBadge: {
-    width: RANK_BADGE_SIZE,
-    height: RANK_BADGE_SIZE,
-    borderRadius: RANK_BADGE_RADIUS,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -394,15 +372,15 @@ const styles = StyleSheet.create({
   },
   weightBarBg: {
     width: '100%',
-    height: WEIGHT_BAR_HEIGHT,
+    height: 4,
     backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: WEIGHT_BAR_RADIUS,
+    borderRadius: 2,
     overflow: 'hidden',
     marginBottom: 4,
   },
   weightBar: {
     height: '100%',
-    borderRadius: WEIGHT_BAR_RADIUS,
+    borderRadius: 2,
   },
   weightPercent: {
     fontSize: 10,
@@ -415,14 +393,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: PREDICTION_RADIUS,
-    padding: PREDICTION_PADDING,
+    borderRadius: 14,
+    padding: 14,
     gap: 12,
   },
   predictionIcon: {
-    width: PREDICTION_ICON_SIZE,
-    height: PREDICTION_ICON_SIZE,
-    borderRadius: PREDICTION_ICON_RADIUS,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -446,8 +424,8 @@ const styles = StyleSheet.create({
   },
   confidenceBadge: {
     paddingHorizontal: 8,
-    paddingVertical: CONFIDENCE_PADDING_Y,
-    borderRadius: CONFIDENCE_RADIUS,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   confidenceText: {
     fontSize: 10,

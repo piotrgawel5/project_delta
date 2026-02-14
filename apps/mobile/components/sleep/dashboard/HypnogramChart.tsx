@@ -25,12 +25,6 @@ import { Ionicons } from '@expo/vector-icons';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const STAGE_CARD_PADDING = 12;
-const STAGE_CARD_INNER_RADIUS = 6;
-const STAGE_CARD_RADIUS = STAGE_CARD_INNER_RADIUS + STAGE_CARD_PADDING;
-const ICON_SIZE = 24;
-const ICON_RADIUS = ICON_SIZE / 2;
-
 // Create animated SVG components
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -506,8 +500,8 @@ const styles = StyleSheet.create({
   },
   stageCard: {
     backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: STAGE_CARD_RADIUS,
-    padding: STAGE_CARD_PADDING,
+    borderRadius: 16,
+    padding: 12,
     minWidth: '47%',
     flex: 1,
     borderWidth: 1,
@@ -521,9 +515,9 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   iconContainer: {
-    width: ICON_SIZE,
-    height: ICON_SIZE,
-    borderRadius: ICON_RADIUS,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },

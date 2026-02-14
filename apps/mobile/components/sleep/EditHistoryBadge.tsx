@@ -12,32 +12,6 @@ const ACCENT_YELLOW = '#FBBF24';
 const ACCENT_GREEN = '#34D399';
 const ACCENT_ORANGE = '#F97316';
 
-const BADGE_PADDING_Y = 6;
-const BADGE_INNER_RADIUS = 4;
-const BADGE_RADIUS = BADGE_INNER_RADIUS + BADGE_PADDING_Y;
-const CONFIDENCE_DOT_SIZE = 6;
-const CONFIDENCE_DOT_RADIUS = CONFIDENCE_DOT_SIZE / 2;
-const EDIT_COUNT_PADDING_Y = 2;
-const EDIT_COUNT_INNER_RADIUS = 4;
-const EDIT_COUNT_RADIUS = EDIT_COUNT_INNER_RADIUS + EDIT_COUNT_PADDING_Y;
-const MODAL_PADDING_TOP = 16;
-const MODAL_INNER_RADIUS = 12;
-const MODAL_RADIUS = MODAL_INNER_RADIUS + MODAL_PADDING_TOP;
-const CLOSE_BTN_SIZE = 32;
-const CLOSE_BTN_RADIUS = CLOSE_BTN_SIZE / 2;
-const CARD_PADDING = 16;
-const CARD_INNER_RADIUS = 8;
-const CARD_RADIUS = CARD_INNER_RADIUS + CARD_PADDING;
-const ICON_SIZE = 48;
-const ICON_RADIUS = Math.round(ICON_SIZE * 0.3);
-const BAR_HEIGHT = 6;
-const BAR_RADIUS = BAR_HEIGHT / 2;
-const EDIT_DOT_SIZE = 10;
-const EDIT_DOT_RADIUS = EDIT_DOT_SIZE / 2;
-const CHANGE_CARD_PADDING = 10;
-const CHANGE_CARD_INNER_RADIUS = 6;
-const CHANGE_CARD_RADIUS = CHANGE_CARD_INNER_RADIUS + CHANGE_CARD_PADDING;
-
 export interface SleepEdit {
   timestamp: string;
   editedBy: 'user' | 'system' | 'sync';
@@ -333,8 +307,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 10,
-    paddingVertical: BADGE_PADDING_Y,
-    borderRadius: BADGE_RADIUS,
+    paddingVertical: 6,
+    borderRadius: 10,
     gap: 6,
   },
   badgeEdited: {
@@ -342,9 +316,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(249, 115, 22, 0.3)',
   },
   confidenceDot: {
-    width: CONFIDENCE_DOT_SIZE,
-    height: CONFIDENCE_DOT_SIZE,
-    borderRadius: CONFIDENCE_DOT_RADIUS,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   badgeText: {
     fontSize: 12,
@@ -356,8 +330,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: ACCENT_ORANGE,
     paddingHorizontal: 5,
-    paddingVertical: EDIT_COUNT_PADDING_Y,
-    borderRadius: EDIT_COUNT_RADIUS,
+    paddingVertical: 2,
+    borderRadius: 8,
     gap: 2,
   },
   editCountText: {
@@ -372,8 +346,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#0A0A12',
-    borderTopLeftRadius: MODAL_RADIUS,
-    borderTopRightRadius: MODAL_RADIUS,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     maxHeight: '80%',
   },
   modalHeader: {
@@ -392,9 +366,9 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   closeButton: {
-    width: CLOSE_BTN_SIZE,
-    height: CLOSE_BTN_SIZE,
-    borderRadius: CLOSE_BTN_RADIUS,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -404,8 +378,8 @@ const styles = StyleSheet.create({
   },
   sourceCard: {
     backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: CARD_RADIUS,
-    padding: CARD_PADDING,
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 12,
     overflow: 'hidden',
   },
@@ -422,9 +396,9 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   sourceIcon: {
-    width: ICON_SIZE,
-    height: ICON_SIZE,
-    borderRadius: ICON_RADIUS,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -442,8 +416,8 @@ const styles = StyleSheet.create({
   },
   confidenceCard: {
     backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: CARD_RADIUS,
-    padding: CARD_PADDING,
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 16,
   },
   confidenceHeader: {
@@ -454,14 +428,14 @@ const styles = StyleSheet.create({
   },
   confidenceBarBg: {
     flex: 1,
-    height: BAR_HEIGHT,
+    height: 6,
     backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: BAR_RADIUS,
+    borderRadius: 3,
     overflow: 'hidden',
   },
   confidenceBar: {
     height: '100%',
-    borderRadius: BAR_RADIUS,
+    borderRadius: 3,
   },
   confidenceLabel: {
     fontSize: 12,
@@ -495,9 +469,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   editDot: {
-    width: EDIT_DOT_SIZE,
-    height: EDIT_DOT_SIZE,
-    borderRadius: EDIT_DOT_RADIUS,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   editLine: {
     flex: 1,
@@ -528,8 +502,8 @@ const styles = StyleSheet.create({
   },
   editChanges: {
     backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: CHANGE_CARD_RADIUS,
-    padding: CHANGE_CARD_PADDING,
+    borderRadius: 8,
+    padding: 10,
     gap: 6,
   },
   changeRow: {

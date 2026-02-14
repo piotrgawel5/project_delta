@@ -30,11 +30,11 @@ import { useAuthStore } from '@store/authStore';
 import { getSleepScoreGrade } from '@lib/sleepColors';
 
 // Colors & Visual Constants
-const CARD_BG = '#000000';
-const POPUP_BG = '#0B0B0D';
-const TEXT_PRIMARY = '#F5F6F7';
-const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
-const TEXT_DISABLED = 'rgba(255, 255, 255, 0.35)';
+const CARD_BG = '#1C1C1E';
+const POPUP_BG = '#2C2C2E';
+const TEXT_PRIMARY = '#FFFFFF';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.5)';
+const TEXT_DISABLED = 'rgba(255, 255, 255, 0.3)';
 const ACCENT_COLOR = '#818CF8'; // Indigo 400 - Brighter accent
 
 // Neon Colors for OLED Contrast
@@ -49,30 +49,7 @@ const NEON_COLORS = {
   NA: '#52525B', // Zinc 600
 };
 
-const SHEET_PADDING = 20;
-const SHEET_INNER_RADIUS = 12;
-const SHEET_RADIUS = SHEET_INNER_RADIUS + SHEET_PADDING;
-const HANDLE_HEIGHT = 5;
-const HANDLE_RADIUS = HANDLE_HEIGHT / 2;
-const CLOSE_BTN_PADDING = 8;
-const CLOSE_BTN_INNER_RADIUS = 6;
-const CLOSE_BTN_RADIUS = CLOSE_BTN_INNER_RADIUS + CLOSE_BTN_PADDING;
-const SEGMENT_PADDING = 4;
-const SEGMENT_INNER_RADIUS = 8;
-const SEGMENT_RADIUS = SEGMENT_INNER_RADIUS + SEGMENT_PADDING;
-const DAY_CELL_SIZE = 36;
-const DAY_CELL_RADIUS = DAY_CELL_SIZE / 2;
-const STRIP_DAY_SIZE = 40;
-const STRIP_DAY_RADIUS = STRIP_DAY_SIZE / 2;
-const DETAIL_CARD_PADDING = 24;
-const DETAIL_CARD_INNER_RADIUS = 10;
-const DETAIL_CARD_RADIUS = DETAIL_CARD_INNER_RADIUS + DETAIL_CARD_PADDING;
-const INDICATOR_WIDTH = 4;
-const INDICATOR_RADIUS = INDICATOR_WIDTH / 2;
-const GRADE_BADGE_PADDING_Y = 4;
-const GRADE_BADGE_INNER_RADIUS = 6;
-const GRADE_BADGE_RADIUS = GRADE_BADGE_INNER_RADIUS + GRADE_BADGE_PADDING_Y;
-const STROKE = 'rgba(255,255,255,0.08)';
+const BORDER_RADIUS = 36;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface SleepCalendarProps {
@@ -461,7 +438,7 @@ export const SleepCalendar = ({
 };
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   gestureRoot: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
 
   sheetWrapper: {
@@ -478,22 +455,15 @@ const styles = StyleSheet.create({
   },
   contentClipper: {
     backgroundColor: CARD_BG,
-    borderTopLeftRadius: SHEET_RADIUS,
-    borderTopRightRadius: SHEET_RADIUS,
-    borderWidth: 1,
-    borderColor: STROKE,
+    borderTopLeftRadius: BORDER_RADIUS,
+    borderTopRightRadius: BORDER_RADIUS,
     overflow: 'hidden',
     width: '100%',
   },
   innerContent: {},
 
   handleContainer: { alignItems: 'center', paddingTop: 10, paddingBottom: 10 },
-  handle: {
-    width: 40,
-    height: HANDLE_HEIGHT,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderRadius: HANDLE_RADIUS,
-  },
+  handle: { width: 40, height: 5, backgroundColor: '#48484A', borderRadius: BORDER_RADIUS },
 
   header: {
     flexDirection: 'row',
@@ -503,32 +473,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: { color: 'white', fontSize: 20, fontWeight: '700' },
-  closeBtn: {
-    padding: 8,
-    backgroundColor: '#0F1117',
-    borderRadius: CLOSE_BTN_RADIUS,
-    borderWidth: 1,
-    borderColor: STROKE,
-  },
+  closeBtn: { padding: 8, backgroundColor: POPUP_BG, borderRadius: BORDER_RADIUS },
 
   controlsSection: { paddingHorizontal: 20, marginBottom: 20 },
   segmentedContainer: {
     flexDirection: 'row',
-    backgroundColor: '#0F1117',
-    borderRadius: SEGMENT_RADIUS,
-    padding: SEGMENT_PADDING,
+    backgroundColor: POPUP_BG,
+    borderRadius: BORDER_RADIUS,
+    padding: 4,
     height: 48,
-    borderWidth: 1,
-    borderColor: STROKE,
   },
-  segmentBtn: {
-    flex: 1,
-    borderRadius: SEGMENT_RADIUS,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  segmentBtn: { flex: 1, borderRadius: BORDER_RADIUS, justifyContent: 'center', alignItems: 'center' },
   segmentBtnActive: {
-    backgroundColor: '#1A1C22',
+    backgroundColor: '#48484A',
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowOffset: { width: 0, height: 2 },
@@ -545,13 +502,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   navTitle: { color: 'white', fontSize: 17, fontWeight: '600' },
-  arrowBtn: {
-    padding: 8,
-    borderRadius: CLOSE_BTN_RADIUS,
-    backgroundColor: '#0F1117',
-    borderWidth: 1,
-    borderColor: STROKE,
-  },
+  arrowBtn: { padding: 8, borderRadius: BORDER_RADIUS, backgroundColor: POPUP_BG },
 
   // Month Grid
   gridContainer: { paddingHorizontal: 20, paddingBottom: 10 },
@@ -575,11 +526,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   dayCellContent: {
-    width: DAY_CELL_SIZE,
-    height: DAY_CELL_SIZE,
+    width: 36,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: DAY_CELL_RADIUS,
+    borderRadius: 18,
     overflow: 'hidden',
   },
   futureCell: { opacity: 0.3 },
@@ -597,9 +548,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   stripDayCircle: {
-    width: STRIP_DAY_SIZE,
-    height: STRIP_DAY_SIZE,
-    borderRadius: STRIP_DAY_RADIUS,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -608,20 +559,20 @@ const styles = StyleSheet.create({
   // Detail Card Styles
   detailCardContainer: { paddingHorizontal: 20 },
   detailCard: {
-    backgroundColor: '#0F1117',
-    borderRadius: DETAIL_CARD_RADIUS,
-    padding: DETAIL_CARD_PADDING,
+    backgroundColor: POPUP_BG,
+    borderRadius: BORDER_RADIUS,
+    padding: 24,
     borderWidth: 1,
-    borderColor: STROKE,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
   detailCardIndicator: {
     position: 'absolute',
     top: 24,
     left: 0,
-    width: INDICATOR_WIDTH,
+    width: 4,
     height: 32,
-    borderTopRightRadius: INDICATOR_RADIUS,
-    borderBottomRightRadius: INDICATOR_RADIUS,
+    borderTopRightRadius: BORDER_RADIUS,
+    borderBottomRightRadius: BORDER_RADIUS,
   },
   dcHeader: {
     flexDirection: 'row',
@@ -630,11 +581,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   dcTitle: { fontSize: 18, fontWeight: '700', color: 'white', flex: 1 },
-  gradeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: GRADE_BADGE_PADDING_Y,
-    borderRadius: GRADE_BADGE_RADIUS,
-  },
+  gradeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: BORDER_RADIUS },
   gradeText: { fontWeight: '800', fontSize: 14 },
 
   dcMetricsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
@@ -642,7 +589,7 @@ const styles = StyleSheet.create({
   dcMetricValue: { fontSize: 24, fontWeight: '700', color: 'white' },
   dcUnit: { fontSize: 14, fontWeight: '500', color: TEXT_SECONDARY },
   dcLabel: { fontSize: 13, color: TEXT_SECONDARY, fontWeight: '500' },
-  dcDivider: { width: 1, height: 40, backgroundColor: STROKE },
+  dcDivider: { width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.1)' },
 
   wcEmpty: { color: TEXT_DISABLED, fontSize: 15, textAlign: 'center', marginTop: 10 },
 });
