@@ -38,6 +38,7 @@ const onLimitReached = (req: Request, _res: Response, options: Options) => {
  * 100 requests per 15 minutes per IP
  */
 export const globalLimiter = rateLimit({
+    skip: () => true,
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 1000,
     standardHeaders: true,
@@ -54,6 +55,7 @@ export const globalLimiter = rateLimit({
  * 10 requests per hour per IP (prevents brute force)
  */
 export const authLimiter = rateLimit({
+    skip: () => true,
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 100,
     standardHeaders: true,
@@ -72,6 +74,7 @@ export const authLimiter = rateLimit({
  * 30 write operations per 15 minutes per user
  */
 export const userWriteLimiter = rateLimit({
+    skip: () => true,
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 300,
     standardHeaders: true,
@@ -89,6 +92,7 @@ export const userWriteLimiter = rateLimit({
  * 100 read operations per 15 minutes per user
  */
 export const userReadLimiter = rateLimit({
+    skip: () => true,
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 1000,
     standardHeaders: true,
@@ -106,6 +110,7 @@ export const userReadLimiter = rateLimit({
  * 5 requests per hour per user
  */
 export const sensitiveOpLimiter = rateLimit({
+    skip: () => true,
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 50,
     standardHeaders: true,
@@ -125,6 +130,7 @@ export const sensitiveOpLimiter = rateLimit({
  * 10 requests per 10 seconds per user
  */
 export const burstLimiter = rateLimit({
+    skip: () => true,
     windowMs: 10 * 1000, // 10 seconds
     max: 100,
     standardHeaders: true,

@@ -34,6 +34,7 @@ npx jest apps/mobile/lib/__tests__
 - Follow ESLint + Prettier rules. Use `npm run format` before PRs.
 - Keep filenames descriptive and component-based (`MetricCard.tsx`, `SleepTimeline.ts`).
 - Use React component names in PascalCase.
+- Sleep UI corner radii must follow the optical rule: outer radius = inner radius + padding. Do not hard-code a single radius across components; derive radii from padding or element size.
 
 ## Testing Guidelines
 
