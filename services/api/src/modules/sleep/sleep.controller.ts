@@ -2,6 +2,89 @@ import { Request, Response } from "express";
 import { sleepService } from "./sleep.service";
 import { AppError } from "../../utils/AppError";
 import { logger } from "../../utils/logger";
+import { SleepLog } from "./sleep.validation";
+
+type SleepRequestBody = Record<string, unknown>;
+
+function cleanUndefined<T extends Record<string, unknown>>(obj: T): T {
+    return Object.fromEntries(
+        Object.entries(obj).filter(([, value]) => value !== undefined),
+    ) as T;
+}
+
+function normalizeSleepLogBody(body: SleepRequestBody): SleepLog {
+    const screenTimeSummary = (body.screen_time_summary ||
+        body.screenTimeSummary) as Record<string, unknown> | undefined;
+
+    const editsRaw = Array.isArray(body.edits) ? body.edits : undefined;
+    const edits = editsRaw?.map((edit) => {
+        const e = edit as Record<string, unknown>;
+        return cleanUndefined({
+            edited_at: e.edited_at as string | undefined,
+            edited_by: e.edited_by as string | undefined,
+            edit_reason: e.edit_reason as string | undefined,
+            prev_record: (e.prev_record || e.prev_values) as
+                | Record<string, unknown>
+                | undefined,
+        });
+    });
+
+    const normalized = cleanUndefined({
+        user_id: (body.user_id || body.userId) as string | undefined,
+        session_id: (body.session_id || body.sessionId) as string | undefined,
+        date: body.date as string,
+        start_time: (body.start_time ?? body.startTime) as string | undefined,
+        end_time: (body.end_time ?? body.endTime) as string | undefined,
+        duration_minutes: (body.duration_minutes ??
+            body.durationMinutes) as number | undefined,
+        quality_score: (body.quality_score ??
+            body.qualityScore) as number | undefined,
+        deep_sleep_minutes: (body.deep_sleep_minutes ??
+            body.deepSleepMinutes) as number | undefined,
+        rem_sleep_minutes: (body.rem_sleep_minutes ??
+            body.remSleepMinutes) as number | undefined,
+        light_sleep_minutes: (body.light_sleep_minutes ??
+            body.lightSleepMinutes) as number | undefined,
+        awake_minutes: (body.awake_minutes ??
+            body.awakeSleepMinutes) as number | undefined,
+        sleep_score: (body.sleep_score ?? body.sleepScore) as number | undefined,
+        score_breakdown: (body.score_breakdown ??
+            body.scoreBreakdown) as SleepLog["score_breakdown"],
+        source: body.source as SleepLog["source"] | undefined,
+        confidence: body.confidence as SleepLog["confidence"] | undefined,
+        estimated_bedtime: (body.estimated_bedtime ??
+            body.estimatedBedtime) as string | undefined,
+        estimated_wakeup: (body.estimated_wakeup ??
+            body.estimatedWakeup) as string | undefined,
+        screen_time_summary: screenTimeSummary
+            ? cleanUndefined({
+                total_minutes: (screenTimeSummary.total_minutes ??
+                    screenTimeSummary.totalMinutesLast2Hours) as
+                    | number
+                    | undefined,
+                last_unlock_before_bedtime: screenTimeSummary
+                    .last_unlock_before_bedtime as string | null | undefined,
+                first_unlock_after_wakeup: screenTimeSummary
+                    .first_unlock_after_wakeup as string | null | undefined,
+                provenance: screenTimeSummary.provenance as
+                    | "usage_stats"
+                    | "digital_wellbeing"
+                    | "estimated"
+                    | undefined,
+            })
+            : undefined,
+        edits: edits as SleepLog["edits"] | undefined,
+        data_source: (body.data_source ?? body.dataSource) as
+            | string
+            | undefined,
+        synced_at: (body.synced_at ?? body.syncedAt) as string | undefined,
+        heart_rate_avg: (body.heart_rate_avg ??
+            body.heartRateAvg) as number | undefined,
+        notes: body.notes as string | undefined,
+    });
+
+    return normalized as SleepLog;
+}
 
 export class SleepController {
     /**
@@ -48,20 +131,21 @@ export class SleepController {
      * Save or update a single sleep log
      */
     async saveLog(req: Request, res: Response) {
-        const { user_id } = req.body;
+        const sleepLog = normalizeSleepLogBody(req.body as SleepRequestBody);
+        const { user_id } = sleepLog;
         const requester = (req as any).user;
 
         if (requester.id !== user_id) {
             throw AppError.forbidden("Unauthorized to save sleep log");
         }
 
-        const data = await sleepService.saveLog(req.body);
+        const data = await sleepService.saveLog(sleepLog);
 
         logger.info("Sleep log saved", {
             requestId: req.requestId,
             userId: user_id,
-            date: req.body.date,
-            source: req.body.source || "unknown",
+            date: sleepLog.date,
+            source: sleepLog.source || "unknown",
         });
 
         res.json({
@@ -75,14 +159,22 @@ export class SleepController {
      * Batch sync multiple sleep records
      */
     async syncBatch(req: Request, res: Response) {
-        const { user_id, records } = req.body;
+        const user_id = (req.body.user_id || req.body.userId) as string;
+        const records = Array.isArray(req.body.records) ? req.body.records : [];
         const requester = (req as any).user;
 
         if (requester.id !== user_id) {
             throw AppError.forbidden("Unauthorized to sync sleep data");
         }
 
-        const result = await sleepService.syncBatch(user_id, records);
+        const normalizedRecords = records.map((record: unknown) =>
+            normalizeSleepLogBody({
+                ...(record as Record<string, unknown>),
+                user_id,
+            })
+        );
+
+        const result = await sleepService.syncBatch(user_id, normalizedRecords);
 
         logger.info("Sleep batch sync completed", {
             requestId: req.requestId,
@@ -133,7 +225,15 @@ export class SleepController {
      */
     async editLog(req: Request, res: Response) {
         const { date } = req.params;
-        const { user_id, edit_reason, ...updates } = req.body;
+        const user_id = (req.body.user_id || req.body.userId) as string;
+        const edit_reason = (req.body.edit_reason || req.body.editReason) as
+            | string
+            | undefined;
+        const updates = normalizeSleepLogBody({
+            ...req.body,
+            user_id,
+            date,
+        });
         const requester = (req as any).user;
 
         if (requester.id !== user_id) {
@@ -148,7 +248,11 @@ export class SleepController {
             user_id,
             date,
             edit_reason,
-            updates,
+            cleanUndefined({
+                ...updates,
+                user_id: undefined,
+                date: undefined,
+            }),
         );
 
         logger.info("Sleep log edited", {
