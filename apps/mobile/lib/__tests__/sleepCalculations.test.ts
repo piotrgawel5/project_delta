@@ -6,7 +6,7 @@
 /// <reference types="jest" />
 
 import {
-    calculateSleepScore,
+    calculateLegacySleepScore,
     ConfidenceLevel,
     DataSource,
     determineConfidence,
@@ -19,11 +19,11 @@ import {
     SleepStages,
 } from "../sleepCalculations";
 
-describe("calculateSleepScore", () => {
+describe("calculateLegacySleepScore", () => {
     describe("basic scoring", () => {
         it("should return score of 0 for 0 duration", () => {
             const stages: SleepStages = { deep: 0, rem: 0, light: 0, awake: 0 };
-            const result = calculateSleepScore(0, stages);
+            const result = calculateLegacySleepScore(0, stages);
 
             expect(result.total).toBe(0);
             expect(result.duration_norm).toBe(0);
@@ -43,7 +43,7 @@ describe("calculateSleepScore", () => {
                 awake: 19, // 4% of total time in bed
             };
 
-            const result = calculateSleepScore(duration, stages);
+            const result = calculateLegacySleepScore(duration, stages);
 
             // Should score near maximum on all components
             expect(result.duration_norm).toBeGreaterThanOrEqual(30);
@@ -62,7 +62,7 @@ describe("calculateSleepScore", () => {
             };
 
             // 5 hours sleep (way below optimal)
-            const result = calculateSleepScore(300, stages);
+            const result = calculateLegacySleepScore(300, stages);
 
             // Duration should be heavily penalized
             expect(result.duration_norm).toBeLessThan(25);
@@ -79,7 +79,7 @@ describe("calculateSleepScore", () => {
                 awake: 25, // 5.5%
             };
 
-            const result = calculateSleepScore(duration, stages);
+            const result = calculateLegacySleepScore(duration, stages);
 
             // All component scores should be within expected ranges
             expect(result.duration_norm).toBeGreaterThanOrEqual(28);
@@ -100,7 +100,7 @@ describe("calculateSleepScore", () => {
                 awake: 0,
             };
 
-            const result = calculateSleepScore(480, stages);
+            const result = calculateLegacySleepScore(480, stages);
 
             // Deep should be maxed or slightly reduced for excess
             expect(result.deep_pct).toBeGreaterThan(0);
@@ -118,7 +118,7 @@ describe("calculateSleepScore", () => {
                 awake: 30,
             };
 
-            const result = calculateSleepScore(480, stages);
+            const result = calculateLegacySleepScore(480, stages);
 
             // REM score should be 0
             expect(result.rem_pct).toBe(0);
@@ -134,7 +134,7 @@ describe("calculateSleepScore", () => {
                 awake: 480,
             };
 
-            const result = calculateSleepScore(480, stages);
+            const result = calculateLegacySleepScore(480, stages);
 
             // Efficiency should be very low
             expect(result.efficiency).toBeLessThan(5);
@@ -151,7 +151,7 @@ describe("calculateSleepScore", () => {
                 awake: 15, // 2%
             };
 
-            const result = calculateSleepScore(720, stages);
+            const result = calculateLegacySleepScore(720, stages);
 
             // Duration should be slightly penalized for oversleep
             expect(result.duration_norm).toBeLessThan(SCORE_WEIGHTS.DURATION);
@@ -165,7 +165,7 @@ describe("calculateSleepScore", () => {
                 light: 270,
                 awake: 20,
             };
-            const result = calculateSleepScore(-100, stages);
+            const result = calculateLegacySleepScore(-100, stages);
 
             expect(result.total).toBe(0);
         });
@@ -180,7 +180,7 @@ describe("calculateSleepScore", () => {
                 awake: 20,
             };
 
-            const result = calculateSleepScore(480, stages);
+            const result = calculateLegacySleepScore(480, stages);
 
             const componentSum = result.duration_norm +
                 result.deep_pct +
@@ -199,7 +199,7 @@ describe("calculateSleepScore", () => {
                 awake: 20, // 4% - excellent
             };
 
-            const result = calculateSleepScore(480, stages);
+            const result = calculateLegacySleepScore(480, stages);
 
             expect(result.duration_norm).toBeLessThanOrEqual(
                 SCORE_WEIGHTS.DURATION,
@@ -228,7 +228,7 @@ describe("calculateSleepScore", () => {
 
             // Very consistent: all nights around 480 minutes
             const consistentHistory = [478, 482, 480, 475, 485, 479];
-            const consistentResult = calculateSleepScore(
+            const consistentResult = calculateLegacySleepScore(
                 480,
                 stages,
                 consistentHistory,
@@ -236,7 +236,7 @@ describe("calculateSleepScore", () => {
 
             // Inconsistent: huge variation
             const inconsistentHistory = [300, 600, 420, 540, 360, 510];
-            const inconsistentResult = calculateSleepScore(
+            const inconsistentResult = calculateLegacySleepScore(
                 480,
                 stages,
                 inconsistentHistory,
@@ -257,7 +257,7 @@ describe("calculateSleepScore", () => {
 
             // Only 2 days of history (need 3+)
             const shortHistory = [480, 475];
-            const result = calculateSleepScore(480, stages, shortHistory);
+            const result = calculateLegacySleepScore(480, stages, shortHistory);
 
             // Should get 70% of max consistency score
             expect(result.consistency).toBe(
@@ -281,7 +281,7 @@ describe("calculateSleepScore", () => {
             } as any;
 
             // At 510 minutes, a young adult should score well on duration
-            const result = calculateSleepScore(510, stages, [], youngProfile);
+            const result = calculateLegacySleepScore(510, stages, [], youngProfile);
             expect(result.duration_norm).toBeGreaterThanOrEqual(30);
         });
 
@@ -299,7 +299,7 @@ describe("calculateSleepScore", () => {
             } as any;
 
             // At 420 minutes (7 hours), older adult should score well
-            const result = calculateSleepScore(420, stages, [], olderProfile);
+            const result = calculateLegacySleepScore(420, stages, [], olderProfile);
             expect(result.duration_norm).toBeGreaterThanOrEqual(28);
         });
     });

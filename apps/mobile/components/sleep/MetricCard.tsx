@@ -13,7 +13,7 @@ import Svg, {
 type MetricStatus = 'up' | 'down' | 'neutral';
 
 type TrendValue = number | null | undefined;
-type StageItem = { label: string; value: string; percent?: number; color: string };
+type StageItem = { label: string; value: string; percent?: number | null; color: string };
 
 const STATUS_META: Record<MetricStatus, { label: string; color: string }> = {
   up: { label: 'ABOVE', color: '#22C55E' },
@@ -30,12 +30,12 @@ const CARD_STROKE = 'rgba(255,255,255,0.08)';
 const TEXT_PRIMARY = '#F5F6F7';
 const TEXT_SECONDARY = 'rgba(235,235,245,0.6)';
 const TEXT_TERTIARY = 'rgba(235,235,245,0.4)';
-const MINI_BAR_MAX = 32;
+const SPARKLINE_HEIGHT = 40;
+const MINI_BAR_MAX = SPARKLINE_HEIGHT;
 const MINI_BAR_MIN = 8;
 const MINI_BAR_WIDTH = 6;
-const TICK_WIDTH = 6;
 const CHART_W = 144 - CARD_PADDING_X * 2;
-const CHART_H = 34;
+const CHART_H = SPARKLINE_HEIGHT;
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const ICON_BADGE_SIZE = 22;
 const ICON_BADGE_RADIUS = Math.round(ICON_BADGE_SIZE * 0.36);
@@ -45,6 +45,8 @@ const STAGE_DOT_SIZE = 8;
 const STAGE_DOT_RADIUS = STAGE_DOT_SIZE / 2;
 const STAGE_BAR_HEIGHT = 12;
 const STAGE_BAR_RADIUS = STAGE_BAR_HEIGHT / 2;
+const METRIC_TAG_RADIUS = 6;
+const METRIC_TAG_BG = 'rgba(255,255,255,0.08)';
 
 export type MetricCardProps = {
   label: string;
@@ -54,7 +56,7 @@ export type MetricCardProps = {
   subLabel?: string;
   accent?: string;
   trend?: TrendValue[];
-  chartType?: 'bars' | 'dots' | 'line' | 'ticks' | 'stages';
+  chartType?: 'bars' | 'dots' | 'stages';
   dotThreshold?: number;
   stages?: StageItem[];
   icon?: keyof typeof Ionicons.glyphMap;
@@ -62,6 +64,15 @@ export type MetricCardProps = {
   onPress?: () => void;
   dataDate?: Date | string | null;
   selectedDate?: Date | string | null;
+};
+
+type MetricTagProps = {
+  label: string;
+};
+
+type MetricActionTagProps = {
+  label: string;
+  onPress: () => void;
 };
 
 const padToSeven = (values: TrendValue[]) => {
@@ -117,41 +128,21 @@ const buildBarHeights = (data: TrendValue[]) => {
   });
 };
 
-const buildSmoothPath = (points: { x: number; y: number }[]) => {
-  if (points.length < 2) return '';
-  const tension = 0.3;
-  let path = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const p0 = points[Math.max(0, i - 1)];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[Math.min(points.length - 1, i + 2)];
+const MetricTag = ({ label }: MetricTagProps) => (
+  <View style={styles.metricTag}>
+    <Text style={styles.metricTagText}>{label}</Text>
+  </View>
+);
 
-    const cp1x = p1.x + (p2.x - p0.x) * tension;
-    const cp1y = p1.y + (p2.y - p0.y) * tension;
-    const cp2x = p2.x - (p3.x - p1.x) * tension;
-    const cp2y = p2.y - (p3.y - p1.y) * tension;
-
-    path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
-  }
-  return path;
-};
-
-const buildLinePath = (data: TrendValue[]) => {
-  const numeric = data.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
-  if (numeric.length < 2) return null;
-  const min = Math.min(...numeric);
-  const max = Math.max(...numeric);
-  const range = max - min || 1;
-  const points = data.map((value, index) => {
-    const v = typeof value === 'number' && !Number.isNaN(value) ? value : min;
-    const x = (index / (data.length - 1)) * CHART_W;
-    const y = CHART_H - ((v - min) / range) * CHART_H;
-    return { x, y };
-  });
-  const path = buildSmoothPath(points);
-  return { path, start: points[0], end: points[points.length - 1] };
-};
+const MetricActionTag = ({ label, onPress }: MetricActionTagProps) => (
+  <Pressable
+    accessibilityRole="button"
+    onPress={onPress}
+    style={({ pressed }) => [styles.metricTag, styles.metricActionTag, pressed && styles.tagPressed]}>
+    <Text style={styles.metricTagText}>{label}</Text>
+    <Text style={styles.metricActionChevron}>›</Text>
+  </Pressable>
+);
 
 function MetricCard({
   label,
@@ -176,7 +167,6 @@ function MetricCard({
 
   const trendData = useMemo(() => padToSeven(trend ?? []), [trend]);
   const barHeights = useMemo(() => buildBarHeights(trendData), [trendData]);
-  const linePath = useMemo(() => buildLinePath(trendData), [trendData]);
   const dotStates = useMemo(
     () =>
       trendData.map((value) =>
@@ -189,19 +179,19 @@ function MetricCard({
   const isStageCard = chartType === 'stages';
   const iconBg = icon ? withAlpha(accentColor, '22') : undefined;
   const iconBorder = icon ? withAlpha(accentColor, '3A') : undefined;
+  const stageSegments = useMemo(
+    () => (stages || []).filter((stage) => typeof stage.percent === 'number' && stage.percent > 0),
+    [stages]
+  );
+  const statusTag = isInteractive && onPress ? (
+    <MetricActionTag label={statusText} onPress={onPress} />
+  ) : (
+    <MetricTag label={statusText} />
+  );
   const dateLabel = useMemo(
     () => getRelativeDateLabel(dataDate, selectedDate),
     [dataDate, selectedDate]
   );
-
-  const gradientId = useMemo(
-    () => `metric-line-gradient-${Math.random().toString(36).slice(2)}`,
-    []
-  );
-  const lineAreaPath = useMemo(() => {
-    if (!linePath) return null;
-    return `${linePath.path} L ${linePath.end.x} ${CHART_H} L ${linePath.start.x} ${CHART_H} Z`;
-  }, [linePath]);
 
   return (
     <View style={styles.wrapper}>
@@ -252,9 +242,7 @@ function MetricCard({
                 </Text>
                 {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: withAlpha(meta.color, '26') }]}>
-                <Text style={[styles.statusBadgeText, { color: meta.color }]}>{statusText}</Text>
-              </View>
+              {statusTag}
             </View>
 
             <View style={styles.stageRows}>
@@ -263,23 +251,23 @@ function MetricCard({
                   <View style={[styles.stageDot, { backgroundColor: stage.color }]} />
                   <Text style={styles.stageLabel}>{stage.label}</Text>
                   <Text style={styles.stageValue}>{stage.value}</Text>
-                  {typeof stage.percent === 'number' ? (
-                    <Text style={styles.stagePercent}>{stage.percent}%</Text>
-                  ) : null}
+                  <Text style={styles.stagePercent}>
+                    {typeof stage.percent === 'number' ? `${stage.percent}%` : '—'}
+                  </Text>
                 </View>
               ))}
             </View>
 
-            {(stages || []).length ? (
+            {stageSegments.length ? (
               <View style={styles.stageBar}>
-                {(stages || []).map((stage) => (
+                {stageSegments.map((stage) => (
                   <View
                     key={`${stage.label}-seg`}
                     style={[
                       styles.stageSegment,
                       {
                         backgroundColor: stage.color,
-                        flex: stage.percent ? stage.percent : 1,
+                        flex: stage.percent as number,
                       },
                     ]}
                   />
@@ -296,11 +284,7 @@ function MetricCard({
                 </Text>
                 {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: withAlpha(meta.color, '26') }]}>
-                <Text style={[styles.statusBadgeText, { color: meta.color }]} numberOfLines={1}>
-                  {statusText}
-                </Text>
-              </View>
+              {statusTag}
             </View>
 
             <View style={styles.chartBlock}>
@@ -320,42 +304,17 @@ function MetricCard({
                     />
                   ))}
                 </View>
-              ) : chartType === 'line' ? (
-                <Svg width={CHART_W} height={CHART_H}>
-                  <Defs>
-                    <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0%" stopColor="rgba(94,92,230,0.2)" stopOpacity="1" />
-                      <Stop offset="100%" stopColor="rgba(94,92,230,0)" stopOpacity="1" />
-                    </SvgLinearGradient>
-                  </Defs>
-                  {lineAreaPath ? <Path d={lineAreaPath} fill={`url(#${gradientId})`} /> : null}
-                  {linePath ? (
-                    <>
-                      <Path
-                        d={linePath.path}
-                        stroke={accentColor}
-                        strokeWidth={3}
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <Circle cx={linePath.end.x} cy={linePath.end.y} r={3} fill={accentColor} />
-                    </>
-                  ) : null}
-                </Svg>
               ) : (
-                <View style={chartType === 'ticks' ? styles.ticksRow : styles.barsRow}>
+                <View style={styles.barsRow}>
                   {barHeights.map((height, index) => (
-                    <View
-                      key={`${label}-bar-${index}`}
-                      style={chartType === 'ticks' ? styles.tickTrack : styles.barTrack}>
+                    <View key={`${label}-bar-${index}`} style={styles.barTrack}>
                       <View
                         style={[
-                          chartType === 'ticks' ? styles.tickFill : styles.barFill,
+                          styles.barFill,
                           {
                             height: clamp(height, MINI_BAR_MIN, MINI_BAR_MAX),
                             backgroundColor: accentColor,
-                            opacity: chartType === 'ticks' ? 0.7 : 0.85,
+                            opacity: 0.85,
                           },
                         ]}
                       />
@@ -533,16 +492,32 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     marginLeft: 4,
   },
-  statusBadge: {
+  metricTag: {
     alignSelf: 'flex-start',
-    borderRadius: 999,
+    borderRadius: METRIC_TAG_RADIUS,
+    backgroundColor: METRIC_TAG_BG,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
     marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  statusBadgeText: {
+  metricActionTag: {
+    gap: 6,
+  },
+  metricTagText: {
     fontSize: 12,
     fontWeight: '600',
+    color: TEXT_SECONDARY,
+  },
+  metricActionChevron: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TEXT_SECONDARY,
+    lineHeight: 14,
+  },
+  tagPressed: {
+    opacity: 0.6,
   },
   chartBlock: {
     minWidth: CHART_W,
@@ -566,24 +541,6 @@ const styles = StyleSheet.create({
     width: '100%',
     borderTopLeftRadius: MINI_BAR_WIDTH / 2,
     borderTopRightRadius: MINI_BAR_WIDTH / 2,
-  },
-  ticksRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 10.5,
-  },
-  tickTrack: {
-    width: TICK_WIDTH,
-    height: MINI_BAR_MAX,
-    borderRadius: TICK_WIDTH / 2,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-  },
-  tickFill: {
-    width: '100%',
-    borderTopLeftRadius: TICK_WIDTH / 2,
-    borderTopRightRadius: TICK_WIDTH / 2,
   },
   dotsRow: {
     flexDirection: 'row',

@@ -19,3 +19,8 @@ export const addDays = (date: Date, days: number) => {
 
 export const isSameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+export const padToSeven = <T>(values: T[], fill: T): T[] => {
+  if (values.length >= 7) return values.slice(-7);
+  return Array(7 - values.length).fill(fill).concat(values);
+};

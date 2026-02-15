@@ -225,11 +225,14 @@ function calculateAge(dateOfBirth: string | undefined): number {
  *
  * @example
  * ```typescript
- * const breakdown = calculateSleepScore(480, { deep: 90, rem: 100, light: 270, awake: 20 });
+ * const breakdown = calculateLegacySleepScore(480, { deep: 90, rem: 100, light: 270, awake: 20 });
  * // { duration_norm: 35, deep_pct: 18, rem_pct: 18, efficiency: 13, consistency: 7, total: 91 }
  * ```
  */
-export function calculateSleepScore(
+/**
+ * @deprecated Use `calculateSleepScore` from `@lib/sleepAnalysis` instead.
+ */
+export function calculateLegacySleepScore(
     durationMinutes: number,
     stages: SleepStages,
     historicalDurations: number[] = [],
@@ -740,14 +743,14 @@ export function estimateSleepStages(
 
 /**
  * Calculate personalized sleep quality score (legacy)
- * @deprecated Use calculateSleepScore() instead
+ * @deprecated Use calculateSleepScore() from sleepAnalysis.ts instead
  */
 export function calculatePersonalizedQuality(
     durationMinutes: number,
     stages: SleepStages,
     profile: UserProfile | null,
 ): SleepQualityFactors {
-    const breakdown = calculateSleepScore(durationMinutes, stages, [], profile);
+    const breakdown = calculateLegacySleepScore(durationMinutes, stages, [], profile);
 
     // Map new breakdown to legacy format
     return {
@@ -769,14 +772,14 @@ export function calculatePersonalizedQuality(
 
 /**
  * Calculate quality score from duration when no stage data available
- * @deprecated Use calculateSleepScore() with estimated stages instead
+ * @deprecated Use calculateSleepScore() from sleepAnalysis.ts with estimated stages instead
  */
 export function calculateQualityFromDuration(
     durationMinutes: number,
     profile: UserProfile | null,
 ): number {
     const stages = estimateSleepStages(durationMinutes, profile);
-    const breakdown = calculateSleepScore(durationMinutes, stages, [], profile);
+    const breakdown = calculateLegacySleepScore(durationMinutes, stages, [], profile);
     return breakdown.total;
 }
 

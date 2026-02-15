@@ -56,3 +56,22 @@ export const formatMinutesToTimeLabel = (minutes?: number | null): string => {
     d.setHours(h, m, 0, 0);
     return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 };
+
+export const getSleepDescription = (score: number, durationMinutes: number): string => {
+    if ((!score || Number.isNaN(score)) && durationMinutes > 0) {
+        return "Sleep recorded. Score will appear once scoring is complete.";
+    }
+    if (score >= 85) {
+        return "Excellent night — your sleep hit all targets for duration and recovery.";
+    }
+    if (score >= 70) {
+        return "Good night overall. A little more deep sleep would push this higher.";
+    }
+    if (score >= 55) {
+        return "Decent sleep, but you fell short of your duration goal.";
+    }
+    if (score > 0) {
+        return "Tough night. Short sleep or frequent waking dragged the score down.";
+    }
+    return "Sleep recorded. Score will appear once scoring is complete.";
+};

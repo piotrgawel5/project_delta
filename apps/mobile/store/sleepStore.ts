@@ -52,14 +52,15 @@ interface SleepState {
   isConnected: boolean;
   checkingStatus: boolean;
   lastNightSleep: SleepSession | null;
-  weeklyHistory: SleepData[];
-  monthlyData: Record<string, SleepData[]>; // CACHE: "YYYY-MM" -> Records
+  recentHistory: SleepData[];
+  monthlyData: Partial<Record<string, SleepData[]>>; // CACHE: "YYYY-MM" -> Records
   loading: boolean;
   lastSyncTime: number;
+  lastCloudFetchTime: number;
 
   checkHealthConnectStatus: () => Promise<void>;
   requestHealthPermissions: () => Promise<{ granted: boolean; openedSettings?: boolean }>;
-  fetchSleepData: (userId: string) => Promise<void>;
+  fetchSleepData: (userId: string, forceRefresh?: boolean) => Promise<void>;
   fetchMonthHistory: (userId: string, year: number, month: number) => Promise<void>;
   fetchSleepDataRange: (userId: string, startDate: Date, endDate: Date) => Promise<void>;
   syncToSupabase: (
@@ -75,9 +76,20 @@ interface SleepState {
 }
 
 const inFlightRanges = new Set<string>();
+const MAX_CACHED_MONTHS = 4;
+
+function evictOldMonths(
+  data: Partial<Record<string, SleepData[]>>
+): Partial<Record<string, SleepData[]>> {
+  const keys = Object.keys(data).sort().reverse();
+  if (keys.length <= MAX_CACHED_MONTHS) return data;
+  const evicted = { ...data };
+  keys.slice(MAX_CACHED_MONTHS).forEach((k) => delete evicted[k]);
+  return evicted;
+}
 
 function toSleepEngineProfile(profile: UserProfile | null): SleepEngineUserProfile {
-  if (!profile) return {};
+  if (!profile) return { sleepGoalMinutes: 480 };
 
   let age: number | undefined;
   const dob = profile.date_of_birth || profile.birth_date;
@@ -93,10 +105,20 @@ function toSleepEngineProfile(profile: UserProfile | null): SleepEngineUserProfi
     }
   }
 
+  const chronotypeMap: Record<string, SleepEngineUserProfile['chronotype']> = {
+    sedentary: 'evening',
+    light: 'intermediate',
+    moderate: 'intermediate',
+    active: 'morning',
+    very_active: 'morning',
+  };
+
+  const profileWithGoal = profile as UserProfile & { sleep_goal_minutes?: number };
+
   return {
     age,
-    chronotype: 'intermediate',
-    sleepGoalMinutes: 480,
+    chronotype: chronotypeMap[profile.activity_level ?? 'moderate'] ?? 'intermediate',
+    sleepGoalMinutes: profileWithGoal.sleep_goal_minutes ?? 480,
   };
 }
 
@@ -148,25 +170,22 @@ async function scoreAndPersistRecords(
     );
   });
 
-  await Promise.all(
-    persistable.map(async (record) => {
-      try {
-        const { error } = await supabase
-          .from('sleep_data')
-          .update({
-            sleep_score: record.sleep_score,
-            score_breakdown: record.score_breakdown,
-          })
-          .eq('id', record.id);
+  const updates = persistable.map((record) => ({
+    id: record.id,
+    sleep_score: record.sleep_score,
+    score_breakdown: record.score_breakdown,
+  }));
 
-        if (error) {
-          console.warn(`[SleepStore] Failed to persist score for ${record.id}: ${error.message}`);
-        }
-      } catch (error) {
-        console.warn(`[SleepStore] Error persisting score for ${record.id}`, error);
+  if (updates.length > 0) {
+    try {
+      const { error } = await supabase.from('sleep_data').upsert(updates, { onConflict: 'id' });
+      if (error) {
+        console.warn(`[SleepStore] Batch score persist failed: ${error.message}`);
       }
-    })
-  );
+    } catch (error) {
+      console.warn('[SleepStore] Error batch persisting scores', error);
+    }
+  }
 
   return scored;
 }
@@ -176,10 +195,11 @@ export const useSleepStore = create<SleepState>((set, get) => ({
   isConnected: false,
   checkingStatus: true,
   lastNightSleep: null,
-  weeklyHistory: [],
+  recentHistory: [],
   monthlyData: {},
   loading: false,
   lastSyncTime: 0,
+  lastCloudFetchTime: 0,
 
   checkHealthConnectStatus: async () => {
     if (Platform.OS !== 'android') {
@@ -235,7 +255,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       const cached = await loadFromCache();
       if (cached.length > 0) {
         // Convert cached records to SleepData format
-        const weeklyHistory: SleepData[] = cached.slice(0, 7).map((r: CachedSleepRecord) => ({
+        const recentHistory: SleepData[] = cached.slice(0, 7).map((r: CachedSleepRecord) => ({
           id: r.id || `local-${r.date}`,
           user_id: r.user_id,
           date: r.date,
@@ -254,15 +274,17 @@ export const useSleepStore = create<SleepState>((set, get) => ({
           data_source: r.data_source,
           synced_at: r.synced_at || '',
         }));
-        set({ weeklyHistory });
-        console.log(`[SleepStore] Loaded ${weeklyHistory.length} records from cache`);
+        set({ recentHistory });
+        console.log(`[SleepStore] Loaded ${recentHistory.length} records from cache`);
       }
     } catch (error) {
       console.error('[SleepStore] Error loading cached data:', error);
     }
   },
 
-  fetchSleepData: async (userId: string) => {
+  fetchSleepData: async (userId: string, forceRefresh = false) => {
+    inFlightRanges.clear();
+
     // Check if we should fetch (cooldown) - non-Android continues to cloud fetch
     const shouldFetchHC = Platform.OS === 'android' && get().isConnected;
     const shouldFetch = shouldFetchHC ? await shouldFetchFromHealthConnect() : true;
@@ -276,6 +298,17 @@ export const useSleepStore = create<SleepState>((set, get) => ({
     set({ loading: true });
 
     try {
+      const CLOUD_COOLDOWN_MS = 2 * 60 * 1000;
+      const nowTs = Date.now();
+      const lastCloud = get().lastCloudFetchTime;
+      const shouldFetchCloud = nowTs - lastCloud > CLOUD_COOLDOWN_MS;
+      if (!shouldFetchCloud && !forceRefresh) {
+        console.log('[SleepStore] Skipping cloud fetch - cooldown active');
+        await get().loadCachedData();
+        set({ loading: false });
+        return;
+      }
+
       const profile = useProfileStore.getState().profile;
       const now = new Date();
       const startDate = new Date(now);
@@ -298,6 +331,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         });
         cloudRecords = historyResponse?.data || historyResponse || [];
         console.log(`[SleepStore] Fetched ${cloudRecords.length} records from Cloud`);
+        set({ lastCloudFetchTime: Date.now() });
       } catch (cloudError) {
         console.warn('[SleepStore] Cloud fetch failed, continuing with local data', cloudError);
       }
@@ -395,7 +429,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       console.log(`[SleepStore] Merged result: ${merged.length} unique records`);
 
       // 5. Update UI immediately
-      const weeklyHistory: SleepData[] = merged.slice(0, 30).map((r) => ({
+      const recentHistory: SleepData[] = merged.slice(0, 30).map((r) => ({
         id: r.id || `local-${r.date}`,
         user_id: r.user_id,
         date: r.date,
@@ -414,18 +448,18 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         data_source: r.data_source,
         synced_at: r.synced_at || '',
       }));
-      const scoredWeeklyHistory = await scoreAndPersistRecords(weeklyHistory, profile);
-      const map: Record<string, SleepData[]> = {};
+      const scoredRecentHistory = await scoreAndPersistRecords(recentHistory, profile);
+      const map: Partial<Record<string, SleepData[]>> = {};
       // Populate monthly data from weekly fetch as well
-      scoredWeeklyHistory.forEach((r) => {
+      scoredRecentHistory.forEach((r) => {
         const monthKey = r.date.substring(0, 7); // YYYY-MM
         if (!map[monthKey]) map[monthKey] = [];
         map[monthKey].push(r);
       });
 
       set({
-        weeklyHistory: scoredWeeklyHistory,
-        monthlyData: { ...get().monthlyData, ...map },
+        recentHistory: scoredRecentHistory,
+        monthlyData: evictOldMonths({ ...get().monthlyData, ...map }),
       });
 
       // 6. Sync HC-only records to cloud
@@ -466,10 +500,10 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       if (records.length > 0) {
         const scoredRecords = await scoreAndPersistRecords(records, profile);
         set((state) => ({
-          monthlyData: {
+          monthlyData: evictOldMonths({
             ...state.monthlyData,
             [key]: scoredRecords,
-          },
+          }),
         }));
       }
     } catch (error) {
@@ -501,7 +535,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       if (records.length === 0) return;
       const scoredRecords = await scoreAndPersistRecords(records, profile);
 
-      const monthMap: Record<string, SleepData[]> = {};
+      const monthMap: Partial<Record<string, SleepData[]>> = {};
       scoredRecords.forEach((r) => {
         const monthKey = r.date.substring(0, 7);
         if (!monthMap[monthKey]) monthMap[monthKey] = [];
@@ -512,22 +546,23 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         const mergedMonthly = { ...state.monthlyData };
         Object.keys(monthMap).forEach((monthKey) => {
           const existing = mergedMonthly[monthKey] || [];
+          const monthRecords = monthMap[monthKey] || [];
           const merged = new Map<string, SleepData>();
           existing.forEach((r) => merged.set(r.date, r));
-          monthMap[monthKey].forEach((r) => merged.set(r.date, r));
+          monthRecords.forEach((r) => merged.set(r.date, r));
           mergedMonthly[monthKey] = Array.from(merged.values());
         });
 
         const weeklyMap = new Map<string, SleepData>();
-        state.weeklyHistory.forEach((r) => weeklyMap.set(r.date, r));
+        state.recentHistory.forEach((r) => weeklyMap.set(r.date, r));
         scoredRecords.forEach((r) => weeklyMap.set(r.date, r));
-        const weeklyHistory = Array.from(weeklyMap.values()).sort(
+        const recentHistory = Array.from(weeklyMap.values()).sort(
           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
         );
 
         return {
-          monthlyData: mergedMonthly,
-          weeklyHistory: weeklyHistory.slice(0, 30),
+          monthlyData: evictOldMonths(mergedMonthly),
+          recentHistory: recentHistory.slice(0, 30),
         };
       });
     } catch (error) {
@@ -716,7 +751,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
     }
 
     await get().checkHealthConnectStatus();
-    await get().fetchSleepData(userId);
+    await get().fetchSleepData(userId, forceRefresh);
   },
 
   /**
@@ -729,6 +764,8 @@ export const useSleepStore = create<SleepState>((set, get) => ({
     endTime: string
   ): Promise<boolean> => {
     if (!userId) return false;
+    const previousRecentHistory = get().recentHistory;
+    const previousMonthlyData = get().monthlyData;
 
     try {
       const profile = useProfileStore.getState().profile;
@@ -786,8 +823,8 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 
       // 1. OPTIMISTIC UI UPDATE - show immediately
       set((state) => {
-        const existingIndex = state.weeklyHistory.findIndex((r) => r.date === date);
-        const updated = [...state.weeklyHistory];
+        const existingIndex = state.recentHistory.findIndex((r) => r.date === date);
+        const updated = [...state.recentHistory];
         if (existingIndex >= 0) {
           updated[existingIndex] = sleepRecord;
         } else {
@@ -801,11 +838,11 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         monthMap.set(date, sleepRecord);
 
         return {
-          weeklyHistory: updated.slice(0, 30),
-          monthlyData: {
+          recentHistory: updated.slice(0, 30),
+          monthlyData: evictOldMonths({
             ...state.monthlyData,
             [monthKey]: Array.from(monthMap.values()),
-          },
+          }),
         };
       });
 
@@ -833,8 +870,10 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       return true;
     } catch (error) {
       console.error('[SleepStore] Error force saving manual sleep:', error);
-      // Rollback optimistic update by reloading from cache
-      await get().loadCachedData();
+      set({
+        recentHistory: previousRecentHistory,
+        monthlyData: previousMonthlyData,
+      });
       return false;
     }
   },

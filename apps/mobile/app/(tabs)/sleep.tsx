@@ -26,8 +26,14 @@ import Animated, {
 import { SleepCalendar } from '../../components/sleep/SleepCalendar';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
 import { getSleepScoreGrade, brightenColor } from '@lib/sleepColors';
-import { formatHours, formatTimeParts, formatTimeWithMeridiem } from '@lib/sleepFormatters';
-import { addDays, dateKey, isSameDay, normalizeDate } from '@lib/sleepDateUtils';
+import {
+  formatDuration,
+  formatHours,
+  formatTimeParts,
+  formatTimeWithMeridiem,
+  getSleepDescription,
+} from '@lib/sleepFormatters';
+import { addDays, dateKey, isSameDay, normalizeDate, padToSeven } from '@lib/sleepDateUtils';
 import { useSleepGradient } from '@lib/useSleepGradient';
 import { SleepMetricsList, SleepMetricItem } from '@components/sleep/dashboard/SleepMetricsList';
 
@@ -54,12 +60,16 @@ const EMPTY_BUTTON_PADDING_Y = 10;
 const EMPTY_BUTTON_INNER_RADIUS = 8;
 const EMPTY_BUTTON_RADIUS = EMPTY_BUTTON_INNER_RADIUS + EMPTY_BUTTON_PADDING_Y;
 const GRADIENT_LOCATIONS = [0, 0.55, 1] as const;
-const padToSeven = <T,>(values: T[], fill: T) => {
-  if (values.length >= 7) return values.slice(-7);
-  return Array(7 - values.length)
-    .fill(fill)
-    .concat(values);
-};
+const METRIC_COLORS = {
+  totalSleep: '#5BC8F5',
+  efficiency: '#9B7FD4',
+  stagesDeep: '#4CD97B',
+  stagesREM: '#E87EAC',
+  stagesLight: '#D4A017',
+  stagesAwake: '#6B6B6B',
+  bedtime: '#9B7FD4',
+  wakeTime: '#D4A017',
+} as const;
 
 const toBedMinutes = (iso?: string | null) => {
   if (!iso) return null;
@@ -127,7 +137,7 @@ export default function SleepScreen() {
   const scrollY = useSharedValue(0);
 
   const {
-    weeklyHistory,
+    recentHistory,
     monthlyData,
     fetchSleepData,
     fetchSleepDataRange,
@@ -144,7 +154,13 @@ export default function SleepScreen() {
   const [topSectionHeight, setTopSectionHeight] = useState(0);
   const [isTopOverlayFront, setIsTopOverlayFront] = useState(true);
   const pagerRef = useRef<FlatList<Date>>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState<number>(() => {
+    const today = normalizeDate(new Date());
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    return Math.min(today.getDate() - 1, lastDay - 1);
+  });
   const selectedYear = selectedDate.getFullYear();
   const selectedMonth = selectedDate.getMonth();
   const currentMonthKey = useMemo(
@@ -153,6 +169,7 @@ export default function SleepScreen() {
   );
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
+  const populatedKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (user?.id) {
@@ -191,7 +208,7 @@ export default function SleepScreen() {
     const targetDateStr = dateKey(selectedDate);
 
     // 1. Try weekly history first
-    const hist = weeklyHistory || [];
+    const hist = recentHistory || [];
     let displayItem = hist.find((item) => item.date === targetDateStr);
 
     // 2. Fallback to monthly data cache if not found
@@ -211,23 +228,43 @@ export default function SleepScreen() {
         year: 'numeric',
       }),
     };
-  }, [selectedDate, weeklyHistory, monthlyData]);
+  }, [selectedDate, recentHistory, monthlyData]);
 
   const hi = currentData.historyItem;
   const hasData = !!hi;
 
   // Metrics
   const durationMinutes = hi?.duration_minutes || 0;
-  const durationHoursValue = durationMinutes ? formatHours(durationMinutes, 2) : '--';
-  const sleepEfficiency = durationMinutes
-    ? Math.min(100, Math.round((durationMinutes / 480) * 100))
-    : 0;
+  const durationParts = durationMinutes ? formatDuration(durationMinutes) : null;
+  const durationHoursValue = durationParts
+    ? durationParts.m > 0
+      ? `${durationParts.h}h ${durationParts.m}m`
+      : `${durationParts.h}h`
+    : '--';
+  const timeInBedMinutes =
+    hi?.start_time && hi?.end_time
+      ? Math.round((new Date(hi.end_time).getTime() - new Date(hi.start_time).getTime()) / 60000)
+      : durationMinutes;
+  const sleepEfficiency =
+    timeInBedMinutes > 0
+      ? Math.min(100, Math.round((durationMinutes / timeInBedMinutes) * 100))
+      : 0;
   const deepMin = hi?.deep_sleep_minutes || 0;
   const remMin = hi?.rem_sleep_minutes || 0;
   const lightMin = hi?.light_sleep_minutes || 0;
+  const awakeMinutesRaw = hi?.awake_minutes;
+  const awakeMin = typeof awakeMinutesRaw === 'number' ? awakeMinutesRaw : null;
   const deepPct = durationMinutes ? Math.round((deepMin / durationMinutes) * 100) : 0;
   const remPct = durationMinutes ? Math.round((remMin / durationMinutes) * 100) : 0;
   const lightPct = durationMinutes ? Math.round((lightMin / durationMinutes) * 100) : 0;
+  const awakePct =
+    durationMinutes && awakeMin !== null ? Math.round((awakeMin / durationMinutes) * 100) : null;
+  const deepDurationParts = deepMin ? formatDuration(deepMin) : null;
+  const deepDurationValue = deepDurationParts
+    ? deepDurationParts.m > 0
+      ? `${deepDurationParts.h}h ${deepDurationParts.m}m`
+      : `${deepDurationParts.h}h`
+    : '--';
   const stageItems = useMemo(() => {
     if (!durationMinutes) return [];
     return [
@@ -235,33 +272,39 @@ export default function SleepScreen() {
         label: 'Deep',
         value: `${formatHours(deepMin)}h`,
         percent: deepPct,
-        color: '#34D399',
+        color: METRIC_COLORS.stagesDeep,
       },
       {
         label: 'REM',
         value: `${formatHours(remMin)}h`,
         percent: remPct,
-        color: '#F472B6',
+        color: METRIC_COLORS.stagesREM,
       },
       {
         label: 'Light',
         value: `${formatHours(lightMin)}h`,
         percent: lightPct,
-        color: '#FBBF24',
+        color: METRIC_COLORS.stagesLight,
+      },
+      {
+        label: 'Awake',
+        value: awakeMin !== null ? `${formatHours(awakeMin)}h` : '—',
+        percent: awakePct,
+        color: METRIC_COLORS.stagesAwake,
       },
     ];
-  }, [deepMin, remMin, lightMin, deepPct, remPct, lightPct, durationMinutes]);
+  }, [awakeMin, awakePct, deepMin, remMin, lightMin, deepPct, remPct, lightPct, durationMinutes]);
 
   const bedtimeParts = formatTimeParts(hi?.start_time);
   const wakeParts = formatTimeParts(hi?.end_time);
 
   const weeklySeries = useMemo(() => {
-    const history = weeklyHistory || [];
+    const history = recentHistory || [];
     if (!history.length) return [];
     return [...history]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(-7);
-  }, [weeklyHistory]);
+  }, [recentHistory]);
 
   const trendData = useMemo(() => {
     return {
@@ -310,7 +353,7 @@ export default function SleepScreen() {
     const efficiencySubtitle = durationMinutes
       ? sleepEfficiency >= 85
         ? 'Excellent'
-        : sleepEfficiency >= 70
+        : sleepEfficiency >= 75
           ? 'Good'
           : 'Low'
       : 'No data';
@@ -320,14 +363,13 @@ export default function SleepScreen() {
         id: 'total',
         label: 'Total Sleep',
         value: durationHoursValue,
-        unit: durationMinutes ? 'hr' : undefined,
+        unit: undefined,
         status: durationMinutes >= 420 ? 'up' : durationMinutes > 0 ? 'down' : 'neutral',
         subLabel: totalSubtitle,
-        accent: '#7DD3FC',
+        accent: METRIC_COLORS.totalSleep,
         icon: 'moon',
         trend: trendData.duration,
         chartType: 'bars',
-        dataDate: selectedDate,
         selectedDate,
       },
       {
@@ -338,32 +380,30 @@ export default function SleepScreen() {
         status: durationMinutes
           ? sleepEfficiency >= 85
             ? 'up'
-            : sleepEfficiency >= 70
+            : sleepEfficiency >= 75
               ? 'neutral'
               : 'down'
           : 'neutral',
         subLabel: efficiencySubtitle,
-        accent: '#C4B5FD',
+        accent: METRIC_COLORS.efficiency,
         icon: 'speedometer',
         trend: trendData.efficiency,
         chartType: 'dots',
         dotThreshold: 85,
-        dataDate: selectedDate,
         selectedDate,
       },
       {
         id: 'stages',
         label: 'Sleep Stages',
-        value: durationMinutes ? durationHoursValue : '--',
-        unit: durationMinutes ? 'hr' : undefined,
+        value: durationMinutes ? `${deepDurationValue} Deep` : '--',
+        unit: undefined,
         status: 'neutral',
-        subLabel: durationMinutes ? 'Stage breakdown' : 'No data',
-        accent: '#A7F3D0',
+        subLabel: durationMinutes ? `${deepPct}% of total` : 'No data',
+        accent: METRIC_COLORS.stagesDeep,
         icon: 'layers',
         chartType: 'stages',
         stages: stageItems,
         showDays: false,
-        dataDate: selectedDate,
         selectedDate,
       },
       {
@@ -373,11 +413,11 @@ export default function SleepScreen() {
         unit: bedtimeParts.meridiem,
         status: 'neutral',
         subLabel: 'Bedtime',
-        accent: '#93C5FD',
+        accent: METRIC_COLORS.bedtime,
         icon: 'bed',
         trend: trendData.bed,
-        chartType: 'line',
-        dataDate: selectedDate,
+        chartType: 'dots',
+        dotThreshold: 1320,
         selectedDate,
       },
       {
@@ -387,17 +427,18 @@ export default function SleepScreen() {
         unit: wakeParts.meridiem,
         status: 'neutral',
         subLabel: 'Wake time',
-        accent: '#FDBA74',
+        accent: METRIC_COLORS.wakeTime,
         icon: 'alarm',
         trend: trendData.wake,
-        chartType: 'ticks',
-        dataDate: selectedDate,
+        chartType: 'bars',
         selectedDate,
       },
     ];
   }, [
     bedtimeParts.meridiem,
     bedtimeParts.time,
+    deepDurationValue,
+    deepPct,
     durationHoursValue,
     durationMinutes,
     selectedDate,
@@ -413,7 +454,7 @@ export default function SleepScreen() {
 
   const historyByDate = useMemo(() => {
     const map = new Map<string, any>();
-    (weeklyHistory || []).forEach((item) => {
+    (recentHistory || []).forEach((item) => {
       map.set(item.date, item);
     });
     const monthRecords = monthlyData?.[currentMonthKey] || [];
@@ -423,7 +464,7 @@ export default function SleepScreen() {
       }
     });
     return map;
-  }, [weeklyHistory, monthlyData, currentMonthKey]);
+  }, [recentHistory, monthlyData, currentMonthKey]);
 
   const getGradientColorForKey = useCallback(
     (key: string) => {
@@ -461,23 +502,26 @@ export default function SleepScreen() {
 
   useEffect(() => {
     const index = monthDates.findIndex((d) => isSameDay(d, selectedDate));
-    if (index >= 0) {
+    if (index >= 0 && index !== activeIndex) {
       pagerRef.current?.scrollToIndex({ index, animated: true });
       setActiveIndex(index);
     }
-  }, [selectedDate, monthDates]);
+  }, [selectedDate, monthDates, activeIndex]);
 
-  const handlePagerEnd = (offsetX: number) => {
-    const index = Math.round(offsetX / SCREEN_W);
-    const next = monthDates[index];
-    if (next && !isSameDay(next, selectedDate)) {
-      setSelectedDate(next);
-      setActiveIndex(index);
-    }
-    const nextKey = next ? dateKey(next) : gradientKey;
-    setGradientKey(nextKey, true);
-    navigation.getParent()?.setOptions({ swipeEnabled: true });
-  };
+  const handlePagerEnd = useCallback(
+    (offsetX: number) => {
+      const index = Math.round(offsetX / SCREEN_W);
+      const next = monthDates[index];
+      if (next && !isSameDay(next, selectedDate)) {
+        setSelectedDate(next);
+        setActiveIndex(index);
+      }
+      const nextKey = next ? dateKey(next) : gradientKey;
+      setGradientKey(nextKey, true);
+      navigation.getParent()?.setOptions({ swipeEnabled: true });
+    },
+    [monthDates, selectedDate, gradientKey, setGradientKey, navigation]
+  );
 
   useEffect(() => {
     navigation.getParent()?.setOptions({ swipeEnabled: true });
@@ -485,26 +529,11 @@ export default function SleepScreen() {
 
   useEffect(() => {
     if (!monthDates.length) return;
-    const initialMin = Math.max(0, activeIndex - 4);
-    const initialMax = Math.min(monthDates.length - 1, activeIndex + 4);
-    setCacheRange({ min: initialMin, max: initialMax });
-  }, [activeIndex, monthDates.length]);
-
-  useEffect(() => {
-    if (!monthDates.length) return;
     setCacheRange((prev) => {
-      let min = prev.min;
-      let max = prev.max;
-
-      if (activeIndex < min + 1) {
-        min = Math.max(0, activeIndex - 4);
-      }
-      if (activeIndex >= max - 1) {
-        max = Math.min(monthDates.length - 1, activeIndex + 4);
-      }
-
-      if (min === prev.min && max === prev.max) return prev;
-      return { min, max };
+      const newMin = Math.max(0, activeIndex - 4);
+      const newMax = Math.min(monthDates.length - 1, activeIndex + 4);
+      if (newMin === prev.min && newMax === prev.max) return prev;
+      return { min: newMin, max: newMax };
     });
   }, [activeIndex, monthDates.length]);
 
@@ -526,20 +555,29 @@ export default function SleepScreen() {
   }, [activeIndex, cacheRange, selectedDate, user?.id, fetchSleepDataRange, monthDates.length]);
 
   useEffect(() => {
+    historyByDate.forEach((_, key) => {
+      populatedKeysRef.current.delete(key);
+    });
+  }, [historyByDate]);
+
+  useEffect(() => {
     if (!monthDates.length) return;
+    let hasNew = false;
     const next = new Map(cachedHistory);
     for (let i = cacheRange.min; i <= cacheRange.max; i += 1) {
       const date = monthDates[i];
       if (!date) continue;
       const key = dateKey(date);
-      if (next.has(key)) continue;
-      const record = historyByDate.get(key) || null;
+      if (populatedKeysRef.current.has(key)) continue;
+      const record = historyByDate.get(key) ?? null;
       next.set(key, record);
+      populatedKeysRef.current.add(key);
+      hasNew = true;
     }
-    if (next.size !== cachedHistory.size) {
+    if (hasNew) {
       setCachedHistory(next);
     }
-  }, [cacheRange, monthDates, historyByDate, cachedHistory]);
+  }, [cacheRange, monthDates, historyByDate]);
 
   return (
     <View style={styles.container}>
@@ -562,22 +600,6 @@ export default function SleepScreen() {
             zIndex: isTopOverlayFront ? 3 : 0,
           },
         ]}>
-        <View style={styles.contentWrap}>
-          {/* Navigation Row */}
-          <View style={styles.navRow}>
-            {/* Back button removed as requested */}
-            <View style={{ width: 44 }} />
-
-            <View style={styles.rightIcons}>
-              <Pressable style={styles.iconButton} onPress={() => setIsCalendarVisible(true)}>
-                <Ionicons name="calendar-outline" size={20} color="white" />
-              </Pressable>
-              <Pressable style={styles.iconButton} onPress={() => setIsAddModalVisible(true)}>
-                <Ionicons name="add" size={24} color="white" />
-              </Pressable>
-            </View>
-          </View>
-        </View>
         {/* Swipeable Title Section */}
         <View style={styles.pagerWrap}>
           <FlatList
@@ -596,18 +618,11 @@ export default function SleepScreen() {
             windowSize={3}
             maxToRenderPerBatch={3}
             updateCellsBatchingPeriod={50}
-            removeClippedSubviews
             onScrollBeginDrag={() => {
               navigation.getParent()?.setOptions({ swipeEnabled: false });
             }}
             onMomentumScrollEnd={(event) => handlePagerEnd(event.nativeEvent.contentOffset.x)}
             onScrollEndDrag={() => {
-              navigation.getParent()?.setOptions({ swipeEnabled: true });
-            }}
-            onTouchStart={() => {
-              navigation.getParent()?.setOptions({ swipeEnabled: false });
-            }}
-            onTouchEnd={() => {
               navigation.getParent()?.setOptions({ swipeEnabled: true });
             }}
             renderItem={({ item, index }) => {
@@ -631,6 +646,9 @@ export default function SleepScreen() {
                     <Text style={styles.mainRating}>
                       {itemHistory?.sleep_score !== undefined ? itemGrade.grade : '--'}
                     </Text>
+                    {itemHistory?.sleep_score !== undefined ? (
+                      <Text style={styles.scoreNumeric}>{itemHistory.sleep_score} / 100</Text>
+                    ) : null}
                     <Text style={styles.dateLabel}>
                       {item.toLocaleDateString('en-GB', {
                         day: 'numeric',
@@ -640,7 +658,10 @@ export default function SleepScreen() {
                     </Text>
                     <Text style={styles.description}>
                       {itemHasData
-                        ? 'Your sleep duration last night was above your goal, providing optimal restorative sleep for complete recovery. You barely stirred awake last night - great stuff.'
+                        ? getSleepDescription(
+                            itemHistory?.sleep_score ?? 0,
+                            itemHistory?.duration_minutes ?? 0
+                          )
                         : 'No sleep data yet for this day. Add a record to see your score and trends.'}
                     </Text>
                   </View>
@@ -648,6 +669,18 @@ export default function SleepScreen() {
               );
             }}
           />
+        </View>
+      </View>
+
+      <View style={[styles.persistentControls, { top: insets.top + 20, zIndex: 10 }]}>
+        <View style={{ width: 44 }} />
+        <View style={styles.rightIcons}>
+          <Pressable style={styles.iconButton} onPress={() => setIsCalendarVisible(true)}>
+            <Ionicons name="calendar-outline" size={20} color="#FFFFFF" />
+          </Pressable>
+          <Pressable style={styles.iconButton} onPress={() => setIsAddModalVisible(true)}>
+            <Ionicons name="add" size={24} color="#FFFFFF" />
+          </Pressable>
         </View>
       </View>
 
@@ -692,7 +725,7 @@ export default function SleepScreen() {
           setSelectedDate(normalized);
           setGradientKey(dateKey(normalized), true);
         }}
-        history={weeklyHistory}
+        history={recentHistory}
       />
 
       <AddSleepRecordModal
@@ -732,6 +765,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
+  persistentControls: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: SHEET_PADDING_X,
+  },
   sheetScroll: {
     zIndex: 1,
   },
@@ -767,9 +808,7 @@ const styles = StyleSheet.create({
     width: ICON_BUTTON_SIZE,
     height: ICON_BUTTON_SIZE,
     borderRadius: ICON_BUTTON_RADIUS,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: STROKE,
+    backgroundColor: 'rgba(0, 0, 0, 0.30)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -794,15 +833,25 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     letterSpacing: -2,
   },
+  scoreNumeric: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.82)',
+    marginTop: 6,
+    letterSpacing: 0.35,
+    marginBottom: 10,
+  },
   dateLabel: {
     color: TEXT_SECONDARY,
     fontSize: 15,
     marginBottom: 16,
   },
   description: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 17,
-    lineHeight: 24,
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 14,
+    fontWeight: '400',
+    lineHeight: 20,
+    marginTop: 6,
   },
   emptyState: {
     borderRadius: EMPTY_STATE_RADIUS,
