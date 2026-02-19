@@ -513,6 +513,29 @@ export default function SleepScreen() {
     defaultColor: BG_PRIMARY,
     getColorForKey: getGradientColorForKey,
   });
+  const selectedDateKey = useMemo(() => dateKey(selectedDate), [selectedDate]);
+  const hydratedGradientKeysRef = useRef<Set<string>>(new Set());
+  const prevSelectedDateKeyRef = useRef(selectedDateKey);
+  const prevHasDataForSelectedRef = useRef<boolean>(!!historyByDate.get(selectedDateKey));
+
+  useEffect(() => {
+    const selectedChanged = prevSelectedDateKeyRef.current !== selectedDateKey;
+    const hasDataNow = !!historyByDate.get(selectedDateKey);
+    const hadDataBefore = prevHasDataForSelectedRef.current;
+
+    prevSelectedDateKeyRef.current = selectedDateKey;
+    prevHasDataForSelectedRef.current = hasDataNow;
+
+    // Keep animated transitions for explicit day changes.
+    if (selectedChanged) return;
+    const becameAvailable = !hadDataBefore && hasDataNow;
+    if (!becameAvailable) return;
+    if (hydratedGradientKeysRef.current.has(selectedDateKey)) return;
+    if (gradientKey !== selectedDateKey) return;
+
+    setGradientKey(selectedDateKey, false);
+    hydratedGradientKeysRef.current.add(selectedDateKey);
+  }, [historyByDate, selectedDateKey, gradientKey, setGradientKey]);
 
   const monthDates = useMemo(() => {
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
