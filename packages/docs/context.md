@@ -10,6 +10,7 @@
 - **Shared packages** (TypeScript types, constants, utilities)
 
 The architecture follows a client-server model with offline-first mobile capabilities, passkey-based authentication, and real-time data synchronization.
+It now also includes plan-gated premium sleep prediction computed client-side (never persisted to Supabase payloads).
 
 ## Repository Structure
 
@@ -88,10 +89,17 @@ project_delta/
 **Key Features (from CHANGELOG):**
 
 - Sleep tracking with deterministic scoring (0-100)
+- Plan tiers on profile (`free`, `pro`, `premium`) with `isPaidPlan()` gating
+- Premium sleep stage prediction (`premiumPrediction`) with:
+  - estimated physiology (VO2max, resting HR, HRV/rMSSD, respiratory rate)
+  - predicted stage distribution and cycle timeline
+  - recovery index and insight flags
 - Screen time detection (native Kotlin module)
 - Sleep timeline visualization
 - Edit history & provenance tracking
 - AI insights & bedtime coaching
+- Sleep Intelligence card (see `packages/docs/mobile/screens.md`) surfaces nightly context, AI coaching, and the deep-dive via `SleepAnalysisScreen`
+- Manual sleep entry uses the circular clock picker and swipe navigation on `SleepScreen` to refine data without leaving the dashboard
 
 ### API Service (`services/api/`)
 
@@ -131,6 +139,7 @@ project_delta/
 
 - Passkey credentials schema
 - User profiles
+- User plan column on profiles (`plan` with default `free`)
 - Auth methods & enums
 - Sleep score & provenance tracking (v20260201)
 
@@ -139,7 +148,7 @@ project_delta/
 ### `@project-delta/shared`
 
 - Centralized types & utilities for mobile + API
-- Imported in mobile via `@project-delta/shared` alias
+- Imported in mobile primarily via `@shared` alias (tsconfig path)
 - Location: `packages/shared/src/`
 
 ### `packages/types/`
@@ -159,7 +168,8 @@ npm run start    # Start Expo dev server + Webpack
 npm run ios      # Run iOS simulator/device
 npm run android  # Run Android emulator/device
 npm run web      # Run Expo web (localhost:19006)
-npm run lint     # ESLint + Prettier check
+npm run lint     # ESLint (warnings allowed, errors fail)
+npm run lint:prettier # Prettier check
 npm run format   # Auto-fix ESLint + Prettier
 npm run prebuild # Generate native projects
 ```
@@ -193,7 +203,8 @@ docker-compose up   # Start API + Supabase (if configured)
 
 ### TypeScript
 
-- **Mobile:** `apps/mobile/tsconfig.json` strict mode, path aliases (@lib, @components, @modules, @store, @project-delta/shared)
+- **Root:** `tsconfig.json` references `apps/mobile/tsconfig.json` so `npx tsc --noEmit` works from repo root
+- **Mobile:** `apps/mobile/tsconfig.json` strict mode, path aliases (`@lib`, `@components`, `@modules`, `@store`, `@shared`, `@constants`)
 - **API:** `services/api/tsconfig.json` strict mode, ES2020 target, CommonJS
 - **Shared:** `packages/shared/` – declared as main entry for monorepo imports
 
@@ -270,15 +281,20 @@ docker-compose up   # Start API + Supabase (if configured)
   - Derive radii from padding or element size for visual consistency
 - **Styling:** NativeWind/Tailwind classes in `className`
 - **Responsive:** Adapt layouts for iOS/Android/Web differences in screenshots
+- **Sleep Intelligence & Manual Entry Flows:** The `SleepScreen` now includes the Sleep Intelligence AI insight card and the `SleepAnalysisScreen` deep-dive, plus the circular clock picker for manual entries (`packages/docs/mobile/screens.md`); reuse the same cards/pickers when surfacing hints or edits so animations and tokens stay consistent.
 
 ### Sleep Data Conventions
 
 - **Score:** 0–100 deterministic calculation
-  - Weights: duration 35%, deep 20%, REM 20%, efficiency 15%, consistency 10%
+  - Weights (current): efficiency 25%, deep 20%, REM 20%, WASO 15%, TST 10% (J-curve), regularity 10%
+  - Score breakdown now includes optional component fields: `efficiencyScore`, `wasoScore`, `tstScore`, `deepScore`, `remScore`, `regularityScore`
   - Tracked by confidence level: `high`, `medium`, `low`
 - **Data Sources:** `health_connect`, `digital_wellbeing`, `usage_stats`, `wearable`, `manual`
+- **Premium prediction data:** `premiumPrediction?: PremiumSleepPrediction` on sleep records; optional and backward compatible
+- **Persistence rule:** `premiumPrediction` is computed client-side after scoring and is stripped from API/Supabase write payloads
 - **Edit Tracking:** All manual edits include `edit_reason` and full history
 - **Calculations:** Deterministic, unit-tested for edge cases
+- **Sleep Intelligence Contextualization:** Nightly summaries drive the Sleep Intelligence card and the `SleepAnalysisScreen` deep-dive timeline, so reliability expectations (efficiency, sleep debt, timeline color key) must align with the AI insight output described in `packages/docs/mobile/screens.md`
 
 ### Git & Commits
 
