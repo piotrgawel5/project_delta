@@ -99,6 +99,7 @@ type ScorePersistQueueItem = {
 
 const scorePersistQueue = new Map<string, ScorePersistQueueItem>();
 let isScorePersistWorkerRunning = false;
+let currentFetchPromise: Promise<void> | null = null;
 
 function evictOldMonths(
   data: Partial<Record<string, SleepData[]>>
@@ -406,248 +407,294 @@ export const useSleepStore = create<SleepState>((set, get) => ({
   },
 
   fetchSleepData: async (userId: string, forceRefresh = false) => {
-    inFlightRanges.clear();
-
-    // Check if we should fetch (cooldown) - non-Android continues to cloud fetch
-    const shouldFetchHC = Platform.OS === 'android' && get().isConnected;
-    const shouldFetch = shouldFetchHC ? await shouldFetchFromHealthConnect() : true;
-
-    if (!shouldFetch && shouldFetchHC) {
-      console.log('[SleepStore] Skipping HC fetch - cooldown active');
-      await get().loadCachedData();
-      return;
+    if (currentFetchPromise) {
+      return currentFetchPromise;
     }
 
-    set({ loading: true });
+    currentFetchPromise = (async () => {
+      inFlightRanges.clear();
 
-    try {
-      const CLOUD_COOLDOWN_MS = 2 * 60 * 1000;
-      const nowTs = Date.now();
-      const lastCloud = get().lastCloudFetchTime;
-      const shouldFetchCloud = nowTs - lastCloud > CLOUD_COOLDOWN_MS;
-      if (!shouldFetchCloud && !forceRefresh) {
-        console.log('[SleepStore] Skipping cloud fetch - cooldown active');
+      // Check if we should fetch (cooldown) - non-Android continues to cloud fetch
+      const shouldFetchHC = Platform.OS === 'android' && get().isConnected;
+      const shouldFetch = shouldFetchHC ? await shouldFetchFromHealthConnect() : true;
+
+      if (!shouldFetch && shouldFetchHC) {
+        console.log('[SleepStore] Skipping HC fetch - cooldown active');
         await get().loadCachedData();
-        set({ loading: false });
         return;
       }
 
-      const profile = useProfileStore.getState().profile;
-      const now = new Date();
-      const startDate = new Date(now);
-      startDate.setDate(startDate.getDate() - 8);
-      startDate.setHours(0, 0, 0, 0);
+      set({ loading: true });
 
-      // ============================================================
-      // 3-WAY MERGE: Fetch from all sources in parallel
-      // ============================================================
-
-      // 1. Fetch Cloud history
-      let cloudRecords: SleepData[] = [];
       try {
-        const historyResponse = await api.get(`/api/sleep/${userId}/history?limit=30`, {
-          params: {
-            start_date: startDate.toISOString().split('T')[0],
-            end_date: now.toISOString().split('T')[0],
-            limit: 30,
-          },
-        });
-        cloudRecords = historyResponse?.data || historyResponse || [];
-        console.log(`[SleepStore] Fetched ${cloudRecords.length} records from Cloud`);
-        set({ lastCloudFetchTime: Date.now() });
-      } catch (cloudError) {
-        console.warn('[SleepStore] Cloud fetch failed, continuing with local data', cloudError);
-      }
+        const CLOUD_COOLDOWN_MS = 2 * 60 * 1000;
+        const nowTs = Date.now();
+        const lastCloud = get().lastCloudFetchTime;
+        const shouldFetchCloud = nowTs - lastCloud > CLOUD_COOLDOWN_MS;
+        if (!shouldFetchCloud && !forceRefresh) {
+          console.log('[SleepStore] Skipping cloud fetch - cooldown active');
+          await get().loadCachedData();
+          set({ loading: false });
+          return;
+        }
 
-      // 2. Fetch Health Connect (Android only)
-      let hcRecords: CachedSleepRecord[] = [];
-      if (shouldFetchHC) {
-        const sessions = await getSleepSessions(startDate.toISOString(), now.toISOString());
-        console.log(`[SleepStore] Fetched ${sessions.length} sessions from Health Connect`);
-        await markFetchCompleted();
+        const profile = useProfileStore.getState().profile;
+        const now = new Date();
+        const startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - 8);
+        startDate.setHours(0, 0, 0, 0);
 
-        // Convert HC sessions to CachedSleepRecord format
-        for (const session of sessions) {
-          const endDate = new Date(session.endTime);
-          const date = endDate.toISOString().split('T')[0];
-          const durationMs = endDate.getTime() - new Date(session.startTime).getTime();
-          const durationMinutes = Math.round(durationMs / 60000);
+        const cloudFetchPromise: Promise<SleepData[]> = shouldFetchCloud
+          ? (async () => {
+              const historyResponse = await api.get(`/api/sleep/${userId}/history`, {
+                params: {
+                  limit: 30,
+                },
+              });
+              return historyResponse?.data || historyResponse || [];
+            })()
+          : Promise.resolve([]);
 
-          let deepMinutes = 0,
-            remMinutes = 0,
-            lightMinutes = 0,
-            awakeMinutes = 0;
-          const hasStages = session.stages && session.stages.length > 0;
+        const healthConnectFetchPromise: Promise<{
+          records: CachedSleepRecord[];
+          lastNightSleep: SleepSession | null;
+        }> = shouldFetchHC
+          ? (async () => {
+              const sessions = await getSleepSessions(startDate.toISOString(), now.toISOString());
+              await markFetchCompleted();
+              console.log(`[SleepStore] Fetched ${sessions.length} sessions from Health Connect`);
 
-          if (hasStages) {
-            for (const stage of session.stages) {
-              const stageDuration = Math.round(
-                (new Date(stage.endTime).getTime() - new Date(stage.startTime).getTime()) / 60000
-              );
-              switch (stage.stage) {
-                case 5:
-                  deepMinutes += stageDuration;
-                  break;
-                case 6:
-                  remMinutes += stageDuration;
-                  break;
-                case 4:
-                case 2:
-                  lightMinutes += stageDuration;
-                  break;
-                case 1:
-                  awakeMinutes += stageDuration;
-                  break;
-                default:
-                  lightMinutes += stageDuration;
-                  break;
+              const records: CachedSleepRecord[] = [];
+              for (const session of sessions) {
+                const endDate = new Date(session.endTime);
+                const date = endDate.toISOString().split('T')[0];
+                const durationMs = endDate.getTime() - new Date(session.startTime).getTime();
+                const durationMinutes = Math.round(durationMs / 60000);
+
+                let deepMinutes = 0,
+                  remMinutes = 0,
+                  lightMinutes = 0,
+                  awakeMinutes = 0;
+                const hasStages = session.stages && session.stages.length > 0;
+
+                if (hasStages) {
+                  for (const stage of session.stages) {
+                    const stageDuration = Math.round(
+                      (new Date(stage.endTime).getTime() - new Date(stage.startTime).getTime()) /
+                        60000
+                    );
+                    switch (stage.stage) {
+                      case 5:
+                        deepMinutes += stageDuration;
+                        break;
+                      case 6:
+                        remMinutes += stageDuration;
+                        break;
+                      case 4:
+                      case 2:
+                        lightMinutes += stageDuration;
+                        break;
+                      case 1:
+                        awakeMinutes += stageDuration;
+                        break;
+                      default:
+                        lightMinutes += stageDuration;
+                        break;
+                    }
+                  }
+                } else if (durationMinutes > 0) {
+                  const estimated = estimateSleepStages(durationMinutes, profile);
+                  deepMinutes = estimated.deep;
+                  remMinutes = estimated.rem;
+                  lightMinutes = estimated.light;
+                  awakeMinutes = estimated.awake;
+                }
+
+                const qualityScore = hasStages
+                  ? calculateSleepQuality(session)
+                  : calculateQualityFromDuration(durationMinutes, profile);
+
+                records.push({
+                  user_id: userId,
+                  date,
+                  start_time: session.startTime,
+                  end_time: session.endTime,
+                  duration_minutes: durationMinutes,
+                  quality_score: qualityScore,
+                  deep_sleep_minutes: deepMinutes,
+                  rem_sleep_minutes: remMinutes,
+                  light_sleep_minutes: lightMinutes,
+                  awake_minutes: awakeMinutes,
+                  data_source: session.metadata?.dataOrigin || 'health_connect',
+                  source: 'health_connect' as any,
+                  confidence: hasStages ? 'high' : 'medium',
+                  cached_at: new Date().toISOString(),
+                  needs_sync: true,
+                });
               }
-            }
-          } else if (durationMinutes > 0) {
-            const estimated = estimateSleepStages(durationMinutes, profile);
-            deepMinutes = estimated.deep;
-            remMinutes = estimated.rem;
-            lightMinutes = estimated.light;
-            awakeMinutes = estimated.awake;
+
+              const lastNightSleep =
+                sessions.length > 0
+                  ? [...sessions].sort(
+                      (a, b) => new Date(b.endTime).getTime() - new Date(a.endTime).getTime()
+                    )[0]
+                  : null;
+
+              return { records, lastNightSleep };
+            })()
+          : Promise.resolve({ records: [], lastNightSleep: null });
+
+        const cacheLoadPromise: Promise<CachedSleepRecord[]> = loadFromCache();
+
+        const [cloudResult, hcResult, cacheResult] = await Promise.allSettled([
+          cloudFetchPromise,
+          healthConnectFetchPromise,
+          cacheLoadPromise,
+        ]);
+
+        let cloudRecords: SleepData[] = [];
+        if (cloudResult.status === 'fulfilled') {
+          cloudRecords = cloudResult.value;
+          console.log(`[SleepStore] Fetched ${cloudRecords.length} records from Cloud`);
+          if (shouldFetchCloud) {
+            set({ lastCloudFetchTime: Date.now() });
           }
-
-          const qualityScore = hasStages
-            ? calculateSleepQuality(session)
-            : calculateQualityFromDuration(durationMinutes, profile);
-
-          hcRecords.push({
-            user_id: userId,
-            date,
-            start_time: session.startTime,
-            end_time: session.endTime,
-            duration_minutes: durationMinutes,
-            quality_score: qualityScore,
-            deep_sleep_minutes: deepMinutes,
-            rem_sleep_minutes: remMinutes,
-            light_sleep_minutes: lightMinutes,
-            awake_minutes: awakeMinutes,
-            data_source: session.metadata?.dataOrigin || 'health_connect',
-            source: 'health_connect' as any,
-            confidence: hasStages ? 'high' : 'medium',
-            cached_at: new Date().toISOString(),
-            needs_sync: true,
-          });
+        } else {
+          console.warn('[SleepStore] cloud fetch failed', cloudResult.reason);
         }
 
-        // Set most recent session
-        if (sessions.length > 0) {
-          const sorted = [...sessions].sort(
-            (a, b) => new Date(b.endTime).getTime() - new Date(a.endTime).getTime()
-          );
-          set({ lastNightSleep: sorted[0] });
+        let hcRecords: CachedSleepRecord[] = [];
+        if (hcResult.status === 'fulfilled') {
+          hcRecords = hcResult.value.records;
+          if (hcResult.value.lastNightSleep) {
+            set({ lastNightSleep: hcResult.value.lastNightSleep });
+          }
+        } else {
+          console.warn('[SleepStore] HC fetch failed', hcResult.reason);
         }
-      }
 
-      // 3. Load local cache
-      const cachedRecords = await loadFromCache();
-      console.log(`[SleepStore] Loaded ${cachedRecords.length} records from Cache`);
+        let cachedRecords: CachedSleepRecord[] = [];
+        if (cacheResult.status === 'fulfilled') {
+          cachedRecords = cacheResult.value;
+          console.log(`[SleepStore] Loaded ${cachedRecords.length} records from Cache`);
+        } else {
+          console.warn('[SleepStore] cache load failed', cacheResult.reason);
+        }
 
-      // 4. Merge all sources with conflict resolution
-      const merged = await mergeAllSources(cloudRecords, hcRecords, cachedRecords);
-      console.log(`[SleepStore] Merged result: ${merged.length} unique records`);
+        // 4. Merge all sources with conflict resolution
+        const merged = await mergeAllSources(cloudRecords, hcRecords, cachedRecords);
+        console.log(`[SleepStore] Merged result: ${merged.length} unique records`);
 
-      // 5. Update UI immediately
-      const recentHistory: SleepData[] = merged.slice(0, 30).map((r) => ({
-        id: r.id || `local-${r.date}`,
-        user_id: r.user_id,
-        date: r.date,
-        start_time: r.start_time,
-        end_time: r.end_time,
-        duration_minutes: r.duration_minutes,
-        quality_score: r.quality_score,
-        deep_sleep_minutes: r.deep_sleep_minutes,
-        rem_sleep_minutes: r.rem_sleep_minutes,
-        light_sleep_minutes: r.light_sleep_minutes,
-        awake_minutes: r.awake_minutes,
-        sleep_score: r.sleep_score,
-        score_breakdown: r.score_breakdown as ScoreBreakdown,
-        source: r.source,
-        confidence: r.confidence,
-        data_source: r.data_source,
-        synced_at: r.synced_at || '',
-      }));
-      const scoredRecentHistory = computeScoresForRecords(recentHistory, profile);
+        // 5. Update UI immediately
+        const recentHistory: SleepData[] = merged.slice(0, 30).map((r) => ({
+          id: r.id || `local-${r.date}`,
+          user_id: r.user_id,
+          date: r.date,
+          start_time: r.start_time,
+          end_time: r.end_time,
+          duration_minutes: r.duration_minutes,
+          quality_score: r.quality_score,
+          deep_sleep_minutes: r.deep_sleep_minutes,
+          rem_sleep_minutes: r.rem_sleep_minutes,
+          light_sleep_minutes: r.light_sleep_minutes,
+          awake_minutes: r.awake_minutes,
+          sleep_score: r.sleep_score,
+          score_breakdown: r.score_breakdown as ScoreBreakdown,
+          source: r.source,
+          confidence: r.confidence,
+          data_source: r.data_source,
+          synced_at: r.synced_at || '',
+        }));
+        const scoredRecentHistory = computeScoresForRecords(recentHistory, profile);
 
-      const map: Partial<Record<string, SleepData[]>> = {};
-      // Populate monthly data from weekly fetch as well
-      scoredRecentHistory.forEach((r) => {
-        const monthKey = r.date.substring(0, 7); // YYYY-MM
-        if (!map[monthKey]) map[monthKey] = [];
-        map[monthKey].push(r);
-      });
-
-      set({
-        recentHistory: scoredRecentHistory,
-        monthlyData: evictOldMonths({ ...get().monthlyData, ...map }),
-      });
-      enqueueScorePersistence(scoredRecentHistory);
-
-      const plan = useProfileStore.getState().profile?.plan;
-      if (isPaidPlan(plan)) {
-        // PREMIUM ONLY  dynamically imported, never executes for free plan
-        const { buildPremiumPrediction } = await import('@lib/sleepStagePredictor');
-        const { estimatePhysiology } = await import('@lib/sleepPhysiologyEstimator');
-        const premiumProfile = useProfileStore.getState().profile;
-
-        const phys = estimatePhysiology({
-          date_of_birth: premiumProfile?.date_of_birth,
-          sex: premiumProfile?.sex,
-          activity_level: premiumProfile?.activity_level,
-        });
-
-        const debt = computeRecentDebt(scoredRecentHistory);
-        const stageAvgs = computeRecentStageAverages(scoredRecentHistory);
-
-        scoredRecentHistory.forEach((record) => {
-          if (!record.start_time || !record.end_time) return;
-          const age = phys.basisNotes.find((n) => n.startsWith('age='))?.replace('age=', '');
-
-          record.premiumPrediction = buildPremiumPrediction({
-            durationMinutes: record.duration_minutes,
-            startTime: record.start_time,
-            endTime: record.end_time,
-            existingDeepMinutes: record.deep_sleep_minutes,
-            existingRemMinutes: record.rem_sleep_minutes,
-            existingLightMinutes: record.light_sleep_minutes,
-            existingAwakeMinutes: record.awake_minutes,
-            estimatedVO2Max: phys.estimatedVO2Max,
-            estimatedRestingHR: phys.estimatedRestingHR,
-            estimatedHRVrmssd: phys.estimatedHRVrmssd,
-            estimatedRespiratoryRate: phys.estimatedRespiratoryRate,
-            age: age ? parseInt(age, 10) : undefined,
-            sex: (premiumProfile?.sex as any) ?? null,
-            chronotype: (premiumProfile as any)?.chronotype ?? 'intermediate',
-            recentSleepDebt: debt,
-            ...stageAvgs,
-          });
-        });
-
-        const premiumMap: Partial<Record<string, SleepData[]>> = {};
+        const map: Partial<Record<string, SleepData[]>> = {};
+        // Populate monthly data from weekly fetch as well
         scoredRecentHistory.forEach((r) => {
           const monthKey = r.date.substring(0, 7); // YYYY-MM
-          if (!premiumMap[monthKey]) premiumMap[monthKey] = [];
-          premiumMap[monthKey].push(r);
+          if (!map[monthKey]) map[monthKey] = [];
+          map[monthKey].push(r);
         });
 
         set({
           recentHistory: scoredRecentHistory,
-          monthlyData: evictOldMonths({ ...get().monthlyData, ...premiumMap }),
+          monthlyData: evictOldMonths({ ...get().monthlyData, ...map }),
         });
-      }
+        enqueueScorePersistence(scoredRecentHistory);
 
-      // 6. Sync HC-only records to cloud
-      await get().syncPendingRecords(userId);
-    } catch (error) {
-      console.error('Error fetching sleep data:', error);
-      // Fallback to cache on error
-      await get().loadCachedData();
+        const plan = useProfileStore.getState().profile?.plan;
+        if (isPaidPlan(plan)) {
+          void (async () => {
+            try {
+              // PREMIUM ONLY  dynamically imported, never executes for free plan
+              const { buildPremiumPrediction } = await import('@lib/sleepStagePredictor');
+              const { estimatePhysiology } = await import('@lib/sleepPhysiologyEstimator');
+              const premiumProfile = useProfileStore.getState().profile;
+
+              const phys = estimatePhysiology({
+                date_of_birth: premiumProfile?.date_of_birth,
+                sex: premiumProfile?.sex,
+                activity_level: premiumProfile?.activity_level,
+              });
+
+              const debt = computeRecentDebt(scoredRecentHistory);
+              const stageAvgs = computeRecentStageAverages(scoredRecentHistory);
+
+              scoredRecentHistory.forEach((record) => {
+                if (!record.start_time || !record.end_time) return;
+                const age = phys.basisNotes.find((n) => n.startsWith('age='))?.replace('age=', '');
+
+                record.premiumPrediction = buildPremiumPrediction({
+                  durationMinutes: record.duration_minutes,
+                  startTime: record.start_time,
+                  endTime: record.end_time,
+                  existingDeepMinutes: record.deep_sleep_minutes,
+                  existingRemMinutes: record.rem_sleep_minutes,
+                  existingLightMinutes: record.light_sleep_minutes,
+                  existingAwakeMinutes: record.awake_minutes,
+                  estimatedVO2Max: phys.estimatedVO2Max,
+                  estimatedRestingHR: phys.estimatedRestingHR,
+                  estimatedHRVrmssd: phys.estimatedHRVrmssd,
+                  estimatedRespiratoryRate: phys.estimatedRespiratoryRate,
+                  age: age ? parseInt(age, 10) : undefined,
+                  sex: (premiumProfile?.sex as any) ?? null,
+                  chronotype: (premiumProfile as any)?.chronotype ?? 'intermediate',
+                  recentSleepDebt: debt,
+                  ...stageAvgs,
+                });
+              });
+
+              const premiumMap: Partial<Record<string, SleepData[]>> = {};
+              scoredRecentHistory.forEach((r) => {
+                const monthKey = r.date.substring(0, 7); // YYYY-MM
+                if (!premiumMap[monthKey]) premiumMap[monthKey] = [];
+                premiumMap[monthKey].push(r);
+              });
+
+              set({
+                recentHistory: scoredRecentHistory,
+                monthlyData: evictOldMonths({ ...get().monthlyData, ...premiumMap }),
+              });
+            } catch (error) {
+              console.warn('[SleepStore] Premium prediction failed', error);
+            }
+          })();
+        }
+
+        // 6. Sync HC-only records to cloud (non-blocking)
+        void get().syncPendingRecords(userId);
+      } catch (error) {
+        console.error('Error fetching sleep data:', error);
+        // Fallback to cache on error
+        await get().loadCachedData();
+      } finally {
+        set({ loading: false });
+      }
+    })();
+
+    try {
+      await currentFetchPromise;
     } finally {
-      set({ loading: false });
+      currentFetchPromise = null;
     }
   },
 

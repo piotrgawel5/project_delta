@@ -6,6 +6,12 @@ import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import Svg, { Circle, Path, G } from 'react-native-svg';
+import { useAuthStore } from '@store/authStore';
+import {
+  cleanupSleepStoreListeners,
+  initSleepStoreListeners,
+  useSleepStore,
+} from '@store/sleepStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ACCENT = '#30D158';
@@ -179,6 +185,39 @@ function TabIcon({
 }
 
 export default function TabLayout() {
+  const userId = useAuthStore((state) => state.user?.id);
+  const checkHealthConnectStatus = useSleepStore((state) => state.checkHealthConnectStatus);
+  const fetchSleepData = useSleepStore((state) => state.fetchSleepData);
+  const prefetchStartedForUserRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!userId) {
+      prefetchStartedForUserRef.current = null;
+      return;
+    }
+
+    if (prefetchStartedForUserRef.current === userId) {
+      return;
+    }
+    prefetchStartedForUserRef.current = userId;
+
+    void (async () => {
+      try {
+        await checkHealthConnectStatus();
+        await fetchSleepData(userId);
+      } catch (error) {
+        console.warn('[TabLayout] Sleep prefetch failed', error);
+      }
+    })();
+  }, [userId, checkHealthConnectStatus, fetchSleepData]);
+
+  useEffect(() => {
+    initSleepStoreListeners(userId);
+    return () => {
+      cleanupSleepStoreListeners();
+    };
+  }, [userId]);
+
   return (
     <MaterialTopTabs
       tabBarPosition="bottom"
