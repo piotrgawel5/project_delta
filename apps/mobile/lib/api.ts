@@ -109,4 +109,10 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+
+  delete: async (endpoint: string) => {
+    return api.fetch(endpoint, {
+      method: 'DELETE',
+    });
+  },
 };

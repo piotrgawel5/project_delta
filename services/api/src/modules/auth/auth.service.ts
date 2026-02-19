@@ -1,16 +1,49 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient, User } from "@supabase/supabase-js";
+import {
+    generateAuthenticationOptions,
+    generateRegistrationOptions,
+    verifyAuthenticationResponse,
+    verifyRegistrationResponse,
+} from "@simplewebauthn/server";
+import type {
+    AuthenticationResponseJSON,
+    AuthenticatorDevice,
+    RegistrationResponseJSON,
+} from "@simplewebauthn/types";
 import { config } from "../../config";
-import { logger } from "../../utils/logger";
-import { AppError } from "../../utils/AppError";
 import crypto from "crypto";
 
-// Use centralized config for passkey settings
-const { rpId: RP_ID, rpName: RP_NAME } = config.passkey;
+const { rpId: RP_ID, rpName: RP_NAME, rpOrigin: RP_ORIGIN } = config.passkey;
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
-// Helper utilities
-const base64URLEncode = (buffer: Buffer): string => {
-    return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_")
-        .replace(/=/g, "");
+type PasskeyChallengeRow = {
+    id: string;
+    challenge: string;
+    created_at: string;
+    email?: string | null;
+    user_id?: string | null;
+};
+
+type PasskeyCredentialRow = {
+    id: string;
+    user_id: string;
+    credential_id: string;
+    public_key: {
+        credentialPublicKey?: string;
+        credentialID?: string;
+        credentialDeviceType?: string;
+        credentialBackedUp?: boolean;
+        aaguid?: string;
+    } | null;
+    counter: number | null;
+    transports: string[] | null;
+};
+
+const base64URLEncode = (buffer: Buffer | Uint8Array): string => {
+    return Buffer.from(buffer).toString("base64").replace(/\+/g, "-").replace(
+        /\//g,
+        "_",
+    ).replace(/=/g, "");
 };
 
 const base64URLDecode = (str: string): Buffer => {
@@ -20,10 +53,6 @@ const base64URLDecode = (str: string): Buffer => {
         "=",
     );
     return Buffer.from(padded, "base64");
-};
-
-const generateChallenge = (): string => {
-    return base64URLEncode(crypto.randomBytes(32));
 };
 
 export class AuthService {
@@ -36,64 +65,100 @@ export class AuthService {
         );
     }
 
-    // --- Passkey Registration ---
+    private assertChallengeFresh(challenge: PasskeyChallengeRow) {
+        const ageMs = Date.now() - new Date(challenge.created_at).getTime();
+        if (ageMs > CHALLENGE_TTL_MS) {
+            throw new Error("Challenge expired");
+        }
+    }
 
+    private async consumeChallenge(id: string) {
+        await this.supabaseAdmin.from("passkey_challenges").delete().eq("id", id);
+    }
+
+    private async findUserByEmail(email: string): Promise<User | null> {
+        let page = 1;
+        const perPage = 200;
+
+        while (page <= 25) {
+            const { data, error } = await this.supabaseAdmin.auth.admin
+                .listUsers({ page, perPage });
+            if (error) {
+                throw new Error("Failed to lookup user");
+            }
+
+            const user = data.users.find((candidate) => candidate.email === email);
+            if (user) {
+                return user;
+            }
+
+            if (!data.nextPage) {
+                break;
+            }
+            page = data.nextPage;
+        }
+
+        return null;
+    }
+
+    private async createSessionForEmail(email: string) {
+        const { data: linkData, error: linkError } = await this.supabaseAdmin.auth
+            .admin.generateLink({
+                type: "magiclink",
+                email,
+            });
+
+        if (linkError || !linkData.properties?.hashed_token) {
+            throw new Error("Failed to create session");
+        }
+
+        const supabaseAnon = createClient(
+            config.supabase.url,
+            config.supabase.anonKey,
+        );
+        const verifyType = linkData.properties.verification_type === "magiclink"
+            ? "magiclink"
+            : "email";
+        const { data: otpData, error: otpError } = await supabaseAnon.auth
+            .verifyOtp({
+                email,
+                token_hash: linkData.properties.hashed_token,
+                type: verifyType,
+            });
+
+        if (otpError || !otpData.session) {
+            throw new Error("Failed to create session");
+        }
+
+        return otpData.session;
+    }
+
+    // --- Passkey Registration ---
     async getRegistrationOptions(email: string) {
         if (!email) throw new Error("Email is required");
 
-        // Check existing user
-        const { data: existingUsers } = await this.supabaseAdmin.auth.admin
-            .listUsers();
-        const existingUser = existingUsers?.users.find((u) =>
-            u.email === email
-        );
-
-        if (existingUser) {
-            const { data: creds } = await this.supabaseAdmin
-                .from("passkey_credentials")
-                .select("credential_id")
-                .eq("user_id", existingUser.id);
-
-            if (creds && creds.length > 0) {
-                throw new Error(
-                    "Account already exists. Please sign in with your passkey.",
-                );
-            }
-        }
-
-        const challenge = generateChallenge();
-        const userId = base64URLEncode(Buffer.from(crypto.randomUUID())); // Temp ID for WebAuthn
-
-        const options = {
-            challenge,
-            rp: { name: RP_NAME, id: RP_ID },
-            user: {
-                id: userId,
-                name: email,
-                displayName: email.split("@")[0],
-            },
-            pubKeyCredParams: [
-                { alg: -7, type: "public-key" }, // ES256
-                { alg: -257, type: "public-key" }, // RS256
-            ],
+        const options = await generateRegistrationOptions({
+            rpName: RP_NAME,
+            rpID: RP_ID,
+            userName: email,
+            userID: base64URLEncode(Buffer.from(crypto.randomUUID())),
+            userDisplayName: email.split("@")[0],
             timeout: 60000,
-            attestation: "none",
-            excludeCredentials: [],
+            attestationType: "none",
+            supportedAlgorithmIDs: [-7, -257],
             authenticatorSelection: {
                 authenticatorAttachment: "platform",
                 residentKey: "required",
-                requireResidentKey: true,
                 userVerification: "preferred",
             },
-        };
+            excludeCredentials: [],
+        });
 
-        // Store challenge
         const { error } = await this.supabaseAdmin
             .from("passkey_challenges")
             .insert({
-                challenge,
+                challenge: options.challenge,
                 email,
-                user_id: existingUser?.id,
             });
 
         if (error) {
@@ -103,8 +168,7 @@ export class AuthService {
         return options;
     }
 
-    async verifyRegistration(email: string, credential: any) {
-        // Lookup challenge
+    async verifyRegistration(email: string, credential: RegistrationResponseJSON) {
         const { data: challengeRecord, error: challengeError } = await this
             .supabaseAdmin
             .from("passkey_challenges")
@@ -112,211 +176,191 @@ export class AuthService {
             .eq("email", email)
             .order("created_at", { ascending: false })
             .limit(1)
-            .single();
+            .single<PasskeyChallengeRow>();
 
         if (challengeError || !challengeRecord) {
             throw new Error("Challenge not found or expired");
         }
+        this.assertChallengeFresh(challengeRecord);
 
-        // Verify challenge match
-        const clientDataJSON = JSON.parse(
-            base64URLDecode(credential.response.clientDataJSON).toString(
-                "utf-8",
-            ),
-        );
+        const verification = await verifyRegistrationResponse({
+            response: credential,
+            expectedChallenge: challengeRecord.challenge,
+            expectedOrigin: RP_ORIGIN,
+            expectedRPID: RP_ID,
+            requireUserVerification: true,
+        });
 
-        if (clientDataJSON.challenge !== challengeRecord.challenge) {
-            throw new Error("Challenge mismatch");
+        if (!verification.verified || !verification.registrationInfo) {
+            throw new Error("Passkey registration verification failed");
         }
 
-        // Create or get user
-        let userId: string;
-        let userPassword = crypto.randomUUID();
-
-        const { data: existingUsers } = await this.supabaseAdmin.auth.admin
-            .listUsers();
-        const existingUser = existingUsers?.users.find((u) =>
-            u.email === email
-        );
-
-        if (existingUser) {
-            userId = existingUser.id;
-            // Update password for sign-in
-            await this.supabaseAdmin.auth.admin.updateUserById(userId, {
-                password: userPassword,
-            });
-        } else {
-            const { data: newUser, error: createError } = await this
-                .supabaseAdmin.auth.admin.createUser({
-                    email,
-                    email_confirm: true,
-                    password: userPassword,
-                });
-            if (createError || !newUser.user) {
-                throw new Error(
-                    createError?.message || "Failed to create user",
-                );
-            }
-            userId = newUser.user.id;
-        }
-
-        // Store credential
-        const credentialId = credential.id;
-        const { data: existingCred } = await this.supabaseAdmin
+        const { data: existingCredential, error: existingCredentialError } = await this
+            .supabaseAdmin
             .from("passkey_credentials")
             .select("id")
-            .eq("credential_id", credentialId)
-            .single();
+            .eq("credential_id", credential.id)
+            .maybeSingle<{ id: string }>();
 
-        if (!existingCred) {
-            const { error: credError } = await this.supabaseAdmin
-                .from("passkey_credentials")
-                .insert({
-                    user_id: userId,
-                    credential_id: credentialId,
-                    public_key: {
-                        attestationObject:
-                            credential.response.attestationObject,
-                    }, // simplified
-                    counter: 0,
-                    transports: credential.response.transports || ["internal"],
-                });
-            if (credError) {
-                throw new Error(
-                    "Failed to store credential: " + credError.message,
-                );
-            }
+        if (existingCredentialError) {
+            throw new Error("Failed to check existing credentials");
+        }
+        if (existingCredential) {
+            throw new Error("Passkey already registered");
         }
 
-        // Cleanup challenge
-        await this.supabaseAdmin.from("passkey_challenges").delete().eq(
-            "id",
-            challengeRecord.id,
-        );
-
-        // Sign in to get session
-        const supabaseAnon = createClient(
-            config.supabase.url,
-            config.supabase.anonKey,
-        );
-        const { data: signInData, error: signInError } = await supabaseAnon.auth
-            .signInWithPassword({
+        let user: User | null = null;
+        const { data: created, error: createError } = await this.supabaseAdmin.auth
+            .admin.createUser({
                 email,
-                password: userPassword,
+                email_confirm: true,
+                password: crypto.randomUUID(),
             });
 
-        if (signInError || !signInData.session) {
-            throw new Error("Failed to create session");
+        if (created.user) {
+            user = created.user;
+        } else if (
+            createError?.message?.toLowerCase().includes("already") ||
+            createError?.message?.toLowerCase().includes("exists")
+        ) {
+            user = await this.findUserByEmail(email);
+        } else {
+            throw new Error(createError?.message || "Failed to create user");
         }
 
-        return { session: signInData.session, user_id: userId };
+        if (!user) {
+            throw new Error("Failed to resolve user");
+        }
+
+        const registrationInfo = verification.registrationInfo;
+        const credentialIdB64 = base64URLEncode(registrationInfo.credentialID);
+        const credentialPublicKeyB64 = base64URLEncode(
+            registrationInfo.credentialPublicKey,
+        );
+        const transports = credential.response.transports || ["internal"];
+
+        const { error: insertError } = await this.supabaseAdmin
+            .from("passkey_credentials")
+            .insert({
+                user_id: user.id,
+                external_id: user.id,
+                credential_id: credentialIdB64,
+                public_key: {
+                    credentialID: credentialIdB64,
+                    credentialPublicKey: credentialPublicKeyB64,
+                    credentialDeviceType: registrationInfo.credentialDeviceType,
+                    credentialBackedUp: registrationInfo.credentialBackedUp,
+                    aaguid: registrationInfo.aaguid,
+                },
+                counter: registrationInfo.counter,
+                transports,
+            });
+
+        if (insertError) {
+            throw new Error("Failed to store credential: " + insertError.message);
+        }
+
+        await this.consumeChallenge(challengeRecord.id);
+
+        const session = await this.createSessionForEmail(email);
+        return { session, user_id: user.id };
     }
 
     // --- Passkey Login ---
-
     async getLoginOptions() {
-        const challenge = generateChallenge();
+        const options = await generateAuthenticationOptions({
+            rpID: RP_ID,
+            userVerification: "preferred",
+            timeout: 60000,
+        });
 
         const { data: challengeRecord, error } = await this.supabaseAdmin
             .from("passkey_challenges")
-            .insert({ challenge })
+            .insert({ challenge: options.challenge })
             .select("id")
-            .single();
+            .single<{ id: string }>();
 
         if (error) throw new Error("Failed to create challenge");
 
         return {
-            challenge,
-            rpId: RP_ID,
-            timeout: 60000,
-            userVerification: "preferred",
-            allowCredentials: [],
+            ...options,
             challengeId: challengeRecord.id,
         };
     }
 
-    async verifyLogin(credential: any, challengeId: string) {
+    async verifyLogin(credential: AuthenticationResponseJSON, challengeId: string) {
         const { data: challengeRecord, error: challengeError } = await this
             .supabaseAdmin
             .from("passkey_challenges")
             .select("*")
             .eq("id", challengeId)
-            .single();
+            .single<PasskeyChallengeRow>();
 
         if (challengeError || !challengeRecord) {
             throw new Error("Challenge not found or expired");
         }
+        this.assertChallengeFresh(challengeRecord);
 
-        const clientDataJSON = JSON.parse(
-            base64URLDecode(credential.response.clientDataJSON).toString(
-                "utf-8",
-            ),
-        );
-
-        if (clientDataJSON.challenge !== challengeRecord.challenge) {
-            throw new Error("Challenge mismatch");
-        }
-
-        // Get credential
-        const credentialId = credential.id;
-        const { data: storedCredential, error: credError } = await this
+        const { data: storedCredential, error: storedCredentialError } = await this
             .supabaseAdmin
             .from("passkey_credentials")
             .select("*")
-            .eq("credential_id", credentialId)
-            .single();
+            .eq("credential_id", credential.id)
+            .single<PasskeyCredentialRow>();
 
-        if (credError || !storedCredential) {
+        if (storedCredentialError || !storedCredential) {
             throw new Error("Passkey not found");
         }
 
-        // Update counter
-        await this.supabaseAdmin
-            .from("passkey_credentials")
-            .update({ counter: (storedCredential.counter || 0) + 1 })
-            .eq("id", storedCredential.id);
-
-        // Cleanup challenge
-        await this.supabaseAdmin.from("passkey_challenges").delete().eq(
-            "id",
-            challengeId,
-        );
-
-        // Get user email
-        const { data: userData } = await this.supabaseAdmin.auth.admin
-            .getUserById(storedCredential.user_id);
-        const email = userData?.user?.email;
-        if (!email) throw new Error("User not found");
-
-        // Temp password login
-        const tempPassword = crypto.randomUUID();
-        await this.supabaseAdmin.auth.admin.updateUserById(
-            storedCredential.user_id,
-            { password: tempPassword },
-        );
-
-        const supabaseAnon = createClient(
-            config.supabase.url,
-            config.supabase.anonKey,
-        );
-        const { data: signInData, error: signInError } = await supabaseAnon.auth
-            .signInWithPassword({
-                email,
-                password: tempPassword,
-            });
-
-        if (signInError || !signInData.session) {
-            throw new Error("Failed to create session");
+        const credentialPublicKey =
+            storedCredential.public_key?.credentialPublicKey;
+        if (!credentialPublicKey) {
+            throw new Error("Stored passkey is invalid and must be re-registered");
         }
 
+        const authenticator: AuthenticatorDevice = {
+            credentialID: base64URLDecode(storedCredential.credential_id),
+            credentialPublicKey: base64URLDecode(credentialPublicKey),
+            counter: Number(storedCredential.counter || 0),
+            transports: Array.isArray(storedCredential.transports)
+                ? storedCredential.transports as AuthenticatorDevice["transports"]
+                : undefined,
+        };
+
+        const verification = await verifyAuthenticationResponse({
+            response: credential,
+            expectedChallenge: challengeRecord.challenge,
+            expectedOrigin: RP_ORIGIN,
+            expectedRPID: RP_ID,
+            authenticator,
+            requireUserVerification: true,
+        });
+
+        if (!verification.verified || !verification.authenticationInfo) {
+            throw new Error("Passkey authentication verification failed");
+        }
+
+        await this.supabaseAdmin
+            .from("passkey_credentials")
+            .update({ counter: verification.authenticationInfo.newCounter })
+            .eq("id", storedCredential.id);
+
+        await this.consumeChallenge(challengeId);
+
+        const { data: userData, error: userError } = await this.supabaseAdmin.auth
+            .admin.getUserById(storedCredential.user_id);
+        if (userError || !userData.user?.email) {
+            throw new Error("User not found");
+        }
+
+        const session = await this.createSessionForEmail(userData.user.email);
         return {
-            session: signInData.session,
+            session,
             user_id: storedCredential.user_id,
         };
     }
 
     // --- Email/Password ---
-
     async signInWithPassword(email: string, password: string) {
         const supabaseAnon = createClient(
             config.supabase.url,
@@ -335,8 +379,6 @@ export class AuthService {
             config.supabase.url,
             config.supabase.anonKey,
         );
-        // Using signUp only creates request, might wait for email confirmation.
-        // If auto-confirm is on, it returns session.
         const { data, error } = await supabaseAnon.auth.signUp({
             email,
             password,
@@ -360,15 +402,19 @@ export class AuthService {
 
     async signOut(token: string) {
         const supabase = createClient(
-            config.supabase.url!,
-            config.supabase.serviceRoleKey!,
+            config.supabase.url,
+            config.supabase.serviceRoleKey,
         );
-        // Admin signOut? Or user?
-        // Supabase auth.signOut usually needs the client to have the session.
-        // We can just act like we're done.
-        // But better to invalidate if possible.
         const { error } = await supabase.auth.admin.signOut(token);
         return !error;
+    }
+
+    async deleteUserAccount(userId: string) {
+        const { error } = await this.supabaseAdmin.auth.admin.deleteUser(userId);
+        if (error) {
+            throw new Error("Failed to delete account");
+        }
+        return true;
     }
 }
 

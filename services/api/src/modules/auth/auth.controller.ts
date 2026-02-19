@@ -186,6 +186,23 @@ export class AuthController {
         });
     }
 
+    async deleteAccount(req: Request, res: Response) {
+        try {
+            const user = (req as any).user;
+            if (!user?.id) {
+                return res.status(401).json({ error: "Unauthorized" });
+            }
+
+            await authService.deleteUserAccount(user.id);
+            res.clearCookie("sb-access-token", CLEAR_COOKIE_OPTIONS);
+            res.clearCookie("sb-refresh-token", CLEAR_COOKIE_OPTIONS);
+            return res.json({ success: true });
+        } catch (error: any) {
+            logger.error("deleteAccount error", error);
+            return res.status(400).json({ error: error.message });
+        }
+    }
+
     private setCookies(res: Response, session: any) {
         res.cookie("sb-access-token", session.access_token, {
             ...COOKIE_OPTIONS,

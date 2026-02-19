@@ -76,7 +76,14 @@ router.get(
 // Logout
 router.post(
     "/logout",
+    requireAuth,
     asyncHandler((req, res) => authController.logout(req, res)),
+);
+
+router.delete(
+    "/account",
+    requireAuth,
+    asyncHandler((req, res) => authController.deleteAccount(req, res)),
 );
 
 export const authRoutes = router;

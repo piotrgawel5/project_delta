@@ -17,6 +17,18 @@ if (missingEnvVars.length > 0) {
     process.exit(1);
 }
 
+const parsedCorsOrigins = (process.env.CORS_ORIGIN || "").split(",").map((o) =>
+    o.trim()
+).filter(Boolean);
+
+if ((process.env.NODE_ENV || "development") === "production" &&
+    parsedCorsOrigins.length === 0) {
+    console.error(
+        "CORS_ORIGIN must be set in production (comma-separated origins)",
+    );
+    process.exit(1);
+}
+
 export const config = {
     port: Number(process.env.PORT) || 3000,
     nodeEnv: process.env.NODE_ENV || "development",
@@ -40,8 +52,7 @@ export const config = {
     },
 
     cors: {
-        // In production, you should specify exact origins
-        origin: process.env.CORS_ORIGIN || true,
+        origin: parsedCorsOrigins.length > 0 ? parsedCorsOrigins : true,
         credentials: true,
     },
 

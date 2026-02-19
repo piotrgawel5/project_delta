@@ -3,12 +3,15 @@ import { create } from "zustand";
 import { AuthError, Session, User } from "@supabase/supabase-js";
 import { SESSION_CONFIG, supabase } from "@lib/supabase";
 import { api } from "@lib/api";
-import { AppState, AppStateStatus } from "react-native";
+import { AppState } from "react-native";
 import {
   createPasskeyAccount,
   isPasskeySupported,
   signInWithPasskey as passkeySignIn,
 } from "@lib/passkey";
+
+let appStateSubscription: { remove: () => void } | null = null;
+let authStateSubscription: { unsubscribe: () => void } | null = null;
 
 interface AuthState {
   user: User | null;
@@ -46,6 +49,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initialize: async () => {
     try {
+      if (!appStateSubscription) {
+        appStateSubscription = AppState.addEventListener("change", (nextAppState) => {
+          if (nextAppState === "active") {
+            void useAuthStore.getState().initialize();
+          }
+        });
+      }
+
+      if (!authStateSubscription) {
+        const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+          set({
+            session: session || null,
+            user: session?.user || null,
+          });
+        });
+        authStateSubscription = data.subscription;
+      }
+
       const supported = await isPasskeySupported();
       set({ passkeySupported: supported });
 
@@ -71,11 +92,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             initialized: true,
           });
         } else {
-          set({ user: null, session: null, loading: false, initialized: true });
+          const { data: { session } } = await supabase.auth.getSession();
+          set({
+            user: session?.user || null,
+            session: session || null,
+            loading: false,
+            initialized: true,
+          });
         }
       } catch (error) {
-        // If 401 or network error, assume logged out
-        set({ user: null, session: null, loading: false, initialized: true });
+        // API may fail transiently; fall back to in-memory Supabase state.
+        const { data: { session } } = await supabase.auth.getSession();
+        set({
+          user: session?.user || null,
+          session: session || null,
+          loading: false,
+          initialized: true,
+        });
       }
     } catch (error) {
       console.error("Auth initialization error:", error);
@@ -255,32 +288,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   deleteAccount: async () => {
     try {
-      // Logic for delete account should ideally move to API too
-      // But preserving existing logic if compatible?
-      // Existing logic calls supabase directly.
-      // If we have token in memory, it might work if policies allow.
-      // But we should use API.
-      // For Phase 3, I'll call API if I had an endpoint, or keep Supabase call.
-      // Keeping Supabase call assuming RLS policies allow deletion of own account.
-
       set({ loading: true });
       const { user } = get();
       if (!user) return { success: false, error: "No user" };
 
-      // We should probably implement /api/users/me (DELETE)
-      // but for now, rely on supabase client RLS
-
-      // Update: If we removed SecureStore, supabase client works IN MEMORY.
-      // So this should work.
-
-      await supabase.from("user_profiles").delete().eq("user_id", user.id);
-      await supabase.from("passkey_credentials").delete().eq(
-        "user_id",
-        user.id,
-      );
+      await api.delete("/auth/account");
       await supabase.auth.signOut();
-
-      await api.post("/auth/logout", {});
 
       set({ user: null, session: null, loading: false });
       return { success: true };
@@ -294,10 +307,3 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 }));
-
-function handleAppStateChange(nextAppState: AppStateStatus) {
-  if (nextAppState === "active") {
-    // maybe refresh session?
-    useAuthStore.getState().initialize();
-  }
-}

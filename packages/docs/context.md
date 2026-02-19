@@ -71,14 +71,14 @@ project_delta/
 **UI Framework:** NativeWind (Tailwind CSS)  
 **State Management:** Zustand  
 **Database:** Supabase client + async-storage (offline)  
-**Authentication:** Passkey (WebAuthn) + OAuth session  
+**Authentication:** Server-validated Supabase JWT session (Bearer + httpOnly cookie fallback), passkey + Google + email login  
 **Key Libraries:**
 
 - `@react-navigation/*` – drawer, tabs, navigation
 - `react-native-reanimated` – animations
 - `@gorhom/bottom-sheet` – modals/sheets
 - `victory-native` – charts/graphs
-- `expo-image-picker`, `expo-auth-session`, `expo-secure-store` – native APIs
+- `expo-image-picker`, `expo-auth-session` – native APIs
 
 **Platform Support:**
 
@@ -106,14 +106,15 @@ project_delta/
 **Framework:** Express.js (Node 20)  
 **Language:** TypeScript (ES2020)  
 **Database:** Supabase PostgreSQL  
-**Authentication:** JWT (from Supabase) + passkey verification  
-**Middleware:** Helmet, CORS, cookie-parser, rate-limiting  
+**Authentication:** Supabase JWT verification on every protected route (`Authorization` header or auth cookie) + WebAuthn verification for passkeys  
+**Middleware:** Helmet, strict CORS (explicit origins in production), cookie-parser, enforced rate-limiting  
 **Validation:** Zod  
 **Port:** 3000 (configurable)
 
 **Endpoints (inferred):**
 
 - Passkey registration/login options & verification
+- Auth session endpoints: `/auth/me`, authenticated `/auth/logout`, authenticated `DELETE /auth/account`
 - Sleep data sync (batch & individual)
 - Sleep log editing with audit trail
 - User profile & preferences
@@ -132,8 +133,8 @@ project_delta/
 **Database:** PostgreSQL  
 **Key Configuration:**
 
-- Passkey functions (register options, register verify, login options, login verify)
-- Functions disabled JWT verification (custom auth flow)
+- PostgreSQL + Auth users + RLS policies used by API and mobile
+- Passkey credentials and challenge tables for WebAuthn state
 
 **Migrations:**
 
@@ -305,7 +306,7 @@ docker-compose up   # Start API + Supabase (if configured)
 ### Environment & Secrets
 
 - **.env files:** Gitignored (`.env`, `.env.*`)
-- **Mobile:** Secure store via `expo-secure-store`
+- **Mobile:** Supabase session is in-memory (`persistSession: false`) and re-hydrated from `/auth/me`
 - **API:** Environment variables via docker-compose or `.env`
 - **Passkey Config:** RP_ID, RP_ORIGIN, RP_NAME (customizable per deployment)
 

@@ -8,7 +8,7 @@ public class GoogleOneTapUiModule: Module {
     // Sets the name of the module that JavaScript code will use to refer to the module. Takes a string as an argument.
     // Can be inferred from module's class name, but it's recommended to set it explicitly for clarity.
     // The module will be accessible from `requireNativeModule('GoogleOneTapUi')` in JavaScript.
-    Name("GoogleOneTapUi")
+    Name("CredentialAuth")
 
     // Defines constant property on the module.
     Constant("PI") {
@@ -30,6 +30,38 @@ public class GoogleOneTapUiModule: Module {
       self.sendEvent("onChange", [
         "value": value
       ])
+    }
+
+    // Keep API parity with Android module. iOS native auth implementation
+    // is not present yet, so these return explicit unsupported errors.
+    AsyncFunction("signInWithGoogleAutoSelect") { (_: String, _: Bool) in
+      throw NSError(
+        domain: "CredentialAuth",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "UNSUPPORTED_PLATFORM"]
+      )
+    }
+
+    AsyncFunction("registerPasskey") { (_: String) in
+      throw NSError(
+        domain: "CredentialAuth",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "UNSUPPORTED_PLATFORM"]
+      )
+    }
+
+    AsyncFunction("authenticateWithPasskey") { (_: String) in
+      throw NSError(
+        domain: "CredentialAuth",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "UNSUPPORTED_PLATFORM"]
+      )
+    }
+
+    AsyncFunction("isPasskeyAvailable") {
+      return [
+        "available": false
+      ]
     }
 
     // Enables the module to be used as a native view. Definition components that are accepted as part of the
