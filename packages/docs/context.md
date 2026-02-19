@@ -71,14 +71,14 @@ project_delta/
 **UI Framework:** NativeWind (Tailwind CSS)  
 **State Management:** Zustand  
 **Database:** Supabase client + async-storage (offline)  
-**Authentication:** Server-validated Supabase JWT session (Bearer + httpOnly cookie fallback), passkey + Google + email login  
+**Authentication:** Passkey (WebAuthn) + OAuth session
 **Key Libraries:**
 
 - `@react-navigation/*` – drawer, tabs, navigation
 - `react-native-reanimated` – animations
 - `@gorhom/bottom-sheet` – modals/sheets
 - `victory-native` – charts/graphs
-- `expo-image-picker`, `expo-auth-session` – native APIs
+- `expo-image-picker`, `expo-auth-session`, `expo-secure-store` – native APIs
 
 **Platform Support:**
 
@@ -89,11 +89,6 @@ project_delta/
 **Key Features (from CHANGELOG):**
 
 - Sleep tracking with deterministic scoring (0-100)
-- Plan tiers on profile (`free`, `pro`, `premium`) with `isPaidPlan()` gating
-- Premium sleep stage prediction (`premiumPrediction`) with:
-  - estimated physiology (VO2max, resting HR, HRV/rMSSD, respiratory rate)
-  - predicted stage distribution and cycle timeline
-  - recovery index and insight flags
 - Screen time detection (native Kotlin module)
 - Sleep timeline visualization
 - Edit history & provenance tracking
@@ -106,15 +101,14 @@ project_delta/
 **Framework:** Express.js (Node 20)  
 **Language:** TypeScript (ES2020)  
 **Database:** Supabase PostgreSQL  
-**Authentication:** Supabase JWT verification on every protected route (`Authorization` header or auth cookie) + WebAuthn verification for passkeys  
-**Middleware:** Helmet, strict CORS (explicit origins in production), cookie-parser, enforced rate-limiting  
+**Authentication:** JWT (from Supabase) + passkey verification  
+**Middleware:** Helmet, CORS, cookie-parser, rate-limiting  
 **Validation:** Zod  
 **Port:** 3000 (configurable)
 
 **Endpoints (inferred):**
 
 - Passkey registration/login options & verification
-- Auth session endpoints: `/auth/me`, authenticated `/auth/logout`, authenticated `DELETE /auth/account`
 - Sleep data sync (batch & individual)
 - Sleep log editing with audit trail
 - User profile & preferences
@@ -133,14 +127,13 @@ project_delta/
 **Database:** PostgreSQL  
 **Key Configuration:**
 
-- PostgreSQL + Auth users + RLS policies used by API and mobile
-- Passkey credentials and challenge tables for WebAuthn state
+- Passkey functions (register options, register verify, login options, login verify)
+- Functions disabled JWT verification (custom auth flow)
 
 **Migrations:**
 
 - Passkey credentials schema
 - User profiles
-- User plan column on profiles (`plan` with default `free`)
 - Auth methods & enums
 - Sleep score & provenance tracking (v20260201)
 
@@ -149,7 +142,7 @@ project_delta/
 ### `@project-delta/shared`
 
 - Centralized types & utilities for mobile + API
-- Imported in mobile primarily via `@shared` alias (tsconfig path)
+- Imported in mobile via `@project-delta/shared` alias
 - Location: `packages/shared/src/`
 
 ### `packages/types/`
@@ -169,8 +162,7 @@ npm run start    # Start Expo dev server + Webpack
 npm run ios      # Run iOS simulator/device
 npm run android  # Run Android emulator/device
 npm run web      # Run Expo web (localhost:19006)
-npm run lint     # ESLint (warnings allowed, errors fail)
-npm run lint:prettier # Prettier check
+npm run lint     # ESLint + Prettier check
 npm run format   # Auto-fix ESLint + Prettier
 npm run prebuild # Generate native projects
 ```
@@ -204,8 +196,7 @@ docker-compose up   # Start API + Supabase (if configured)
 
 ### TypeScript
 
-- **Root:** `tsconfig.json` references `apps/mobile/tsconfig.json` so `npx tsc --noEmit` works from repo root
-- **Mobile:** `apps/mobile/tsconfig.json` strict mode, path aliases (`@lib`, `@components`, `@modules`, `@store`, `@shared`, `@constants`)
+- **Mobile:** `apps/mobile/tsconfig.json` strict mode, path aliases (@lib, @components, @modules, @store, @project-delta/shared)
 - **API:** `services/api/tsconfig.json` strict mode, ES2020 target, CommonJS
 - **Shared:** `packages/shared/` – declared as main entry for monorepo imports
 
@@ -287,12 +278,9 @@ docker-compose up   # Start API + Supabase (if configured)
 ### Sleep Data Conventions
 
 - **Score:** 0–100 deterministic calculation
-  - Weights (current): efficiency 25%, deep 20%, REM 20%, WASO 15%, TST 10% (J-curve), regularity 10%
-  - Score breakdown now includes optional component fields: `efficiencyScore`, `wasoScore`, `tstScore`, `deepScore`, `remScore`, `regularityScore`
+  - Weights: duration 35%, deep 20%, REM 20%, efficiency 15%, consistency 10%
   - Tracked by confidence level: `high`, `medium`, `low`
 - **Data Sources:** `health_connect`, `digital_wellbeing`, `usage_stats`, `wearable`, `manual`
-- **Premium prediction data:** `premiumPrediction?: PremiumSleepPrediction` on sleep records; optional and backward compatible
-- **Persistence rule:** `premiumPrediction` is computed client-side after scoring and is stripped from API/Supabase write payloads
 - **Edit Tracking:** All manual edits include `edit_reason` and full history
 - **Calculations:** Deterministic, unit-tested for edge cases
 - **Sleep Intelligence Contextualization:** Nightly summaries drive the Sleep Intelligence card and the `SleepAnalysisScreen` deep-dive timeline, so reliability expectations (efficiency, sleep debt, timeline color key) must align with the AI insight output described in `packages/docs/mobile/screens.md`
@@ -306,7 +294,7 @@ docker-compose up   # Start API + Supabase (if configured)
 ### Environment & Secrets
 
 - **.env files:** Gitignored (`.env`, `.env.*`)
-- **Mobile:** Supabase session is in-memory (`persistSession: false`) and re-hydrated from `/auth/me`
+- **Mobile:** Secure store via `expo-secure-store`
 - **API:** Environment variables via docker-compose or `.env`
 - **Passkey Config:** RP_ID, RP_ORIGIN, RP_NAME (customizable per deployment)
 
@@ -330,5 +318,5 @@ docker-compose up   # Start API + Supabase (if configured)
 
 ---
 
-**Last Updated:** February 2026  
+**Last Updated:** 19 February 2026  
 **Version:** 0.1 Alpha
