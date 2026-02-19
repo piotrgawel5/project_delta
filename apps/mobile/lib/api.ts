@@ -87,9 +87,18 @@ export const api = {
 
   get: async (
     endpoint: string,
-    p0: { params: { start_date: string; end_date: string; limit: number } }
+    options?: { params?: Record<string, string | number | boolean | undefined> }
   ) => {
-    return api.fetch(endpoint, {
+    const query =
+      options?.params && Object.keys(options.params).length > 0
+        ? `?${new URLSearchParams(
+            Object.entries(options.params)
+              .filter(([, value]) => value !== undefined)
+              .map(([key, value]) => [key, String(value)])
+          ).toString()}`
+        : '';
+
+    return api.fetch(`${endpoint}${query}`, {
       method: 'GET',
     });
   },

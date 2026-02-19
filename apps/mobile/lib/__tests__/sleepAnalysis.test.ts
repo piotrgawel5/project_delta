@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import { SleepRecord, SleepScoringInput } from '@project-delta/shared';
+import { SleepRecord, SleepScoringInput } from '@shared';
 import { calculateSleepScore } from '../sleepAnalysis';
 
 const fixedDate = new Date('2026-02-01T10:00:00.000Z');

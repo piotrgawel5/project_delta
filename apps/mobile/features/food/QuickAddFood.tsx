@@ -1,5 +1,5 @@
 import { Pressable, Text } from 'react-native';
-import { useHealthStore } from 'store/healthStore';
+import { useHealthStore } from '@store/healthStore';
 import { nanoid } from 'nanoid/non-secure';
 
 export function QuickAddFood() {
@@ -16,7 +16,7 @@ export function QuickAddFood() {
         fats: 14,
       },
       timestamp: Date.now(),
-      category: 'body',
+      category: 'nutrition',
     });
   };
 

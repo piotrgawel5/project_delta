@@ -22,10 +22,16 @@ import {
   upsertCacheRecord,
 } from '../lib/sleepCache';
 import { calculateQualityFromDuration, estimateSleepStages } from '../lib/sleepCalculations';
+import { isPaidPlan } from '../lib/planUtils';
 import { useProfileStore, UserProfile } from './profileStore';
 import { api } from '@lib/api';
 import { calculateSleepScore as calculateDynamicSleepScore } from '@lib/sleepAnalysis';
-import type { ScoreBreakdown, SleepRecord, UserProfile as SleepEngineUserProfile } from '@shared';
+import type {
+  PremiumSleepPrediction,
+  ScoreBreakdown,
+  SleepRecord,
+  UserProfile as SleepEngineUserProfile,
+} from '@shared';
 
 interface SleepData {
   id: string;
@@ -43,6 +49,7 @@ interface SleepData {
   score_breakdown?: ScoreBreakdown;
   source?: string;
   confidence?: string;
+  premiumPrediction?: PremiumSleepPrediction; // not persisted to DB
   data_source: string;
   synced_at: string;
 }
@@ -188,6 +195,29 @@ async function scoreAndPersistRecords(
   }
 
   return scored;
+}
+
+function computeRecentDebt(history: SleepData[]): number {
+  const recent = [...history]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 3);
+  if (recent.length === 0) return 0;
+  const avg = recent.reduce((s, r) => s + (r.duration_minutes ?? 0), 0) / recent.length;
+  return Math.max(0, 480 - avg);
+}
+
+function computeRecentStageAverages(history: SleepData[]) {
+  const valid = history
+    .filter((r) => r.duration_minutes > 0 && r.deep_sleep_minutes != null)
+    .slice(0, 7);
+  if (valid.length === 0) return {};
+  const avgDeep =
+    valid.reduce((s, r) => s + (r.deep_sleep_minutes! / r.duration_minutes) * 100, 0) /
+    valid.length;
+  const avgRem =
+    valid.reduce((s, r) => s + ((r.rem_sleep_minutes ?? 0) / r.duration_minutes) * 100, 0) /
+    valid.length;
+  return { recentAvgDeepPercent: avgDeep, recentAvgRemPercent: avgRem };
 }
 
 export const useSleepStore = create<SleepState>((set, get) => ({
@@ -449,6 +479,48 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         synced_at: r.synced_at || '',
       }));
       const scoredRecentHistory = await scoreAndPersistRecords(recentHistory, profile);
+
+      const plan = useProfileStore.getState().profile?.plan;
+      if (isPaidPlan(plan)) {
+        // PREMIUM ONLY  dynamically imported, never executes for free plan
+        const { buildPremiumPrediction } = await import('@lib/sleepStagePredictor');
+        const { estimatePhysiology } = await import('@lib/sleepPhysiologyEstimator');
+        const premiumProfile = useProfileStore.getState().profile;
+
+        const phys = estimatePhysiology({
+          date_of_birth: premiumProfile?.date_of_birth,
+          sex: premiumProfile?.sex,
+          activity_level: premiumProfile?.activity_level,
+        });
+
+        const debt = computeRecentDebt(scoredRecentHistory);
+        const stageAvgs = computeRecentStageAverages(scoredRecentHistory);
+
+        scoredRecentHistory.forEach((record) => {
+          if (!record.start_time || !record.end_time) return;
+          const age = phys.basisNotes.find((n) => n.startsWith('age='))?.replace('age=', '');
+
+          record.premiumPrediction = buildPremiumPrediction({
+            durationMinutes: record.duration_minutes,
+            startTime: record.start_time,
+            endTime: record.end_time,
+            existingDeepMinutes: record.deep_sleep_minutes,
+            existingRemMinutes: record.rem_sleep_minutes,
+            existingLightMinutes: record.light_sleep_minutes,
+            existingAwakeMinutes: record.awake_minutes,
+            estimatedVO2Max: phys.estimatedVO2Max,
+            estimatedRestingHR: phys.estimatedRestingHR,
+            estimatedHRVrmssd: phys.estimatedHRVrmssd,
+            estimatedRespiratoryRate: phys.estimatedRespiratoryRate,
+            age: age ? parseInt(age, 10) : undefined,
+            sex: (premiumProfile?.sex as any) ?? null,
+            chronotype: (premiumProfile as any)?.chronotype ?? 'intermediate',
+            recentSleepDebt: debt,
+            ...stageAvgs,
+          });
+        });
+      }
+
       const map: Partial<Record<string, SleepData[]>> = {};
       // Populate monthly data from weekly fetch as well
       scoredRecentHistory.forEach((r) => {
@@ -819,26 +891,66 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         synced_at: new Date().toISOString(),
       };
 
+      const candidateRecentHistory = [sleepRecord, ...previousRecentHistory.filter((r) => r.date !== date)]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 30);
+      const scoredRecentHistory = await scoreAndPersistRecords(candidateRecentHistory, profile);
+
+      const plan = useProfileStore.getState().profile?.plan;
+      if (isPaidPlan(plan)) {
+        // PREMIUM ONLY  dynamically imported, never executes for free plan
+        const { buildPremiumPrediction } = await import('@lib/sleepStagePredictor');
+        const { estimatePhysiology } = await import('@lib/sleepPhysiologyEstimator');
+        const premiumProfile = useProfileStore.getState().profile;
+
+        const phys = estimatePhysiology({
+          date_of_birth: premiumProfile?.date_of_birth,
+          sex: premiumProfile?.sex,
+          activity_level: premiumProfile?.activity_level,
+        });
+
+        const debt = computeRecentDebt(scoredRecentHistory);
+        const stageAvgs = computeRecentStageAverages(scoredRecentHistory);
+
+        scoredRecentHistory.forEach((record) => {
+          if (!record.start_time || !record.end_time) return;
+          const age = phys.basisNotes.find((n) => n.startsWith('age='))?.replace('age=', '');
+
+          record.premiumPrediction = buildPremiumPrediction({
+            durationMinutes: record.duration_minutes,
+            startTime: record.start_time,
+            endTime: record.end_time,
+            existingDeepMinutes: record.deep_sleep_minutes,
+            existingRemMinutes: record.rem_sleep_minutes,
+            existingLightMinutes: record.light_sleep_minutes,
+            existingAwakeMinutes: record.awake_minutes,
+            estimatedVO2Max: phys.estimatedVO2Max,
+            estimatedRestingHR: phys.estimatedRestingHR,
+            estimatedHRVrmssd: phys.estimatedHRVrmssd,
+            estimatedRespiratoryRate: phys.estimatedRespiratoryRate,
+            age: age ? parseInt(age, 10) : undefined,
+            sex: (premiumProfile?.sex as any) ?? null,
+            chronotype: (premiumProfile as any)?.chronotype ?? 'intermediate',
+            recentSleepDebt: debt,
+            ...stageAvgs,
+          });
+        });
+      }
+      const scoredSleepRecord =
+        scoredRecentHistory.find((r) => r.date === date) ?? scoredRecentHistory[0] ?? sleepRecord;
+
       console.log('[SleepStore] Force saving manual sleep:', sleepRecord);
 
       // 1. OPTIMISTIC UI UPDATE - show immediately
       set((state) => {
-        const existingIndex = state.recentHistory.findIndex((r) => r.date === date);
-        const updated = [...state.recentHistory];
-        if (existingIndex >= 0) {
-          updated[existingIndex] = sleepRecord;
-        } else {
-          updated.unshift(sleepRecord);
-          updated.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        }
         const monthKey = date.substring(0, 7);
         const monthExisting = state.monthlyData[monthKey] || [];
         const monthMap = new Map<string, SleepData>();
         monthExisting.forEach((r) => monthMap.set(r.date, r));
-        monthMap.set(date, sleepRecord);
+        monthMap.set(date, scoredSleepRecord);
 
         return {
-          recentHistory: updated.slice(0, 30),
+          recentHistory: scoredRecentHistory,
           monthlyData: evictOldMonths({
             ...state.monthlyData,
             [monthKey]: Array.from(monthMap.values()),
@@ -848,7 +960,12 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 
       // 2. Save to API - use 'source' field for validation schema
       // Exclude 'id' and 'synced_at' as Supabase auto-generates these
-      const { id: _id, synced_at: _synced, ...apiPayload } = sleepRecord;
+      const {
+        id: _id,
+        synced_at: _synced,
+        premiumPrediction: _premiumPrediction,
+        ...apiPayload
+      } = scoredSleepRecord;
       await api.post('/api/sleep/log', {
         ...apiPayload,
         source: 'manual', // Backend validation expects this enum value
@@ -858,7 +975,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       // 3. Update cache (already synced)
       await upsertCacheRecord(
         {
-          ...sleepRecord,
+          ...scoredSleepRecord,
           source: 'manual' as any,
           confidence: 'low',
         },

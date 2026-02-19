@@ -9,7 +9,7 @@ import {
   ScreenTimeSummary,
   SleepEditRecord,
 } from './sleepCalculations';
-import type { ScoreBreakdown } from '@project-delta/shared';
+import type { ScoreBreakdown } from '@shared';
 
 // ============================================================================
 // CACHE KEYS

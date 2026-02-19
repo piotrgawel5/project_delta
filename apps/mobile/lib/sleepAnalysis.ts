@@ -860,7 +860,6 @@ export function calculateSleepScore(
   now: Date = new Date()
 ): { sleepScore: number; scoreBreakdown: ScoreBreakdown } {
   const { current, history, userProfile = {} } = input;
-  const sleepGoalMinutes = userProfile.sleepGoalMinutes ?? DEFAULT_SLEEP_GOAL_MINUTES;
   const tst = current.durationMinutes ?? 0;
   if (tst <= 0) return buildZeroResult(now);
 
@@ -868,50 +867,102 @@ export function calculateSleepScore(
   const baseline = computeBaseline(history);
   const completeness = assessCompleteness(current);
   const sourceInfo = SOURCE_RELIABILITY[current.source as DataSource] ?? SOURCE_RELIABILITY.manual;
-  const weights = computeDynamicWeights(current, baseline, sourceInfo, userProfile);
+  const sleepGoalMinutes = userProfile.sleepGoalMinutes ?? DEFAULT_SLEEP_GOAL_MINUTES;
 
-  const wasoMinutes = current.awakeSleepMinutes ?? 0;
-  const components: ComponentScores = {
-    duration: scoreDuration(tst, ageNorm, baseline),
-    deepSleep: current.deepSleepMinutes
-      ? scoreDeepSleep(current.deepSleepMinutes, tst, ageNorm, baseline)
-      : NEUTRAL_COMPONENT_SCORE,
-    remSleep: current.remSleepMinutes
-      ? scoreRemSleep(current.remSleepMinutes, tst, ageNorm, baseline, userProfile.chronotype)
-      : NEUTRAL_COMPONENT_SCORE,
-    efficiency: scoreEfficiency(tst, current, ageNorm, baseline),
-    waso: wasoMinutes > 0 ? scoreWaso(wasoMinutes, ageNorm, baseline) : NEUTRAL_COMPONENT_SCORE,
-    consistency: scoreConsistency(current, baseline),
-    timing: scoreTiming(current, userProfile.chronotype),
-    screenTime: current.screenTimeSummary
-      ? scoreScreenTime(current.screenTimeSummary)
-      : NEUTRAL_COMPONENT_SCORE,
+  const timeInBed = (() => {
+    if (current.startTime && current.endTime) {
+      const startMs = new Date(current.startTime).getTime();
+      const endMs = new Date(current.endTime).getTime();
+      const diff = (endMs - startMs) / 60000;
+      if (Number.isFinite(diff) && diff > 0) return diff;
+    }
+    return tst * 1.08;
+  })();
+
+  const efficiencyRatio = timeInBed > 0 ? tst / timeInBed : 0;
+  const efficiencyPct = efficiencyRatio * 100;
+  const efficiencyScore =
+    efficiencyPct >= 90
+      ? 100
+      : efficiencyPct >= 85
+      ? 80
+      : efficiencyPct >= 80
+      ? 60
+      : Math.max(0, (efficiencyPct / 80) * 60);
+
+  const age = userProfile.age;
+  const targetDeepPct =
+    age == null ? 18 : age < 25 ? 22 : age <= 44 ? 18 : age <= 64 ? 14 : 10;
+  const targetRemPct =
+    age == null ? 22 : age < 25 ? 23 : age <= 44 ? 22 : age <= 64 ? 20 : 18;
+
+  const deepPct = tst > 0 ? ((current.deepSleepMinutes ?? 0) / tst) * 100 : 0;
+  const remPct = tst > 0 ? ((current.remSleepMinutes ?? 0) / tst) * 100 : 0;
+
+  const scoreStageBand = (actualPct: number, targetPct: number): number => {
+    const low = targetPct - 2.5;
+    const high = targetPct + 2.5;
+    if (actualPct >= low && actualPct <= high) return 100;
+    const delta = actualPct < low ? low - actualPct : actualPct - high;
+    return Math.max(0, 100 - (delta / 15) * 100);
   };
 
-  let rawScore = (Object.keys(weights) as ComponentKey[]).reduce((sum, key) => {
+  const deepScore = scoreStageBand(deepPct, targetDeepPct);
+  const remScore = scoreStageBand(remPct, targetRemPct);
+
+  const wasoMinutes =
+    current.awakeSleepMinutes != null
+      ? current.awakeSleepMinutes
+      : Math.max(0, timeInBed - tst);
+  const wasoScore =
+    wasoMinutes < 15 ? 100 : wasoMinutes >= 60 ? 0 : ((60 - wasoMinutes) / 45) * 100;
+
+  const tstHours = tst / 60;
+  const tstScore =
+    tstHours >= 7 && tstHours <= 9
+      ? 100
+      : (tstHours >= 6 && tstHours < 7) || (tstHours > 9 && tstHours <= 10)
+      ? 80
+      : (tstHours >= 5 && tstHours < 6) || (tstHours > 10 && tstHours <= 11)
+      ? 50
+      : 20;
+
+  // Keep existing regularity scoring logic.
+  const regularityScore = scoreConsistency(current, baseline) * 100;
+
+  const weights: DynamicWeights = {
+    duration: 0.1,
+    deepSleep: 0.2,
+    remSleep: 0.2,
+    efficiency: 0.25,
+    waso: 0.15,
+    consistency: 0.1,
+    timing: 0,
+    screenTime: 0,
+  };
+
+  const components: ComponentScores = {
+    duration: clamp(tstScore / 100),
+    deepSleep: clamp(deepScore / 100),
+    remSleep: clamp(remScore / 100),
+    efficiency: clamp(efficiencyScore / 100),
+    waso: clamp(wasoScore / 100),
+    consistency: clamp(regularityScore / 100),
+    timing: 0,
+    screenTime: 0,
+  };
+
+  const rawScore = (Object.keys(weights) as ComponentKey[]).reduce((sum, key) => {
     return sum + weights[key] * components[key] * 100;
   }, 0);
 
-  const chronicDebtPenalty = computeChronicDebtPenalty(history, sleepGoalMinutes);
-  rawScore *= 1 - chronicDebtPenalty;
-
-  const ageEfficiencyCorrection =
-    userProfile.age && userProfile.age > AGE_EFFICIENCY_CORRECTION.ageStart
-      ? -Math.min(
-          (userProfile.age - AGE_EFFICIENCY_CORRECTION.ageStart) *
-            AGE_EFFICIENCY_CORRECTION.pointsPerYear,
-          AGE_EFFICIENCY_CORRECTION.maxCorrectionPoints
-        )
-      : 0;
-  rawScore += ageEfficiencyCorrection;
-
-  rawScore = dampenTowardPrior(rawScore, sourceInfo.factor);
-  if (current.confidence === 'low') {
-    rawScore = dampenTowardPrior(rawScore, SHRINKAGE.lowConfidenceExtraFactor);
-  }
-
-  rawScore *= completeness.factor;
-  const finalScore = Math.round(clamp(rawScore, 0, 100));
+  const chronicDebtPenalty = computeChronicDebtPenalty(history, sleepGoalMinutes) * 100;
+  const shortSleepPenalty =
+    tstHours < 5 ? 35 + (5 - tstHours) * 5 : tstHours < 6 ? 10 + (6 - tstHours) * 5 : 0;
+  const adjustedForPenalties = rawScore - shortSleepPenalty - chronicDebtPenalty;
+  const reliabilityAdjusted = 50 + (adjustedForPenalties - 50) * sourceInfo.factor;
+  const completenessAdjusted = reliabilityAdjusted * completeness.factor;
+  const finalScore = Math.round(clamp(completenessAdjusted, 0, 100));
 
   const flags = computeFlags(current, tst, ageNorm, baseline, sleepGoalMinutes);
 
@@ -922,19 +973,23 @@ export function calculateSleepScore(
         ? 'high'
         : 'medium';
 
-  const timingAlignment = scoreTiming(current, userProfile.chronotype);
-
   const scoreBreakdown: ScoreBreakdown = {
     score: finalScore,
     confidence: outputConfidence,
+    efficiencyScore: Math.round(clamp(efficiencyScore, 0, 100)),
+    wasoScore: Math.round(clamp(wasoScore, 0, 100)),
+    tstScore: Math.round(clamp(tstScore, 0, 100)),
+    deepScore: Math.round(clamp(deepScore, 0, 100)),
+    remScore: Math.round(clamp(remScore, 0, 100)),
+    regularityScore: Math.round(clamp(regularityScore, 0, 100)),
     components: buildComponentResults(current, components, weights, ageNorm, baseline),
     weights,
     adjustments: {
       sourceReliabilityFactor: sourceInfo.factor,
       dataCompletenessFactor: completeness.factor,
-      chronicDebtPenalty,
-      ageEfficiencyCorrection,
-      chronotypeAlignmentDelta: timingAlignment * 10 - 5,
+      chronicDebtPenalty: Math.round(chronicDebtPenalty * 100) / 100,
+      ageEfficiencyCorrection: 0,
+      chronotypeAlignmentDelta: 0,
     },
     baseline,
     ageNorm,

@@ -1,8 +1,18 @@
 // modules/screen-time/index.ts
 // React Native bridge for ScreenTime native module
 
-import { NativeModulesProxy, requireNativeModule } from "expo-modules-core";
-import { Platform } from "react-native";
+import { requireNativeModule } from "expo-modules-core";
+
+function getPlatformOS(): string {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        return require("react-native").Platform?.OS ?? "web";
+    } catch {
+        return "web";
+    }
+}
+
+const PLATFORM_OS = getPlatformOS();
 
 // Types for screen time data
 export interface ScreenEvent {
@@ -89,14 +99,14 @@ interface ScreenTimeModuleInterface {
 
 // Get the native module
 const ScreenTimeModule: ScreenTimeModuleInterface | null =
-    Platform.OS === "android" ? requireNativeModule("ScreenTime") : null;
+    PLATFORM_OS === "android" ? requireNativeModule("ScreenTime") : null;
 
 /**
  * Check if screen time (usage stats) permission is granted.
  * Only available on Android.
  */
 export async function hasScreenTimePermission(): Promise<boolean> {
-    if (Platform.OS !== "android" || !ScreenTimeModule) {
+    if (PLATFORM_OS !== "android" || !ScreenTimeModule) {
         return false;
     }
     return ScreenTimeModule.hasPermission();
@@ -108,7 +118,7 @@ export async function hasScreenTimePermission(): Promise<boolean> {
  * Only available on Android.
  */
 export async function requestScreenTimePermission(): Promise<PermissionResult> {
-    if (Platform.OS !== "android" || !ScreenTimeModule) {
+    if (PLATFORM_OS !== "android" || !ScreenTimeModule) {
         return { success: false, error: "NOT_SUPPORTED" };
     }
     return ScreenTimeModule.requestPermission();
@@ -125,7 +135,7 @@ export async function getScreenEvents(
     startTime: Date | number,
     endTime: Date | number,
 ): Promise<ScreenEventsResult> {
-    if (Platform.OS !== "android" || !ScreenTimeModule) {
+    if (PLATFORM_OS !== "android" || !ScreenTimeModule) {
         return { events: [], startTime: 0, endTime: 0, count: 0 };
     }
 
@@ -146,7 +156,7 @@ export async function getAppUsageStats(
     startTime: Date | number,
     endTime: Date | number,
 ): Promise<AppUsageStatsResult> {
-    if (Platform.OS !== "android" || !ScreenTimeModule) {
+    if (PLATFORM_OS !== "android" || !ScreenTimeModule) {
         return { stats: [], startTime: 0, endTime: 0 };
     }
 
@@ -168,7 +178,7 @@ export async function estimateSleepWindow(
     startTime: Date | number,
     endTime: Date | number,
 ): Promise<SleepWindowResult> {
-    if (Platform.OS !== "android" || !ScreenTimeModule) {
+    if (PLATFORM_OS !== "android" || !ScreenTimeModule) {
         return { success: false, reason: "INSUFFICIENT_DATA" };
     }
 
@@ -228,6 +238,27 @@ export function getLastNightTimeRange(): { startTime: Date; endTime: Date } {
 }
 
 /**
+ * Backward-compatible alias used by tests and older call sites.
+ * Returns unix timestamps in milliseconds.
+ */
+export function getTimeRangeForSleepEstimation(referenceDate?: Date): {
+    startTime: number;
+    endTime: number;
+} {
+    const now = referenceDate ?? new Date();
+    const endTime = new Date(now);
+    if (endTime.getHours() >= 12) {
+        endTime.setHours(12, 0, 0, 0);
+    }
+
+    const startTime = new Date(endTime);
+    startTime.setDate(startTime.getDate() - 1);
+    startTime.setHours(18, 0, 0, 0);
+
+    return { startTime: startTime.getTime(), endTime: endTime.getTime() };
+}
+
+/**
  * High-level function to get estimated sleep data from screen time.
  * Handles permission check and provides a clean result.
  */
@@ -237,7 +268,7 @@ export async function getEstimatedSleepFromScreenTime(): Promise<{
     estimate: SleepWindowResult | null;
     summary: ScreenTimeSummary | null;
 }> {
-    if (Platform.OS !== "android") {
+    if (PLATFORM_OS !== "android") {
         return {
             available: false,
             hasPermission: false,
@@ -282,4 +313,4 @@ export async function getEstimatedSleepFromScreenTime(): Promise<{
 }
 
 // Export module availability check
-export const isScreenTimeAvailable = Platform.OS === "android";
+export const isScreenTimeAvailable = PLATFORM_OS === "android";

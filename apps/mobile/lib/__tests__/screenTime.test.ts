@@ -101,13 +101,9 @@ describe("Screen Time Module", () => {
             expect(gapMinutes).toBeGreaterThan(60 * 7); // More than 7 hours
             expect(gapMinutes).toBeLessThan(60 * 9); // Less than 9 hours
 
-            // Bedtime should be 11 PM
-            const bedtime = new Date(gapStart);
-            expect(bedtime.getHours()).toBe(23);
-
-            // Wake time should be 7 AM
-            const wakeTime = new Date(gapEnd);
-            expect(wakeTime.getHours()).toBe(7);
+            // Longest gap should map to the expected off->on boundary events
+            expect(gapStart).toBe(1706734800000);
+            expect(gapEnd).toBe(1706763600000);
         });
 
         it("should handle fragmented sleep patterns", () => {
