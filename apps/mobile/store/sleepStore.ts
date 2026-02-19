@@ -84,6 +84,21 @@ interface SleepState {
 
 const inFlightRanges = new Set<string>();
 const MAX_CACHED_MONTHS = 4;
+const MAX_SCORE_PERSIST_ATTEMPTS = 3;
+
+type ScorePersistUpdate = {
+  id: string;
+  sleep_score?: number;
+  score_breakdown?: ScoreBreakdown;
+};
+
+type ScorePersistQueueItem = {
+  update: ScorePersistUpdate;
+  attempts: number;
+};
+
+const scorePersistQueue = new Map<string, ScorePersistQueueItem>();
+let isScorePersistWorkerRunning = false;
 
 function evictOldMonths(
   data: Partial<Record<string, SleepData[]>>
@@ -151,12 +166,9 @@ function toSleepRecord(record: SleepData): SleepRecord {
   };
 }
 
-async function scoreAndPersistRecords(
-  records: SleepData[],
-  profile: UserProfile | null
-): Promise<SleepData[]> {
+function computeScoresForRecords(records: SleepData[], profile: UserProfile | null): SleepData[] {
   const sleepProfile = toSleepEngineProfile(profile);
-  const scored = records.map((record, index) => {
+  return records.map((record, index) => {
     const history = records.slice(index + 1).map(toSleepRecord);
     const result = calculateDynamicSleepScore({
       current: toSleepRecord(record),
@@ -170,30 +182,111 @@ async function scoreAndPersistRecords(
       score_breakdown: result.scoreBreakdown,
     };
   });
+}
 
-  const persistable = scored.filter((record) => {
+function isTransientScorePersistFailure(error: unknown): boolean {
+  const code = String((error as any)?.code ?? '').toLowerCase();
+  const message = String((error as any)?.message ?? '').toLowerCase();
+  return (
+    code.startsWith('08') ||
+    code === '53300' ||
+    code === '57p01' ||
+    code === '57014' ||
+    message.includes('timeout') ||
+    message.includes('network') ||
+    message.includes('connection') ||
+    message.includes('temporar') ||
+    message.includes('rate') ||
+    message.includes('fetch')
+  );
+}
+
+function toScorePersistUpdates(records: SleepData[]): ScorePersistUpdate[] {
+  const persistable = records.filter((record) => {
     return (
       Boolean(record.id) && !record.id.startsWith('local-') && !record.id.startsWith('manual-')
     );
   });
 
-  const updates = persistable.map((record) => ({
+  return persistable.map((record) => ({
     id: record.id,
     sleep_score: record.sleep_score,
     score_breakdown: record.score_breakdown,
   }));
+}
 
-  if (updates.length > 0) {
-    try {
-      const { error } = await supabase.from('sleep_data').upsert(updates, { onConflict: 'id' });
-      if (error) {
-        console.warn(`[SleepStore] Batch score persist failed: ${error.message}`);
+async function flushScorePersistQueue(): Promise<void> {
+  if (isScorePersistWorkerRunning) return;
+  isScorePersistWorkerRunning = true;
+
+  try {
+    while (scorePersistQueue.size > 0) {
+      const pending = Array.from(scorePersistQueue.values());
+      scorePersistQueue.clear();
+
+      for (const item of pending) {
+        const { id, ...payload } = item.update;
+        try {
+          // Use UPDATE (not UPSERT) to avoid triggering insert RLS policies on score-only persistence.
+          const { error } = await supabase.from('sleep_data').update(payload).eq('id', id);
+          if (error) {
+            console.warn(`[SleepStore] Score persist failed for ${id}: ${error.message}`);
+            if (
+              isTransientScorePersistFailure(error) &&
+              item.attempts + 1 < MAX_SCORE_PERSIST_ATTEMPTS
+            ) {
+              scorePersistQueue.set(id, {
+                update: item.update,
+                attempts: item.attempts + 1,
+              });
+            } else {
+              console.warn(`[SleepStore] Dropping score persist for ${id}`);
+            }
+          }
+        } catch (error) {
+          console.warn('[SleepStore] Error batch persisting scores', error);
+          if (isTransientScorePersistFailure(error) && item.attempts + 1 < MAX_SCORE_PERSIST_ATTEMPTS) {
+            scorePersistQueue.set(id, {
+              update: item.update,
+              attempts: item.attempts + 1,
+            });
+          } else {
+            console.warn(`[SleepStore] Dropping score persist for ${id}`);
+          }
+        }
       }
-    } catch (error) {
-      console.warn('[SleepStore] Error batch persisting scores', error);
+    }
+  } catch (error) {
+    console.warn('[SleepStore] Error batch persisting scores', error);
+  } finally {
+    isScorePersistWorkerRunning = false;
+
+    // New records could have been enqueued while finishing the current loop.
+    if (scorePersistQueue.size > 0) {
+      void flushScorePersistQueue();
     }
   }
+}
 
+function enqueueScorePersistence(records: SleepData[]): void {
+  const updates = toScorePersistUpdates(records);
+  if (updates.length > 0) {
+    for (const update of updates) {
+      scorePersistQueue.set(update.id, {
+        update,
+        attempts: 0,
+      });
+    }
+    void flushScorePersistQueue();
+  }
+}
+
+async function scoreAndPersistRecords(
+  records: SleepData[],
+  profile: UserProfile | null
+): Promise<SleepData[]> {
+  const scored = computeScoresForRecords(records, profile);
+  enqueueScorePersistence(scored);
   return scored;
 }
 
@@ -478,7 +571,21 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         data_source: r.data_source,
         synced_at: r.synced_at || '',
       }));
-      const scoredRecentHistory = await scoreAndPersistRecords(recentHistory, profile);
+      const scoredRecentHistory = computeScoresForRecords(recentHistory, profile);
+
+      const map: Partial<Record<string, SleepData[]>> = {};
+      // Populate monthly data from weekly fetch as well
+      scoredRecentHistory.forEach((r) => {
+        const monthKey = r.date.substring(0, 7); // YYYY-MM
+        if (!map[monthKey]) map[monthKey] = [];
+        map[monthKey].push(r);
+      });
+
+      set({
+        recentHistory: scoredRecentHistory,
+        monthlyData: evictOldMonths({ ...get().monthlyData, ...map }),
+      });
+      enqueueScorePersistence(scoredRecentHistory);
 
       const plan = useProfileStore.getState().profile?.plan;
       if (isPaidPlan(plan)) {
@@ -519,20 +626,19 @@ export const useSleepStore = create<SleepState>((set, get) => ({
             ...stageAvgs,
           });
         });
+
+        const premiumMap: Partial<Record<string, SleepData[]>> = {};
+        scoredRecentHistory.forEach((r) => {
+          const monthKey = r.date.substring(0, 7); // YYYY-MM
+          if (!premiumMap[monthKey]) premiumMap[monthKey] = [];
+          premiumMap[monthKey].push(r);
+        });
+
+        set({
+          recentHistory: scoredRecentHistory,
+          monthlyData: evictOldMonths({ ...get().monthlyData, ...premiumMap }),
+        });
       }
-
-      const map: Partial<Record<string, SleepData[]>> = {};
-      // Populate monthly data from weekly fetch as well
-      scoredRecentHistory.forEach((r) => {
-        const monthKey = r.date.substring(0, 7); // YYYY-MM
-        if (!map[monthKey]) map[monthKey] = [];
-        map[monthKey].push(r);
-      });
-
-      set({
-        recentHistory: scoredRecentHistory,
-        monthlyData: evictOldMonths({ ...get().monthlyData, ...map }),
-      });
 
       // 6. Sync HC-only records to cloud
       await get().syncPendingRecords(userId);
@@ -605,7 +711,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 
       const records: SleepData[] = response?.data || response || [];
       if (records.length === 0) return;
-      const scoredRecords = await scoreAndPersistRecords(records, profile);
+      const scoredRecords = computeScoresForRecords(records, profile);
 
       const monthMap: Partial<Record<string, SleepData[]>> = {};
       scoredRecords.forEach((r) => {
@@ -637,6 +743,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
           recentHistory: recentHistory.slice(0, 30),
         };
       });
+      enqueueScorePersistence(scoredRecords);
     } catch (error) {
       console.error('[SleepStore] Failed to fetch range history', error);
     } finally {
@@ -894,7 +1001,30 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       const candidateRecentHistory = [sleepRecord, ...previousRecentHistory.filter((r) => r.date !== date)]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 30);
-      const scoredRecentHistory = await scoreAndPersistRecords(candidateRecentHistory, profile);
+      const scoredRecentHistory = computeScoresForRecords(candidateRecentHistory, profile);
+
+      const scoredSleepRecord =
+        scoredRecentHistory.find((r) => r.date === date) ?? scoredRecentHistory[0] ?? sleepRecord;
+
+      console.log('[SleepStore] Force saving manual sleep:', sleepRecord);
+
+      // 1. OPTIMISTIC UI UPDATE - show immediately
+      set((state) => {
+        const monthKey = date.substring(0, 7);
+        const monthExisting = state.monthlyData[monthKey] || [];
+        const monthMap = new Map<string, SleepData>();
+        monthExisting.forEach((r) => monthMap.set(r.date, r));
+        monthMap.set(date, scoredSleepRecord);
+
+        return {
+          recentHistory: scoredRecentHistory,
+          monthlyData: evictOldMonths({
+            ...state.monthlyData,
+            [monthKey]: Array.from(monthMap.values()),
+          }),
+        };
+      });
+      enqueueScorePersistence(scoredRecentHistory);
 
       const plan = useProfileStore.getState().profile?.plan;
       if (isPaidPlan(plan)) {
@@ -935,28 +1065,25 @@ export const useSleepStore = create<SleepState>((set, get) => ({
             ...stageAvgs,
           });
         });
+
+        const premiumRecord =
+          scoredRecentHistory.find((r) => r.date === date) ?? scoredRecentHistory[0] ?? sleepRecord;
+        set((state) => {
+          const monthKey = date.substring(0, 7);
+          const monthExisting = state.monthlyData[monthKey] || [];
+          const monthMap = new Map<string, SleepData>();
+          monthExisting.forEach((r) => monthMap.set(r.date, r));
+          monthMap.set(date, premiumRecord);
+
+          return {
+            recentHistory: scoredRecentHistory,
+            monthlyData: evictOldMonths({
+              ...state.monthlyData,
+              [monthKey]: Array.from(monthMap.values()),
+            }),
+          };
+        });
       }
-      const scoredSleepRecord =
-        scoredRecentHistory.find((r) => r.date === date) ?? scoredRecentHistory[0] ?? sleepRecord;
-
-      console.log('[SleepStore] Force saving manual sleep:', sleepRecord);
-
-      // 1. OPTIMISTIC UI UPDATE - show immediately
-      set((state) => {
-        const monthKey = date.substring(0, 7);
-        const monthExisting = state.monthlyData[monthKey] || [];
-        const monthMap = new Map<string, SleepData>();
-        monthExisting.forEach((r) => monthMap.set(r.date, r));
-        monthMap.set(date, scoredSleepRecord);
-
-        return {
-          recentHistory: scoredRecentHistory,
-          monthlyData: evictOldMonths({
-            ...state.monthlyData,
-            [monthKey]: Array.from(monthMap.values()),
-          }),
-        };
-      });
 
       // 2. Save to API - use 'source' field for validation schema
       // Exclude 'id' and 'synced_at' as Supabase auto-generates these

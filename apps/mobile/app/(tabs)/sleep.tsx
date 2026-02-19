@@ -39,6 +39,7 @@ import { SleepMetricsList, SleepMetricItem } from '@components/sleep/dashboard/S
 
 // Colors
 const BG_PRIMARY = '#0B0B0D';
+const EMPTY_DAY_BG = '#000000';
 const SURFACE_ALT = '#1B1B21';
 const SHEET_BG = '#000000';
 const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.68)';
@@ -83,6 +84,17 @@ const toWakeMinutes = (iso?: string | null) => {
   if (!iso) return null;
   const d = new Date(iso);
   return d.getHours() * 60 + d.getMinutes();
+};
+
+const resolveSleepScore = (item: any): number | undefined => {
+  if (!item) return undefined;
+  if (typeof item?.score_breakdown?.score === 'number') {
+    return Math.round(item.score_breakdown.score);
+  }
+  if (typeof item?.sleep_score === 'number') {
+    return Math.round(item.sleep_score);
+  }
+  return undefined;
 };
 
 const GradientBackground = React.memo(function GradientBackground({
@@ -313,11 +325,24 @@ export default function SleepScreen() {
         null
       ),
       efficiency: padToSeven(
-        weeklySeries.map((item) =>
-          item.duration_minutes
-            ? Math.min(100, Math.round((item.duration_minutes / 480) * 100))
-            : null
-        ),
+        weeklySeries.map((item) => {
+          const duration = item.duration_minutes ?? 0;
+          if (!duration) return null;
+          const awake =
+            typeof item.awake_minutes === 'number'
+              ? item.awake_minutes
+              : item.start_time && item.end_time
+                ? Math.max(
+                    0,
+                    Math.round(
+                      (new Date(item.end_time).getTime() - new Date(item.start_time).getTime()) /
+                        60000
+                    ) - duration
+                  )
+                : 0;
+          const timeInBed = duration + awake;
+          return timeInBed > 0 ? Math.min(100, Math.round((duration / timeInBed) * 100)) : null;
+        }),
         null
       ),
       deep: padToSeven(
@@ -468,9 +493,9 @@ export default function SleepScreen() {
 
   const getGradientColorForKey = useCallback(
     (key: string) => {
-      const item = cachedHistory.get(key) || historyByDate.get(key);
-      if (!item) return BG_PRIMARY;
-      return getSleepScoreGrade(item.sleep_score ?? 0).color;
+      const item = historyByDate.get(key) ?? cachedHistory.get(key);
+      if (!item) return EMPTY_DAY_BG;
+      return getSleepScoreGrade(resolveSleepScore(item) ?? 0).color;
     },
     [cachedHistory, historyByDate]
   );
@@ -555,28 +580,27 @@ export default function SleepScreen() {
   }, [activeIndex, cacheRange, selectedDate, user?.id, fetchSleepDataRange, monthDates.length]);
 
   useEffect(() => {
-    historyByDate.forEach((_, key) => {
-      populatedKeysRef.current.delete(key);
-    });
+    populatedKeysRef.current.clear();
+    setCachedHistory(new Map());
   }, [historyByDate]);
 
   useEffect(() => {
     if (!monthDates.length) return;
-    let hasNew = false;
-    const next = new Map(cachedHistory);
-    for (let i = cacheRange.min; i <= cacheRange.max; i += 1) {
-      const date = monthDates[i];
-      if (!date) continue;
-      const key = dateKey(date);
-      if (populatedKeysRef.current.has(key)) continue;
-      const record = historyByDate.get(key) ?? null;
-      next.set(key, record);
-      populatedKeysRef.current.add(key);
-      hasNew = true;
-    }
-    if (hasNew) {
-      setCachedHistory(next);
-    }
+    setCachedHistory((prev) => {
+      let hasNew = false;
+      const next = new Map(prev);
+      for (let i = cacheRange.min; i <= cacheRange.max; i += 1) {
+        const date = monthDates[i];
+        if (!date) continue;
+        const key = dateKey(date);
+        if (populatedKeysRef.current.has(key)) continue;
+        const record = historyByDate.get(key) ?? null;
+        next.set(key, record);
+        populatedKeysRef.current.add(key);
+        hasNew = true;
+      }
+      return hasNew ? next : prev;
+    });
   }, [cacheRange, monthDates, historyByDate]);
 
   return (
@@ -629,10 +653,12 @@ export default function SleepScreen() {
               const shouldPrefetch = Math.abs(index - activeIndex) <= 1;
               const itemDateStr = dateKey(item);
               const itemHistory =
-                cachedHistory.get(itemDateStr) ||
+                historyByDate.get(itemDateStr) ??
+                cachedHistory.get(itemDateStr) ??
                 (shouldPrefetch ? historyByDate.get(itemDateStr) || null : null);
               const itemHasData = !!itemHistory;
-              const itemGrade = getSleepScoreGrade(itemHistory?.sleep_score ?? 0);
+              const itemScore = resolveSleepScore(itemHistory);
+              const itemGrade = getSleepScoreGrade(itemScore ?? 0);
               return (
                 <View style={styles.pagerItem}>
                   <View style={styles.titleSection}>
@@ -644,10 +670,10 @@ export default function SleepScreen() {
                       </Text>
                     </View>
                     <Text style={styles.mainRating}>
-                      {itemHistory?.sleep_score !== undefined ? itemGrade.grade : '--'}
+                      {itemScore !== undefined ? itemGrade.grade : '--'}
                     </Text>
-                    {itemHistory?.sleep_score !== undefined ? (
-                      <Text style={styles.scoreNumeric}>{itemHistory.sleep_score} / 100</Text>
+                    {itemScore !== undefined ? (
+                      <Text style={styles.scoreNumeric}>{itemScore} / 100</Text>
                     ) : null}
                     <Text style={styles.dateLabel}>
                       {item.toLocaleDateString('en-GB', {
@@ -659,7 +685,7 @@ export default function SleepScreen() {
                     <Text style={styles.description}>
                       {itemHasData
                         ? getSleepDescription(
-                            itemHistory?.sleep_score ?? 0,
+                            itemScore ?? 0,
                             itemHistory?.duration_minutes ?? 0
                           )
                         : 'No sleep data yet for this day. Add a record to see your score and trends.'}
