@@ -327,6 +327,7 @@ export const SleepHypnogram = React.memo(function SleepHypnogram({
 
   const clearSelection = useCallback(() => setSelectedBar(null), []);
   const totalH = CHART_HEIGHT + AXIS_HEIGHT;
+  const showGeneratingState = !isLoading && isPremium && phases.length === 0;
 
   return (
     <View style={{ width: '100%' }} onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}>
@@ -335,6 +336,10 @@ export const SleepHypnogram = React.memo(function SleepHypnogram({
       <View style={{ height: totalH }}>
         {isLoading ? (
           <HypnogramSkeleton chartWidth={chartWidth} />
+        ) : showGeneratingState ? (
+          <View style={{ height: totalH, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#6B7280', fontSize: 13 }}>Generating sleep timeline</Text>
+          </View>
         ) : (
           <>
             <Svg width={chartWidth} height={totalH}>
