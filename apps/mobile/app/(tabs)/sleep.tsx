@@ -30,7 +30,6 @@ import {
   formatDuration,
   formatHours,
   formatTimeParts,
-  formatTimeWithMeridiem,
   getSleepDescription,
 } from '@lib/sleepFormatters';
 import { addDays, dateKey, isSameDay, normalizeDate, padToSeven } from '@lib/sleepDateUtils';

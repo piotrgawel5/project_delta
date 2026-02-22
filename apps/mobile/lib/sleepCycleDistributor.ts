@@ -314,7 +314,6 @@ export function buildTimeline(params: {
   endTime: string;
   durationMinutes: number;
   finalSOL: number;
-  cycleLengths: number[];
   deepPerCycle: number[];
   remPerCycle: number[];
   lightPerCycle: number[];
@@ -326,7 +325,6 @@ export function buildTimeline(params: {
     endTime,
     durationMinutes,
     finalSOL,
-    cycleLengths,
     deepPerCycle,
     remPerCycle,
     lightPerCycle,
@@ -350,7 +348,7 @@ export function buildTimeline(params: {
     const lightDescent = Math.round((lightPerCycle[c] ?? 0) * 0.45);
     const lightAscent = (lightPerCycle[c] ?? 0) - lightDescent;
 
-    const phases: Array<['awake' | 'light' | 'deep' | 'rem', number]> = [
+    const phases: ['awake' | 'light' | 'deep' | 'rem', number][] = [
       ['light', lightDescent],
       ['deep', deepPerCycle[c] ?? 0],
       ['light', lightAscent],
@@ -549,7 +547,6 @@ export function distributeSleepcycles(
       endTime: input.endTime,
       durationMinutes: duration,
       finalSOL,
-      cycleLengths,
       deepPerCycle,
       remPerCycle,
       lightPerCycle,
