@@ -131,22 +131,71 @@ export interface SleepPhaseEvent {
   cycleNumber: number; // 1-based; 0 = pre-sleep awake
 }
 
+// Matches the sleep_phase_timeline table columns exactly
+export interface SleepPhaseTimelineRow {
+  id: string;
+  sleep_data_id: string;
+  user_id: string;
+  cycle_number: number;
+  stage: "awake" | "light" | "deep" | "rem";
+  start_time: string; // ISO
+  end_time: string; // ISO
+  duration_minutes: number;
+  confidence: "high" | "medium" | "low";
+  generation_v: number;
+  created_at: string;
+}
+
+export interface CycleBreakdown {
+  cycleNumber: number;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  dominantStage: "deep" | "rem" | "light";
+  deepMinutes: number;
+  remMinutes: number;
+  lightMinutes: number;
+  awakeMinutes: number;
+}
+
+export interface CycleDistributorInput {
+  // From sleep_data record
+  startTime: string; // ISO string — required, return null if missing
+  endTime: string; // ISO string — required, return null if missing
+  durationMinutes: number;
+  deepSleepMinutes: number | null;
+  remSleepMinutes: number | null;
+  lightSleepMinutes: number | null;
+  awakeSleepMinutes: number | null;
+
+  // From estimatePhysiology() — always available for premium users
+  estimatedRestingHR: number;
+  estimatedVO2Max: number;
+  age: number;
+  sex: "male" | "female" | null;
+
+  // From history computation — optional
+  recentSleepDebt?: number; // minutes below 480 goal, avg last 3 nights
+  personalDeepRatio?: number; // 0..1, avg last 7 nights
+  personalRemRatio?: number; // 0..1
+  personalCycleLength?: number; // minutes
+  historyNightCount?: number; // for confidence scoring
+}
+
+export interface CycleDistributorOutput {
+  phaseTimeline: SleepPhaseEvent[];
+  estimatedCycles: number;
+  cycleBreakdown: CycleBreakdown[];
+  confidence: "high" | "medium" | "low";
+  algorithmVersion: number;
+}
+
 export interface SleepCycleMap {
   estimatedCycles: number;
   // Full flat timeline ordered by startTime — compatible with existing SleepTimeline component
   // Each SleepPhaseEvent maps directly to SleepStage in SleepTimeline.tsx
   phaseTimeline: SleepPhaseEvent[];
-  cycleBreakdown: Array<{
-    cycleNumber: number;
-    startTime: string;
-    endTime: string;
-    durationMinutes: number;
-    dominantStage: "deep" | "rem" | "light";
-    deepMinutes: number;
-    remMinutes: number;
-    lightMinutes: number;
-    awakeMinutes: number;
-  }>;
+  cycleBreakdown: CycleBreakdown[];
 }
 
 export interface PredictedStageDistribution {
