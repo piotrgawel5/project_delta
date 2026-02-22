@@ -87,6 +87,7 @@ interface SleepState {
 const inFlightRanges = new Set<string>();
 const MAX_CACHED_MONTHS = 4;
 const MAX_SCORE_PERSIST_ATTEMPTS = 3;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type ScorePersistUpdate = {
   id: string;
@@ -1229,9 +1230,9 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       const candidateRecentHistory = [sleepRecord, ...previousRecentHistory.filter((r) => r.date !== date)]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 30);
-      const scoredRecentHistory = computeScoresForRecords(candidateRecentHistory, profile);
+      let scoredRecentHistory = computeScoresForRecords(candidateRecentHistory, profile);
 
-      const scoredSleepRecord =
+      let scoredSleepRecord =
         scoredRecentHistory.find((r) => r.date === date) ?? scoredRecentHistory[0] ?? sleepRecord;
 
       console.log('[SleepStore] Force saving manual sleep:', sleepRecord);
@@ -1253,6 +1254,47 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         };
       });
       enqueueScorePersistence(scoredRecentHistory);
+
+      // 2. Save to API first so we can replace the temporary manual-* id with the real UUID.
+      const {
+        id: _id,
+        synced_at: _synced,
+        premiumPrediction: _premiumPrediction,
+        ...apiPayload
+      } = scoredSleepRecord;
+      const saveResponse = await api.post('/api/sleep/log', {
+        ...apiPayload,
+        source: 'manual', // Backend validation expects this enum value
+        confidence: 'low',
+      });
+      const savedRecord = (saveResponse as any)?.data ?? saveResponse;
+      const savedRecordId =
+        savedRecord && typeof savedRecord.id === 'string' ? savedRecord.id : null;
+
+      if (savedRecordId && savedRecordId !== scoredSleepRecord.id) {
+        scoredRecentHistory = scoredRecentHistory.map((record) =>
+          record.id === scoredSleepRecord.id ? { ...record, id: savedRecordId } : record
+        );
+        scoredSleepRecord =
+          scoredRecentHistory.find((record) => record.date === date) ??
+          ({ ...scoredSleepRecord, id: savedRecordId } as SleepData);
+
+        set((state) => {
+          const monthKey = date.substring(0, 7);
+          const monthExisting = state.monthlyData[monthKey] || [];
+          const monthMap = new Map<string, SleepData>();
+          monthExisting.forEach((record) => monthMap.set(record.date, record));
+          monthMap.set(date, scoredSleepRecord);
+
+          return {
+            recentHistory: scoredRecentHistory,
+            monthlyData: evictOldMonths({
+              ...state.monthlyData,
+              [monthKey]: Array.from(monthMap.values()),
+            }),
+          };
+        });
+      }
 
       const plan = useProfileStore.getState().profile?.plan;
       if (isPaidPlan(plan)) {
@@ -1295,6 +1337,14 @@ export const useSleepStore = create<SleepState>((set, get) => ({
           });
 
           try {
+            if (!UUID_REGEX.test(record.id)) {
+              console.warn(
+                '[SleepStore] Skipping timeline persist: record.id is not a UUID:',
+                record.id
+              );
+              continue;
+            }
+
             const { data: existingTimeline } = await supabase
               .from('sleep_phase_timeline')
               .select('generation_v, cycle_number, stage, start_time, end_time, duration_minutes')
@@ -1439,20 +1489,6 @@ export const useSleepStore = create<SleepState>((set, get) => ({
           };
         });
       }
-
-      // 2. Save to API - use 'source' field for validation schema
-      // Exclude 'id' and 'synced_at' as Supabase auto-generates these
-      const {
-        id: _id,
-        synced_at: _synced,
-        premiumPrediction: _premiumPrediction,
-        ...apiPayload
-      } = scoredSleepRecord;
-      await api.post('/api/sleep/log', {
-        ...apiPayload,
-        source: 'manual', // Backend validation expects this enum value
-        confidence: 'low',
-      });
 
       // 3. Update cache (already synced)
       await upsertCacheRecord(
