@@ -27,8 +27,10 @@ import { useProfileStore, UserProfile } from './profileStore';
 import { api } from '@lib/api';
 import { calculateSleepScore as calculateDynamicSleepScore } from '@lib/sleepAnalysis';
 import type {
+  CycleBreakdown,
   PremiumSleepPrediction,
   ScoreBreakdown,
+  SleepPhaseEvent,
   SleepRecord,
   UserProfile as SleepEngineUserProfile,
 } from '@shared';
@@ -312,6 +314,52 @@ function computeRecentStageAverages(history: SleepData[]) {
     valid.reduce((s, r) => s + ((r.rem_sleep_minutes ?? 0) / r.duration_minutes) * 100, 0) /
     valid.length;
   return { recentAvgDeepPercent: avgDeep, recentAvgRemPercent: avgRem };
+}
+
+function buildCycleBreakdownFromTimeline(
+  phaseTimeline: SleepPhaseEvent[],
+  estimatedCycles: number
+): CycleBreakdown[] {
+  const breakdown: CycleBreakdown[] = [];
+
+  for (let cycleNumber = 1; cycleNumber <= estimatedCycles; cycleNumber += 1) {
+    const cycleEvents = phaseTimeline.filter((event) => event.cycleNumber === cycleNumber);
+    if (cycleEvents.length === 0) continue;
+
+    const deepMinutes = cycleEvents
+      .filter((event) => event.stage === 'deep')
+      .reduce((sum, event) => sum + event.durationMinutes, 0);
+    const remMinutes = cycleEvents
+      .filter((event) => event.stage === 'rem')
+      .reduce((sum, event) => sum + event.durationMinutes, 0);
+    const lightMinutes = cycleEvents
+      .filter((event) => event.stage === 'light')
+      .reduce((sum, event) => sum + event.durationMinutes, 0);
+    const awakeMinutes = cycleEvents
+      .filter((event) => event.stage === 'awake')
+      .reduce((sum, event) => sum + event.durationMinutes, 0);
+
+    const dominantStage =
+      deepMinutes >= remMinutes && deepMinutes >= lightMinutes
+        ? 'deep'
+        : remMinutes >= lightMinutes
+          ? 'rem'
+          : 'light';
+
+    breakdown.push({
+      cycleNumber,
+      startTime: cycleEvents[0].startTime,
+      endTime: cycleEvents[cycleEvents.length - 1].endTime,
+      durationMinutes: cycleEvents.reduce((sum, event) => sum + event.durationMinutes, 0),
+      dominantStage,
+      deepMinutes,
+      remMinutes,
+      lightMinutes,
+      awakeMinutes,
+    });
+  }
+
+  return breakdown;
 }
 
 export const useSleepStore = create<SleepState>((set, get) => ({
@@ -638,9 +686,10 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 
               const debt = computeRecentDebt(scoredRecentHistory);
               const stageAvgs = computeRecentStageAverages(scoredRecentHistory);
+              const CURRENT_ALGO_VERSION = 1;
 
-              scoredRecentHistory.forEach((record) => {
-                if (!record.start_time || !record.end_time) return;
+              for (const record of scoredRecentHistory) {
+                if (!record.start_time || !record.end_time) continue;
                 const age = phys.basisNotes.find((n) => n.startsWith('age='))?.replace('age=', '');
 
                 record.premiumPrediction = buildPremiumPrediction({
@@ -661,7 +710,110 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                   recentSleepDebt: debt,
                   ...stageAvgs,
                 });
-              });
+
+                try {
+                  const { data: existingTimeline } = await supabase
+                    .from('sleep_phase_timeline')
+                    .select(
+                      'generation_v, cycle_number, stage, start_time, end_time, duration_minutes'
+                    )
+                    .eq('sleep_data_id', record.id)
+                    .order('start_time', { ascending: true });
+
+                  if (
+                    existingTimeline &&
+                    existingTimeline.length > 0 &&
+                    existingTimeline[0].generation_v === CURRENT_ALGO_VERSION
+                  ) {
+                    const phaseTimeline: SleepPhaseEvent[] = existingTimeline.map((row: any) => ({
+                      stage: row.stage as SleepPhaseEvent['stage'],
+                      startTime: row.start_time,
+                      endTime: row.end_time,
+                      durationMinutes: row.duration_minutes,
+                      cycleNumber: row.cycle_number,
+                    }));
+
+                    const estimatedCycles = phaseTimeline.reduce(
+                      (max, event) => Math.max(max, event.cycleNumber),
+                      0
+                    );
+                    const cycleBreakdown = buildCycleBreakdownFromTimeline(
+                      phaseTimeline,
+                      estimatedCycles
+                    );
+
+                    record.premiumPrediction = {
+                      ...record.premiumPrediction,
+                      cycleMap: {
+                        estimatedCycles,
+                        phaseTimeline,
+                        cycleBreakdown,
+                      },
+                    };
+                    continue;
+                  }
+
+                  const { distributeSleepcycles } = await import('../lib/sleepCycleDistributor');
+                  const distOutput = distributeSleepcycles({
+                    startTime: record.start_time,
+                    endTime: record.end_time,
+                    durationMinutes: record.duration_minutes,
+                    deepSleepMinutes: record.deep_sleep_minutes,
+                    remSleepMinutes: record.rem_sleep_minutes,
+                    lightSleepMinutes: record.light_sleep_minutes,
+                    awakeSleepMinutes: record.awake_minutes,
+                    estimatedRestingHR: phys.estimatedRestingHR,
+                    estimatedVO2Max: phys.estimatedVO2Max,
+                    age: age ? parseInt(age, 10) : 35,
+                    sex: (premiumProfile?.sex as 'male' | 'female' | null) ?? null,
+                    recentSleepDebt: debt,
+                    personalDeepRatio: stageAvgs.recentAvgDeepPercent
+                      ? stageAvgs.recentAvgDeepPercent / 100
+                      : undefined,
+                    personalRemRatio: stageAvgs.recentAvgRemPercent
+                      ? stageAvgs.recentAvgRemPercent / 100
+                      : undefined,
+                    historyNightCount: scoredRecentHistory.length,
+                  });
+
+                  if (distOutput) {
+                    await supabase
+                      .from('sleep_phase_timeline')
+                      .delete()
+                      .eq('sleep_data_id', record.id)
+                      .eq('user_id', userId);
+
+                    const rows = distOutput.phaseTimeline.map((event) => ({
+                      sleep_data_id: record.id,
+                      user_id: userId,
+                      cycle_number: event.cycleNumber,
+                      stage: event.stage,
+                      start_time: event.startTime,
+                      end_time: event.endTime,
+                      duration_minutes: event.durationMinutes,
+                      confidence: distOutput.confidence,
+                      generation_v: distOutput.algorithmVersion,
+                    }));
+
+                    const { error } = await supabase.from('sleep_phase_timeline').insert(rows);
+
+                    if (error) {
+                      console.warn('[SleepStore] Phase timeline persist failed:', error.message);
+                    }
+
+                    record.premiumPrediction = {
+                      ...record.premiumPrediction,
+                      cycleMap: {
+                        estimatedCycles: distOutput.estimatedCycles,
+                        phaseTimeline: distOutput.phaseTimeline,
+                        cycleBreakdown: distOutput.cycleBreakdown,
+                      },
+                    };
+                  }
+                } catch (timelineError) {
+                  console.warn('[SleepStore] Phase timeline generation failed:', timelineError);
+                }
+              }
 
               const premiumMap: Partial<Record<string, SleepData[]>> = {};
               scoredRecentHistory.forEach((r) => {
@@ -1088,9 +1240,10 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 
         const debt = computeRecentDebt(scoredRecentHistory);
         const stageAvgs = computeRecentStageAverages(scoredRecentHistory);
+        const CURRENT_ALGO_VERSION = 1;
 
-        scoredRecentHistory.forEach((record) => {
-          if (!record.start_time || !record.end_time) return;
+        for (const record of scoredRecentHistory) {
+          if (!record.start_time || !record.end_time) continue;
           const age = phys.basisNotes.find((n) => n.startsWith('age='))?.replace('age=', '');
 
           record.premiumPrediction = buildPremiumPrediction({
@@ -1111,7 +1264,105 @@ export const useSleepStore = create<SleepState>((set, get) => ({
             recentSleepDebt: debt,
             ...stageAvgs,
           });
-        });
+
+          try {
+            const { data: existingTimeline } = await supabase
+              .from('sleep_phase_timeline')
+              .select('generation_v, cycle_number, stage, start_time, end_time, duration_minutes')
+              .eq('sleep_data_id', record.id)
+              .order('start_time', { ascending: true });
+
+            if (
+              existingTimeline &&
+              existingTimeline.length > 0 &&
+              existingTimeline[0].generation_v === CURRENT_ALGO_VERSION
+            ) {
+              const phaseTimeline: SleepPhaseEvent[] = existingTimeline.map((row: any) => ({
+                stage: row.stage as SleepPhaseEvent['stage'],
+                startTime: row.start_time,
+                endTime: row.end_time,
+                durationMinutes: row.duration_minutes,
+                cycleNumber: row.cycle_number,
+              }));
+
+              const estimatedCycles = phaseTimeline.reduce(
+                (max, event) => Math.max(max, event.cycleNumber),
+                0
+              );
+              const cycleBreakdown = buildCycleBreakdownFromTimeline(phaseTimeline, estimatedCycles);
+
+              record.premiumPrediction = {
+                ...record.premiumPrediction,
+                cycleMap: {
+                  estimatedCycles,
+                  phaseTimeline,
+                  cycleBreakdown,
+                },
+              };
+              continue;
+            }
+
+            const { distributeSleepcycles } = await import('../lib/sleepCycleDistributor');
+            const distOutput = distributeSleepcycles({
+              startTime: record.start_time,
+              endTime: record.end_time,
+              durationMinutes: record.duration_minutes,
+              deepSleepMinutes: record.deep_sleep_minutes,
+              remSleepMinutes: record.rem_sleep_minutes,
+              lightSleepMinutes: record.light_sleep_minutes,
+              awakeSleepMinutes: record.awake_minutes,
+              estimatedRestingHR: phys.estimatedRestingHR,
+              estimatedVO2Max: phys.estimatedVO2Max,
+              age: age ? parseInt(age, 10) : 35,
+              sex: (premiumProfile?.sex as 'male' | 'female' | null) ?? null,
+              recentSleepDebt: debt,
+              personalDeepRatio: stageAvgs.recentAvgDeepPercent
+                ? stageAvgs.recentAvgDeepPercent / 100
+                : undefined,
+              personalRemRatio: stageAvgs.recentAvgRemPercent
+                ? stageAvgs.recentAvgRemPercent / 100
+                : undefined,
+              historyNightCount: scoredRecentHistory.length,
+            });
+
+            if (distOutput) {
+              await supabase
+                .from('sleep_phase_timeline')
+                .delete()
+                .eq('sleep_data_id', record.id)
+                .eq('user_id', userId);
+
+              const rows = distOutput.phaseTimeline.map((event) => ({
+                sleep_data_id: record.id,
+                user_id: userId,
+                cycle_number: event.cycleNumber,
+                stage: event.stage,
+                start_time: event.startTime,
+                end_time: event.endTime,
+                duration_minutes: event.durationMinutes,
+                confidence: distOutput.confidence,
+                generation_v: distOutput.algorithmVersion,
+              }));
+
+              const { error } = await supabase.from('sleep_phase_timeline').insert(rows);
+
+              if (error) {
+                console.warn('[SleepStore] Phase timeline persist failed:', error.message);
+              }
+
+              record.premiumPrediction = {
+                ...record.premiumPrediction,
+                cycleMap: {
+                  estimatedCycles: distOutput.estimatedCycles,
+                  phaseTimeline: distOutput.phaseTimeline,
+                  cycleBreakdown: distOutput.cycleBreakdown,
+                },
+              };
+            }
+          } catch (timelineError) {
+            console.warn('[SleepStore] Phase timeline generation failed:', timelineError);
+          }
+        }
 
         const premiumRecord =
           scoredRecentHistory.find((r) => r.date === date) ?? scoredRecentHistory[0] ?? sleepRecord;
