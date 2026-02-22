@@ -753,11 +753,40 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                     continue;
                   }
 
+                  if (!record.duration_minutes || !record.start_time || !record.end_time) {
+                    console.warn('[SleepStore] Skipping distributor: invalid duration/timestamps', {
+                      recordId: record.id,
+                      date: record.date,
+                      duration_minutes: record.duration_minutes,
+                      start_time: record.start_time,
+                      end_time: record.end_time,
+                    });
+                    continue;
+                  }
+
+                  const timestampDuration = Math.round(
+                    (new Date(record.end_time).getTime() - new Date(record.start_time).getTime()) /
+                      60_000
+                  );
+                  const distributorDuration =
+                    Number.isFinite(timestampDuration) && timestampDuration > 0
+                      ? timestampDuration
+                      : record.duration_minutes;
+
+                  console.log('[SleepStore] distributeSleepcycles duration check', {
+                    recordId: record.id,
+                    date: record.date,
+                    duration_minutes: record.duration_minutes,
+                    timestampDuration,
+                    durationPassedToDistributor: distributorDuration,
+                    record,
+                  });
+
                   const { distributeSleepcycles } = await import('../lib/sleepCycleDistributor');
                   const distOutput = distributeSleepcycles({
                     startTime: record.start_time,
                     endTime: record.end_time,
-                    durationMinutes: record.duration_minutes,
+                    durationMinutes: distributorDuration,
                     deepSleepMinutes: record.deep_sleep_minutes,
                     remSleepMinutes: record.rem_sleep_minutes,
                     lightSleepMinutes: record.light_sleep_minutes,
@@ -1302,11 +1331,39 @@ export const useSleepStore = create<SleepState>((set, get) => ({
               continue;
             }
 
+            if (!record.duration_minutes || !record.start_time || !record.end_time) {
+              console.warn('[SleepStore] Skipping distributor: invalid duration/timestamps', {
+                recordId: record.id,
+                date: record.date,
+                duration_minutes: record.duration_minutes,
+                start_time: record.start_time,
+                end_time: record.end_time,
+              });
+              continue;
+            }
+
+            const timestampDuration = Math.round(
+              (new Date(record.end_time).getTime() - new Date(record.start_time).getTime()) / 60_000
+            );
+            const distributorDuration =
+              Number.isFinite(timestampDuration) && timestampDuration > 0
+                ? timestampDuration
+                : record.duration_minutes;
+
+            console.log('[SleepStore] distributeSleepcycles duration check', {
+              recordId: record.id,
+              date: record.date,
+              duration_minutes: record.duration_minutes,
+              timestampDuration,
+              durationPassedToDistributor: distributorDuration,
+              record,
+            });
+
             const { distributeSleepcycles } = await import('../lib/sleepCycleDistributor');
             const distOutput = distributeSleepcycles({
               startTime: record.start_time,
               endTime: record.end_time,
-              durationMinutes: record.duration_minutes,
+              durationMinutes: distributorDuration,
               deepSleepMinutes: record.deep_sleep_minutes,
               remSleepMinutes: record.rem_sleep_minutes,
               lightSleepMinutes: record.light_sleep_minutes,

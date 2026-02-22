@@ -490,8 +490,22 @@ export function distributeSleepcycles(
   }
 
   try {
-    const duration = Math.max(0, Math.round(input.durationMinutes));
-    const stageBudgets = resolveStagesBudgets(input);
+    const timestampDuration = Math.round(
+      (new Date(input.endTime).getTime() - new Date(input.startTime).getTime()) / 60_000
+    );
+    const durationFromInput = Number.isFinite(input.durationMinutes)
+      ? Math.round(input.durationMinutes)
+      : NaN;
+    const effectiveDuration =
+      Number.isFinite(durationFromInput) && durationFromInput > 0
+        ? durationFromInput
+        : timestampDuration;
+    const duration = Math.max(0, effectiveDuration);
+    const inputWithEffectiveDuration: CycleDistributorInput = {
+      ...input,
+      durationMinutes: duration,
+    };
+    const stageBudgets = resolveStagesBudgets(inputWithEffectiveDuration);
     const finalSOL = computeSOL(input.estimatedRestingHR, input.age);
     const remainingAfterSOL = Math.max(0, duration - finalSOL);
     const cycleLengths = computeCycleLengths(remainingAfterSOL);
