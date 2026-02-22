@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
 // Production API URL (Render deployment)
@@ -116,3 +115,77 @@ export const api = {
     });
   },
 };
+
+export interface SleepTimelineResponse {
+  sleep_data_id: string | null;
+  date: string;
+  phases: {
+    id: string;
+    cycle_number: number;
+    stage: 'awake' | 'light' | 'deep' | 'rem';
+    start_time: string;
+    end_time: string;
+    duration_minutes: number;
+    confidence: 'high' | 'medium' | 'low';
+  }[];
+  meta: {
+    total_phases: number;
+    estimated_cycles: number;
+    confidence: 'high' | 'medium' | 'low' | null;
+    generation_v: number | null;
+  };
+}
+
+export async function fetchSleepTimeline(
+  userId: string,
+  date: string
+): Promise<SleepTimelineResponse | null> {
+  const endpoint = `/api/sleep/${userId}/timeline/${date}`;
+  const url = `${API_URL}${endpoint}`;
+  console.log('[API] Request:', 'GET', url);
+
+  const token = await getAccessToken();
+  console.log('[API] Token:', token ? 'present' : 'missing');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+      credentials: 'include',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    console.log('[API] Response status:', response.status);
+    const data = await response.json();
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      console.log('[API] Error response:', data);
+      throw new Error(data.error || 'API Request Failed');
+    }
+
+    return (data?.data ?? null) as SleepTimelineResponse | null;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      console.log('[API] Request timed out after 10s');
+      throw new Error('Request timed out - check if API server is running at ' + API_URL);
+    }
+    console.log('[API] Fetch error:', error.message);
+    throw error;
+  }
+}

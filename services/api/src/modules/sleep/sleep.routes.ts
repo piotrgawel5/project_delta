@@ -9,6 +9,7 @@ import {
     sleepHistoryParamsSchema,
     sleepLogByDateSchema,
     sleepLogSchema,
+    sleepTimelineParamsSchema,
 } from "./sleep.validation";
 import {
     burstLimiter,
@@ -51,6 +52,20 @@ router.get(
     userReadLimiter,
     validate(sleepLogByDateSchema),
     asyncHandler((req, res) => sleepController.getLogByDate(req, res)),
+);
+
+/**
+ * GET /sleep/:userId/timeline/:date
+ * Get sleep phase timeline for a specific night (premium feature)
+ */
+router.get(
+    "/:userId/timeline/:date",
+    requireAuth,
+    requireOwnership,
+    burstLimiter,
+    userReadLimiter,
+    validate(sleepTimelineParamsSchema),
+    asyncHandler((req, res) => sleepController.getTimeline(req, res)),
 );
 
 // Legacy route - redirect to new pattern

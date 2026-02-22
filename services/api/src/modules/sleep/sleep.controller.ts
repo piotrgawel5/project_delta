@@ -220,6 +220,41 @@ export class SleepController {
     }
 
     /**
+     * GET /sleep/:userId/timeline/:date
+     * Returns the sleep phase timeline for a specific night (premium feature)
+     */
+    async getTimeline(req: Request, res: Response) {
+        const { userId, date } = req.params;
+        const requester = (req as any).user;
+
+        if (requester.id !== userId) {
+            throw AppError.forbidden("Unauthorized access to sleep timeline");
+        }
+
+        const { phases, sleepDataId } = await sleepService.getTimeline(
+            userId,
+            date,
+        );
+
+        res.json({
+            success: true,
+            data: {
+                sleep_data_id: sleepDataId,
+                date,
+                phases,
+                meta: {
+                    total_phases: phases.length,
+                    estimated_cycles: phases.length > 0
+                        ? Math.max(...phases.map((p) => p.cycle_number))
+                        : 0,
+                    confidence: phases[0]?.confidence ?? null,
+                    generation_v: phases[0]?.generation_v ?? null,
+                },
+            },
+        });
+    }
+
+    /**
      * PATCH /sleep/log/:date/edit
      * Edit an existing sleep log with reason tracking
      */

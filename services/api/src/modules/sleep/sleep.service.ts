@@ -40,6 +40,20 @@ interface SleepDataRow {
     updated_at: string;
 }
 
+interface SleepPhaseTimelineRow {
+    id: string;
+    sleep_data_id: string;
+    user_id: string;
+    cycle_number: number;
+    stage: "awake" | "light" | "deep" | "rem";
+    start_time: string;
+    end_time: string;
+    duration_minutes: number;
+    confidence: "high" | "medium" | "low";
+    generation_v: number;
+    created_at: string;
+}
+
 interface GetLogByDateOptions {
     include?: string[];
 }
@@ -241,6 +255,49 @@ export class SleepService {
         }
 
         return (data as unknown as SleepDataRow) || null;
+    }
+
+    /**
+     * Get sleep phase timeline for a specific sleep session by (userId, date)
+     * Joins through sleep_data to resolve date  sleep_data_id
+     */
+    async getTimeline(
+        userId: string,
+        date: string,
+    ): Promise<{ phases: SleepPhaseTimelineRow[]; sleepDataId: string | null }> {
+        // Step 1: find the sleep_data id for this user + date
+        const { data: sleepRecord, error: sleepError } = await this.supabase
+            .from("sleep_data")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("date", date)
+            .single();
+
+        if (sleepError || !sleepRecord) {
+            return { phases: [], sleepDataId: null };
+        }
+
+        // Step 2: fetch timeline phases for that sleep_data_id
+        const { data, error } = await this.supabase
+            .from("sleep_phase_timeline")
+            .select(
+                "id, sleep_data_id, user_id, cycle_number, stage, " +
+                    "start_time, end_time, duration_minutes, confidence, generation_v, created_at",
+            )
+            .eq("sleep_data_id", sleepRecord.id)
+            .eq("user_id", userId)
+            .order("start_time", { ascending: true });
+
+        if (error) {
+            throw AppError.internal(
+                `Failed to fetch sleep timeline: ${error.message}`,
+            );
+        }
+
+        return {
+            phases: ((data ?? []) as unknown) as SleepPhaseTimelineRow[],
+            sleepDataId: sleepRecord.id,
+        };
     }
 
     /**

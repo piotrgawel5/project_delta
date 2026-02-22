@@ -318,3 +318,15 @@ export type ScoreBreakdown = z.infer<typeof scoreBreakdownSchema>;
 export type DataSource = z.infer<typeof dataSourceSchema>;
 export type Confidence = z.infer<typeof confidenceSchema>;
 export type SleepEdit = z.infer<typeof sleepEditSchema>;
+
+export const sleepTimelineParamsSchema = z.object({
+    params: z.object({
+        userId: z.string().uuid(),
+        date: z.string().regex(
+            /^\d{4}-\d{2}-\d{2}$/,
+            "Date must be YYYY-MM-DD",
+        ),
+    }),
+});
+
+export type SleepTimelineParams = z.infer<typeof sleepTimelineParamsSchema>;

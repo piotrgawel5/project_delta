@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/authStore';
+import { useProfileStore } from '@store/profileStore';
 import { useSleepStore } from '@store/sleepStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +36,9 @@ import {
 import { addDays, dateKey, isSameDay, normalizeDate, padToSeven } from '@lib/sleepDateUtils';
 import { useSleepGradient } from '@lib/useSleepGradient';
 import { SleepMetricsList, SleepMetricItem } from '@components/sleep/dashboard/SleepMetricsList';
+import { SleepHypnogram } from '@components/sleep/SleepHypnogram';
+import { fetchSleepTimeline, SleepTimelineResponse } from '@lib/api';
+import { isPaidPlan } from '@lib/planUtils';
 
 // Colors
 const BG_PRIMARY = '#0B0B0D';
@@ -144,6 +148,7 @@ const GradientBackground = React.memo(function GradientBackground({
 export default function SleepScreen() {
   const navigation = useNavigation();
   const { user } = useAuthStore();
+  const isPremium = isPaidPlan(useProfileStore((s) => s.profile?.plan));
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
 
@@ -181,6 +186,8 @@ export default function SleepScreen() {
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
   const populatedKeysRef = useRef<Set<string>>(new Set());
+  const [timeline, setTimeline] = useState<SleepTimelineResponse | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -242,6 +249,7 @@ export default function SleepScreen() {
   }, [selectedDate, recentHistory, monthlyData]);
 
   const hi = currentData.historyItem;
+  const currentRecord = hi;
   const hasData = !!hi;
 
   // Metrics
@@ -625,6 +633,31 @@ export default function SleepScreen() {
     });
   }, [cacheRange, monthDates, historyByDate]);
 
+  useEffect(() => {
+    if (!isPremium) {
+      setTimeline(null);
+      return;
+    }
+    if (!currentRecord?.user_id || !currentRecord?.date) return;
+
+    let active = true;
+    setTimelineLoading(true);
+    fetchSleepTimeline(currentRecord.user_id, currentRecord.date)
+      .then((response) => {
+        if (active) setTimeline(response);
+      })
+      .catch(() => {
+        if (active) setTimeline(null);
+      })
+      .finally(() => {
+        if (active) setTimelineLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentRecord?.user_id, currentRecord?.date, isPremium]);
+
   return (
     <View style={styles.container}>
       {/* Background Gradient */}
@@ -744,7 +777,21 @@ export default function SleepScreen() {
         <View style={[styles.bottomSheet, { paddingBottom: Math.max(120, insets.bottom + 80) }]}>
           <View style={styles.bottomSheetContent}>
             {hasData ? (
-              <SleepMetricsList metrics={metricCards} />
+              <>
+                <SleepMetricsList metrics={metricCards} />
+                {currentRecord?.start_time && currentRecord?.end_time ? (
+                  <View style={styles.stageSectionCard}>
+                    <Text style={styles.stageSectionTitle}>Sleep Stages</Text>
+                    <SleepHypnogram
+                      phases={timeline?.phases ?? []}
+                      sessionStart={currentRecord.start_time}
+                      sessionEnd={currentRecord.end_time}
+                      isPremium={isPremium}
+                      isLoading={timelineLoading}
+                    />
+                  </View>
+                ) : null}
+              </>
             ) : (
               <View style={styles.emptyState}>
                 <View style={styles.emptyBadge}>
@@ -945,6 +992,20 @@ const styles = StyleSheet.create({
     color: 'black',
     fontSize: 14,
     fontWeight: '700',
+  },
+  stageSectionCard: {
+    borderRadius: 24,
+    padding: 20,
+    backgroundColor: '#1C1C1E',
+    borderWidth: 1,
+    borderColor: STROKE,
+    marginBottom: 32,
+  },
+  stageSectionTitle: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
   },
   chartSection: {
     marginBottom: 40,
