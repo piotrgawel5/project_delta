@@ -193,7 +193,7 @@ export function InsightCard({
               />
             </View>
             <View style={styles.predictionContent}>
-              <Text style={styles.predictionLabel}>Tomorrow's Forecast</Text>
+              <Text style={styles.predictionLabel}>Tomorrow&apos;s Forecast</Text>
               <View style={styles.predictionValueRow}>
                 <Text
                   style={[

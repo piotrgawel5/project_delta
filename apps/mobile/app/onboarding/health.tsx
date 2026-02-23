@@ -159,7 +159,7 @@ export default function HealthOnboardingScreen() {
             <View style={styles.featureTextContainer}>
               <Text style={styles.featureTitle}>HealthKit Integration</Text>
               <Text style={styles.featureDescription}>
-                We're working on Apple HealthKit support to sync your health data on iOS.
+                We&apos;re working on Apple HealthKit support to sync your health data on iOS.
               </Text>
             </View>
           </View>

@@ -44,7 +44,7 @@ const BADGE_COLOR = '#5B5FC7';
 export default function SleepAnalysisScreen() {
   const params = useLocalSearchParams<{ date?: string }>();
   const { user } = useAuthStore();
-  const { weeklyHistory, loading, fetchSleepData, checkHealthConnectStatus } = useSleepStore();
+  const { recentHistory, loading, fetchSleepData, checkHealthConnectStatus } = useSleepStore();
 
   // Date selection state
   const [selectedDateIndex, setSelectedDateIndex] = useState(0);
@@ -62,7 +62,7 @@ export default function SleepAnalysisScreen() {
       await checkHealthConnectStatus();
       if (user?.id) await fetchSleepData(user.id);
     };
-    if (weeklyHistory.length === 0) init();
+    if (recentHistory.length === 0) init();
   }, [user?.id]);
 
   // Horizontal Calendar Logic
@@ -70,8 +70,8 @@ export default function SleepAnalysisScreen() {
     // Generate last 7 days + today if history is empty, or use history dates
     // For visual fidelity with "The Outsiders", we want a strip of days.
     // If we have history, we map it.
-    if (weeklyHistory.length > 0) {
-      return weeklyHistory
+    if (recentHistory.length > 0) {
+      return recentHistory
         .map((h, i) => ({
           date: new Date(h.date),
           label: new Date(h.date).getDate().toString(),
@@ -81,7 +81,7 @@ export default function SleepAnalysisScreen() {
         }))
         .reverse(); // Show newest first? Or standard calendar order? Usually calendar is left-to-right (past to future).
       // Let's sort by date ascending.
-      // weeklyHistory from store might be desc.
+      // recentHistory from store might be desc.
     }
 
     // Fallback: Last 7 days
@@ -98,7 +98,7 @@ export default function SleepAnalysisScreen() {
       });
     }
     return days;
-  }, [weeklyHistory]);
+  }, [recentHistory]);
 
   const sortedDates = useMemo(() => {
     // Ensure ascending order for calendar strip
@@ -107,22 +107,22 @@ export default function SleepAnalysisScreen() {
 
   // Handle Date Selection
   const onSelectDate = (index: number) => {
-    // Find the original index in weeklyHistory if needed
+    // Find the original index in recentHistory if needed
     // For now, let's just assume we pick by date match
     setSelectedDateIndex(index);
   };
 
   const currentSleepData = useMemo(() => {
-    if (weeklyHistory.length === 0) return null;
+    if (recentHistory.length === 0) return null;
     // Map the visible sorted index back to the history item
     const selectedDate = sortedDates[selectedDateIndex]?.date;
-    if (!selectedDate) return weeklyHistory[0];
+    if (!selectedDate) return recentHistory[0];
 
     return (
-      weeklyHistory.find((h) => new Date(h.date).toDateString() === selectedDate.toDateString()) ||
-      weeklyHistory[0]
+      recentHistory.find((h) => new Date(h.date).toDateString() === selectedDate.toDateString()) ||
+      recentHistory[0]
     );
-  }, [weeklyHistory, selectedDateIndex, sortedDates]);
+  }, [recentHistory, selectedDateIndex, sortedDates]);
 
   const sleepData = currentSleepData; // Alias for compatibility
 

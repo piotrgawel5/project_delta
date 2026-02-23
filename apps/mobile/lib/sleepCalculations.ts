@@ -225,11 +225,14 @@ function calculateAge(dateOfBirth: string | undefined): number {
  *
  * @example
  * ```typescript
- * const breakdown = calculateSleepScore(480, { deep: 90, rem: 100, light: 270, awake: 20 });
+ * const breakdown = calculateLegacySleepScore(480, { deep: 90, rem: 100, light: 270, awake: 20 });
  * // { duration_norm: 35, deep_pct: 18, rem_pct: 18, efficiency: 13, consistency: 7, total: 91 }
  * ```
  */
-export function calculateSleepScore(
+/**
+ * @deprecated Use `calculateSleepScore` from `@lib/sleepAnalysis` instead.
+ */
+export function calculateLegacySleepScore(
     durationMinutes: number,
     stages: SleepStages,
     historicalDurations: number[] = [],
@@ -300,8 +303,16 @@ export function calculateSleepScore(
         deepPct >= OPTIMAL_TARGETS.DEEP_MIN_PCT &&
         deepPct <= OPTIMAL_TARGETS.DEEP_MAX_PCT
     ) {
-        // Within optimal range
-        deepScore = SCORE_WEIGHTS.DEEP_SLEEP;
+        // Within optimal range: grade by proximity to ideal (not flat max)
+        const denom = deepPct <= OPTIMAL_TARGETS.DEEP_IDEAL_PCT
+            ? OPTIMAL_TARGETS.DEEP_IDEAL_PCT - OPTIMAL_TARGETS.DEEP_MIN_PCT
+            : OPTIMAL_TARGETS.DEEP_MAX_PCT - OPTIMAL_TARGETS.DEEP_IDEAL_PCT;
+        const proximity = denom > 0
+            ? 1 - Math.abs(deepPct - OPTIMAL_TARGETS.DEEP_IDEAL_PCT) / denom
+            : 1;
+        deepScore = Math.round(
+            SCORE_WEIGHTS.DEEP_SLEEP * (0.7 + 0.3 * clamp(proximity, 0, 1)),
+        );
     } else if (deepPct < OPTIMAL_TARGETS.DEEP_MIN_PCT) {
         // Below optimal
         const ratio = deepPct / OPTIMAL_TARGETS.DEEP_MIN_PCT;
@@ -320,7 +331,15 @@ export function calculateSleepScore(
         remPct >= OPTIMAL_TARGETS.REM_MIN_PCT &&
         remPct <= OPTIMAL_TARGETS.REM_MAX_PCT
     ) {
-        remScore = SCORE_WEIGHTS.REM_SLEEP;
+        const denom = remPct <= OPTIMAL_TARGETS.REM_IDEAL_PCT
+            ? OPTIMAL_TARGETS.REM_IDEAL_PCT - OPTIMAL_TARGETS.REM_MIN_PCT
+            : OPTIMAL_TARGETS.REM_MAX_PCT - OPTIMAL_TARGETS.REM_IDEAL_PCT;
+        const proximity = denom > 0
+            ? 1 - Math.abs(remPct - OPTIMAL_TARGETS.REM_IDEAL_PCT) / denom
+            : 1;
+        remScore = Math.round(
+            SCORE_WEIGHTS.REM_SLEEP * (0.7 + 0.3 * clamp(proximity, 0, 1)),
+        );
     } else if (remPct < OPTIMAL_TARGETS.REM_MIN_PCT) {
         const ratio = remPct / OPTIMAL_TARGETS.REM_MIN_PCT;
         remScore = Math.round(SCORE_WEIGHTS.REM_SLEEP * ratio);
@@ -370,6 +389,9 @@ export function calculateSleepScore(
                 SCORE_WEIGHTS.CONSISTENCY * Math.max(0, 1 - excess / 60),
             );
         }
+    } else if (historicalDurations.length === 0) {
+        // With no baseline history at all, be slightly conservative.
+        consistencyScore = Math.round(SCORE_WEIGHTS.CONSISTENCY * 0.6);
     } else {
         // Not enough historical data: give partial score
         consistencyScore = Math.round(SCORE_WEIGHTS.CONSISTENCY * 0.7);
@@ -382,8 +404,11 @@ export function calculateSleepScore(
     efficiencyScore = clamp(efficiencyScore, 0, SCORE_WEIGHTS.EFFICIENCY);
     consistencyScore = clamp(consistencyScore, 0, SCORE_WEIGHTS.CONSISTENCY);
 
+    const shortDurationPenalty = durationMinutes < 360
+        ? Math.round((360 - durationMinutes) / 3)
+        : 0;
     const total = durationScore + deepScore + remScore + efficiencyScore +
-        consistencyScore;
+        consistencyScore - shortDurationPenalty;
 
     return {
         duration_norm: durationScore,
@@ -655,99 +680,85 @@ export function estimateSleepStages(
         return { deep: 0, rem: 0, light: 0, awake: 0 };
     }
 
-    // Default percentages based on typical adult (30-40 years)
+    const explicitAge = (profile as { age?: number } | null)?.age;
+    const profileAge: number | null =
+        typeof explicitAge === "number"
+            ? explicitAge
+            : profile?.date_of_birth
+            ? calculateAge(profile.date_of_birth)
+            : null;
+
     let deepPercent = 0.18;
     let remPercent = 0.22;
-    let awakePercent = 0.05;
+    let lightPercent = 0.52;
+    let awakePercent = 0.08;
 
-    if (profile) {
-        const age = calculateAge(profile.date_of_birth);
-
-        // Age adjustments (deep sleep decreases with age)
-        if (age < 25) {
-            deepPercent += 0.03;
-            remPercent += 0.01;
-        } else if (age >= 25 && age < 35) {
-            deepPercent += 0.01;
-        } else if (age >= 45 && age < 55) {
-            deepPercent -= 0.02;
-        } else if (age >= 55 && age < 65) {
-            deepPercent -= 0.04;
-            awakePercent += 0.02;
-        } else if (age >= 65) {
-            deepPercent -= 0.06;
-            awakePercent += 0.03;
-        }
-
-        // Sex adjustments (women typically have more REM sleep)
-        if (profile.sex === "female") {
-            remPercent += 0.02;
-            deepPercent -= 0.01;
-        }
-
-        // Activity level adjustments
-        const activityMult = getActivityMultiplier(profile.activity_level);
-        deepPercent *= activityMult;
-
-        // Goal adjustments
-        const goalAdj = getGoalAdjustments(profile.goal);
-        deepPercent += goalAdj.deepAdj;
-        remPercent += goalAdj.remAdj;
-
-        // BMI factor
-        if (profile.weight_value && profile.height_value) {
-            let heightM: number;
-            if (profile.height_unit === "ft") {
-                const totalInches = (profile.height_value * 12) +
-                    (profile.height_inches || 0);
-                heightM = totalInches * 0.0254;
-            } else {
-                heightM = profile.height_value / 100;
-            }
-
-            let weightKg = profile.weight_value;
-            if (profile.weight_unit === "lbs") {
-                weightKg = profile.weight_value * 0.453592;
-            }
-
-            const bmi = weightKg / (heightM * heightM);
-
-            if (bmi > 30) {
-                awakePercent += 0.02;
-                deepPercent -= 0.02;
-            } else if (bmi > 35) {
-                awakePercent += 0.03;
-                deepPercent -= 0.03;
-            }
+    if (profileAge !== null) {
+        if (profileAge < 25) {
+            deepPercent = 0.22;
+            remPercent = 0.23;
+            lightPercent = 0.50;
+            awakePercent = 0.05;
+        } else if (profileAge <= 44) {
+            deepPercent = 0.18;
+            remPercent = 0.22;
+            lightPercent = 0.52;
+            awakePercent = 0.08;
+        } else if (profileAge <= 64) {
+            deepPercent = 0.14;
+            remPercent = 0.20;
+            lightPercent = 0.56;
+            awakePercent = 0.10;
+        } else {
+            deepPercent = 0.10;
+            remPercent = 0.18;
+            lightPercent = 0.60;
+            awakePercent = 0.12;
         }
     }
 
-    // Clamp to reasonable physiological ranges
-    deepPercent = clamp(deepPercent, 0.10, 0.28);
-    remPercent = clamp(remPercent, 0.15, 0.30);
-    awakePercent = clamp(awakePercent, 0.03, 0.12);
+    if (profile?.activity_level === "very_active") {
+        deepPercent += 0.02;
+        remPercent += 0.01;
+        lightPercent -= 0.02;
+        awakePercent -= 0.01;
+    } else if (profile?.activity_level === "active") {
+        deepPercent += 0.01;
+        remPercent += 0.005;
+        lightPercent -= 0.01;
+        awakePercent -= 0.005;
+    } else if (profile?.activity_level === "sedentary") {
+        deepPercent -= 0.01;
+        remPercent -= 0.005;
+        lightPercent += 0.01;
+        awakePercent += 0.005;
+    }
 
-    // Light sleep fills the remainder
-    const lightPercent = 1 - deepPercent - remPercent - awakePercent;
+    // Keep percentages valid and normalized.
+    deepPercent = clamp(deepPercent, 0.05, 0.35);
+    remPercent = clamp(remPercent, 0.10, 0.35);
+    lightPercent = clamp(lightPercent, 0.30, 0.65);
+    awakePercent = clamp(1 - deepPercent - remPercent - lightPercent, 0.02, 0.15);
+    lightPercent = 1 - deepPercent - remPercent - awakePercent;
 
     return {
         deep: Math.round(durationMinutes * deepPercent),
         rem: Math.round(durationMinutes * remPercent),
-        light: Math.round(durationMinutes * clamp(lightPercent, 0.40, 0.65)),
+        light: Math.round(durationMinutes * lightPercent),
         awake: Math.round(durationMinutes * awakePercent),
     };
 }
 
 /**
  * Calculate personalized sleep quality score (legacy)
- * @deprecated Use calculateSleepScore() instead
+ * @deprecated Use calculateSleepScore() from sleepAnalysis.ts instead
  */
 export function calculatePersonalizedQuality(
     durationMinutes: number,
     stages: SleepStages,
     profile: UserProfile | null,
 ): SleepQualityFactors {
-    const breakdown = calculateSleepScore(durationMinutes, stages, [], profile);
+    const breakdown = calculateLegacySleepScore(durationMinutes, stages, [], profile);
 
     // Map new breakdown to legacy format
     return {
@@ -769,14 +780,14 @@ export function calculatePersonalizedQuality(
 
 /**
  * Calculate quality score from duration when no stage data available
- * @deprecated Use calculateSleepScore() with estimated stages instead
+ * @deprecated Use calculateSleepScore() from sleepAnalysis.ts with estimated stages instead
  */
 export function calculateQualityFromDuration(
     durationMinutes: number,
     profile: UserProfile | null,
 ): number {
     const stages = estimateSleepStages(durationMinutes, profile);
-    const breakdown = calculateSleepScore(durationMinutes, stages, [], profile);
+    const breakdown = calculateLegacySleepScore(durationMinutes, stages, [], profile);
     return breakdown.total;
 }
 

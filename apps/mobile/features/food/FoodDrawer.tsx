@@ -1,5 +1,5 @@
 import { View, Text, FlatList } from 'react-native';
-import { useHealthStore } from 'store/healthStore';
+import { useHealthStore } from '@store/healthStore';
 import { useMemo } from 'react';
 import BottomSheet from '@gorhom/bottom-sheet';
 

@@ -6,32 +6,87 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 type MetricStatus = 'up' | 'down' | 'neutral';
 
-const STATUS_META: Record<
-  MetricStatus,
-  { label: string; color: string; icon: 'arrow-up' | 'arrow-down' | 'remove' }
-> = {
-  up: { label: 'ABOVE', color: '#22C55E', icon: 'arrow-up' },
-  down: { label: 'BELOW', color: '#FF6B6B', icon: 'arrow-down' },
-  neutral: { label: 'AS USUAL', color: '#9AA0A6', icon: 'remove' },
+type TrendValue = number | null | undefined;
+type StageItem = { label: string; value: string; percent?: number | null; color: string };
+
+const STATUS_META: Record<MetricStatus, { label: string; color: string }> = {
+  up: { label: 'ABOVE', color: '#22C55E' },
+  down: { label: 'BELOW', color: '#FF6B6B' },
+  neutral: { label: 'AS USUAL', color: '#9AA0A6' },
 };
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const H_GUTTER = 20;
-const GAP = 16;
-const CARD_WIDTH = Math.floor((SCREEN_W - H_GUTTER * 2 - GAP) / 2);
-const CARD_RADIUS = 36;
-
-// Sparkline dimensions
-const SPARKLINE_W = CARD_WIDTH - 28; // Full width minus padding
-const SPARKLINE_H = 32;
+const CARD_PADDING_X = 20;
+const CARD_PADDING_Y = 20;
+const CARD_INNER_RADIUS = 4;
+const CARD_RADIUS = CARD_INNER_RADIUS + CARD_PADDING_Y;
+const CARD_BG = '#1C1C1E';
+const CARD_STROKE = 'rgba(255,255,255,0.08)';
+const TEXT_PRIMARY = '#F5F6F7';
+const TEXT_SECONDARY = 'rgba(235,235,245,0.6)';
+const TEXT_TERTIARY = 'rgba(235,235,245,0.4)';
+const SPARKLINE_HEIGHT = 40;
+const MINI_BAR_MAX = SPARKLINE_HEIGHT;
+const MINI_BAR_MIN = 8;
+const MINI_BAR_WIDTH = 6;
+const CHART_W = 144 - CARD_PADDING_X * 2;
+const CHART_H = SPARKLINE_HEIGHT;
+const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const ICON_BADGE_SIZE = 22;
+const ICON_BADGE_RADIUS = Math.round(ICON_BADGE_SIZE * 0.36);
+const DOT_SIZE = 10;
+const DOT_RADIUS = DOT_SIZE / 2;
+const STAGE_DOT_SIZE = 8;
+const STAGE_DOT_RADIUS = STAGE_DOT_SIZE / 2;
+const STAGE_BAR_HEIGHT = 12;
+const STAGE_BAR_RADIUS = STAGE_BAR_HEIGHT / 2;
+const METRIC_TAG_RADIUS = 6;
+const METRIC_TAG_BG = 'rgba(255,255,255,0.08)';
 
 export type MetricCardProps = {
   label: string;
   value: string;
   unit?: string;
   status?: MetricStatus;
-  sparkline?: number[];
+  subLabel?: string;
+  accent?: string;
+  trend?: TrendValue[];
+  chartType?: 'bars' | 'dots' | 'stages';
+  dotThreshold?: number;
+  stages?: StageItem[];
+  icon?: keyof typeof Ionicons.glyphMap;
+  showDays?: boolean;
   onPress?: () => void;
+  dataDate?: Date | string | null;
+  selectedDate?: Date | string | null;
+};
+
+type MetricTagProps = {
+  label: string;
+};
+
+type MetricActionTagProps = {
+  label: string;
+  onPress: () => void;
+};
+
+const padToSeven = (values: TrendValue[]) => {
+  if (values.length >= 7) return values.slice(-7);
+  return Array(7 - values.length)
+    .fill(null)
+    .concat(values);
+};
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+const withAlpha = (hex: string, alpha: string) => (hex.length === 7 ? `${hex}${alpha}` : hex);
+
+const toDateKey = (value?: Date | string | null) => {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate()
+  ).padStart(2, '0')}`;
 };
 
 /**
@@ -47,26 +102,21 @@ function generateSmoothPath(
   const tension = 0.3; // Controls curve smoothness
   let linePath = `M ${points[0].x} ${points[0].y}`;
 
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[Math.max(0, i - 1)];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[Math.min(points.length - 1, i + 2)];
+const MetricTag = ({ label }: MetricTagProps) => (
+  <View style={styles.metricTag}>
+    <Text style={styles.metricTagText}>{label}</Text>
+  </View>
+);
 
-    // Calculate control points
-    const cp1x = p1.x + (p2.x - p0.x) * tension;
-    const cp1y = p1.y + (p2.y - p0.y) * tension;
-    const cp2x = p2.x - (p3.x - p1.x) * tension;
-    const cp2y = p2.y - (p3.y - p1.y) * tension;
-
-    linePath += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
-  }
-
-  // Create area path (closed shape for gradient fill)
-  const areaPath = `${linePath} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`;
-
-  return { linePath, areaPath };
-}
+const MetricActionTag = ({ label, onPress }: MetricActionTagProps) => (
+  <Pressable
+    accessibilityRole="button"
+    onPress={onPress}
+    style={({ pressed }) => [styles.metricTag, styles.metricActionTag, pressed && styles.tagPressed]}>
+    <Text style={styles.metricTagText}>{label}</Text>
+    <Text style={styles.metricActionChevron}>›</Text>
+  </Pressable>
+);
 
 export default function MetricCard({
   label,
@@ -78,68 +128,33 @@ export default function MetricCard({
 }: MetricCardProps) {
   const meta = STATUS_META[status];
 
-  // Calculate sparkline paths
-  const sparklinePaths = useMemo(() => {
-    if (!sparkline || sparkline.length < 2) return null;
+  const trendData = useMemo(() => padToSeven(trend ?? []), [trend]);
+  const barHeights = useMemo(() => buildBarHeights(trendData), [trendData]);
+  const dotStates = useMemo(
+    () =>
+      trendData.map((value) =>
+        typeof value === 'number' && !Number.isNaN(value) ? value >= dotThreshold : false
+      ),
+    [trendData, dotThreshold]
+  );
 
-    const min = Math.min(...sparkline);
-    const max = Math.max(...sparkline);
-    const range = max === min ? 1 : max - min;
-    const padding = 2; // Vertical padding
-
-    const points = sparkline.map((v, i) => ({
-      x: (i / (sparkline.length - 1)) * SPARKLINE_W,
-      y: padding + (1 - (v - min) / range) * (SPARKLINE_H - padding * 2),
-    }));
-
-    return generateSmoothPath(points, SPARKLINE_W, SPARKLINE_H);
-  }, [sparkline]);
-
-  const renderSparkline = () => {
-    if (!sparklinePaths) return null;
-
-    const gradientId = `gradient-${label.replace(/\s/g, '')}`;
-
-    // Calculate end dot position
-    const lastValue = sparkline![sparkline!.length - 1];
-    const minVal = Math.min(...sparkline!);
-    const maxVal = Math.max(...sparkline!);
-    const range = maxVal - minVal || 1;
-    const dotX = SPARKLINE_W;
-    const dotY = 2 + (1 - (lastValue - minVal) / range) * (SPARKLINE_H - 4);
-
-    return (
-      <View style={styles.sparklineContainer}>
-        <Svg
-          width={SPARKLINE_W + 10}
-          height={SPARKLINE_H}
-          viewBox={`0 0 ${SPARKLINE_W + 10} ${SPARKLINE_H}`}>
-          <Defs>
-            <SvgGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={meta.color} stopOpacity="0.35" />
-              <Stop offset="1" stopColor={meta.color} stopOpacity="0" />
-            </SvgGradient>
-          </Defs>
-
-          {/* Gradient fill area */}
-          <Path d={sparklinePaths.areaPath} fill={`url(#${gradientId})`} />
-
-          {/* Smooth line */}
-          <Path
-            d={sparklinePaths.linePath}
-            fill="none"
-            stroke={meta.color}
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {/* End dot */}
-          <Circle cx={dotX} cy={dotY} r={3} fill={meta.color} />
-        </Svg>
-      </View>
-    );
-  };
+  const statusText = subLabel ?? meta.label;
+  const isStageCard = chartType === 'stages';
+  const iconBg = icon ? withAlpha(accentColor, '22') : undefined;
+  const iconBorder = icon ? withAlpha(accentColor, '3A') : undefined;
+  const stageSegments = useMemo(
+    () => (stages || []).filter((stage) => typeof stage.percent === 'number' && stage.percent > 0),
+    [stages]
+  );
+  const statusTag = isInteractive && onPress ? (
+    <MetricActionTag label={statusText} onPress={onPress} />
+  ) : (
+    <MetricTag label={statusText} />
+  );
+  const dateLabel = useMemo(
+    () => getRelativeDateLabel(dataDate, selectedDate),
+    [dataDate, selectedDate]
+  );
 
   return (
     <View style={styles.wrapper}>
@@ -158,38 +173,97 @@ export default function MetricCard({
           style={styles.baseGlow}
         />
 
-        {/* Subtle top gradient accent */}
-        <LinearGradient
-          colors={[meta.color + '18', 'transparent']}
-          start={[0, 0]}
-          end={[1, 1]}
-          style={styles.topAccent}
-        />
+        {isStageCard ? (
+          <View style={styles.stageContent}>
+            <View style={styles.stageTotals}>
+              <View style={styles.valueRow}>
+                <Text style={styles.valueText} selectable>
+                  {value}
+                </Text>
+                {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
+              </View>
+              {statusTag}
+            </View>
 
-        <View style={styles.rowTop}>
-          <Text style={styles.label} numberOfLines={1}>
-            {label}
-          </Text>
+            <View style={styles.stageRows}>
+              {(stages || []).map((stage) => (
+                <View key={stage.label} style={styles.stageRow}>
+                  <View style={[styles.stageDot, { backgroundColor: stage.color }]} />
+                  <Text style={styles.stageLabel}>{stage.label}</Text>
+                  <Text style={styles.stageValue}>{stage.value}</Text>
+                  <Text style={styles.stagePercent}>
+                    {typeof stage.percent === 'number' ? `${stage.percent}%` : '—'}
+                  </Text>
+                </View>
+              ))}
+            </View>
 
-          {status !== 'neutral' && (
-            <View style={[styles.statusPill, { backgroundColor: meta.color + '15' }]}>
-              <Ionicons name={meta.icon as any} size={10} color={meta.color} />
+            {stageSegments.length ? (
+              <View style={styles.stageBar}>
+                {stageSegments.map((stage) => (
+                  <View
+                    key={`${stage.label}-seg`}
+                    style={[
+                      styles.stageSegment,
+                      {
+                        backgroundColor: stage.color,
+                        flex: stage.percent as number,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.contentRow}>
+            <View style={styles.valueBlock}>
+              <View style={styles.valueRow}>
+                <Text style={styles.valueText} selectable>
+                  {value}
+                </Text>
+                {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
+              </View>
+              {statusTag}
             </View>
           )}
         </View>
 
-        <LinearGradient
-          colors={['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0)']}
-          start={[0, 0]}
-          end={[1, 0]}
-          style={styles.divider}
-        />
-        <View style={styles.valueRow}>
-          <Text style={styles.valueText} selectable>
-            {value}
-          </Text>
-          {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
-        </View>
+            <View style={styles.chartBlock}>
+              {chartType === 'dots' ? (
+                <View style={styles.dotsRow}>
+                  {dotStates.map((filled, index) => (
+                    <View
+                      key={`${label}-dot-${index}`}
+                      style={[
+                        styles.dotItem,
+                        {
+                          borderColor: accentColor,
+                          backgroundColor: filled ? accentColor : 'transparent',
+                          opacity: filled ? 1 : 0.35,
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.barsRow}>
+                  {barHeights.map((height, index) => (
+                    <View key={`${label}-bar-${index}`} style={styles.barTrack}>
+                      <View
+                        style={[
+                          styles.barFill,
+                          {
+                            height: clamp(height, MINI_BAR_MIN, MINI_BAR_MAX),
+                            backgroundColor: accentColor,
+                            opacity: 0.85,
+                          },
+                        ]}
+                      />
+                    </View>
+                  ))}
+                </View>
+              )}
 
         {/* Sparkline or placeholder */}
         <View style={sparklinePaths ? styles.rowBottomStacked : styles.rowBottom}>
@@ -283,22 +357,65 @@ const styles = StyleSheet.create({
     letterSpacing: -0.8,
   },
   unitText: {
-    color: 'rgba(255,255,255,0.78)',
-    fontSize: 14,
-    marginLeft: 6,
+    color: TEXT_SECONDARY,
+    fontSize: 19,
+    fontWeight: '400',
+    marginLeft: 4,
   },
-  rowBottom: {
+  metricTag: {
+    alignSelf: 'flex-start',
+    borderRadius: METRIC_TAG_RADIUS,
+    backgroundColor: METRIC_TAG_BG,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 6,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  rowBottomStacked: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
+  metricActionTag: {
+    gap: 6,
   },
-  sparklineWrapper: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
+  metricTagText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: TEXT_SECONDARY,
+  },
+  metricActionChevron: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TEXT_SECONDARY,
+    lineHeight: 14,
+  },
+  tagPressed: {
+    opacity: 0.6,
+  },
+  chartBlock: {
+    minWidth: CHART_W,
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+  },
+  barsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10.5,
+  },
+  barTrack: {
+    width: MINI_BAR_WIDTH,
+    height: MINI_BAR_MAX,
+    borderRadius: MINI_BAR_WIDTH / 2,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  barFill: {
+    width: '100%',
+    borderTopLeftRadius: MINI_BAR_WIDTH / 2,
+    borderTopRightRadius: MINI_BAR_WIDTH / 2,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   weekBadge: {
     marginLeft: 8,

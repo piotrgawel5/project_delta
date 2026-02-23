@@ -127,13 +127,13 @@ export const useSleepGradient = ({
     (key: string, animate = true) => {
       setGradientKeyState(key);
       const target = getColorForKey(key);
+      if (animatingRef.current) {
+        pendingRef.current = target;
+        return;
+      }
       if (!initialized.current || !animate) {
         setImmediate(target);
         initialized.current = true;
-        return;
-      }
-      if (animatingRef.current) {
-        pendingRef.current = target;
         return;
       }
       if (currentRef.current !== target) {

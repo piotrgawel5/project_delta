@@ -10,6 +10,8 @@
 - **Shared packages** (TypeScript types, constants, utilities)
 
 The architecture follows a client-server model with offline-first mobile capabilities, passkey-based authentication, and real-time data synchronization.
+It now also includes plan-gated premium sleep prediction computed client-side (never persisted to Supabase payloads).
+Premium sleep timeline visualization is fetched through the Express API (`GET /sleep/:userId/timeline/:date`) and rendered in mobile via `SleepHypnogram` (premium-gated in UI).
 
 ## Repository Structure
 
@@ -70,14 +72,15 @@ project_delta/
 **UI Framework:** NativeWind (Tailwind CSS)  
 **State Management:** Zustand  
 **Database:** Supabase client + async-storage (offline)  
-**Authentication:** Passkey (WebAuthn) + OAuth session  
+**Authentication:** Passkey (WebAuthn) + OAuth session
 **Key Libraries:**
 
 - `@react-navigation/*` – drawer, tabs, navigation
 - `react-native-reanimated` – animations
+- `react-native-svg` – custom sleep hypnogram rendering
 - `@gorhom/bottom-sheet` – modals/sheets
 - `victory-native` – charts/graphs
-- `expo-image-picker`, `expo-auth-session`, `expo-secure-store` – native APIs
+- `expo-blur`, `expo-image-picker`, `expo-auth-session`, `expo-secure-store` – native APIs
 
 **Platform Support:**
 
@@ -92,6 +95,10 @@ project_delta/
 - Sleep timeline visualization
 - Edit history & provenance tracking
 - AI insights & bedtime coaching
+- Sleep Intelligence card (see `packages/docs/mobile/screens.md`) surfaces nightly context, AI coaching, and the deep-dive via `SleepAnalysisScreen`
+- Manual sleep entry uses the circular clock picker and swipe navigation on `SleepScreen` to refine data without leaving the dashboard
+- Premium sleep hypnogram (`apps/mobile/components/sleep/SleepHypnogram.tsx`) with SVG bars, cycle boundaries, tooltip interaction, reveal mask animation, loading skeleton, and lock overlay for free plans
+- Timeline fetch helper in `apps/mobile/lib/api.ts` (`fetchSleepTimeline`) uses the same authenticated API client pattern and treats 404 as "no timeline yet"
 
 ### API Service (`services/api/`)
 
@@ -108,6 +115,7 @@ project_delta/
 - Passkey registration/login options & verification
 - Sleep data sync (batch & individual)
 - Sleep log editing with audit trail
+- Sleep timeline by night: `GET /sleep/:userId/timeline/:date` (returns `sleep_phase_timeline` rows ordered by `start_time`)
 - User profile & preferences
 
 **Environment (docker-compose):**
@@ -270,6 +278,7 @@ docker-compose up   # Start API + Supabase (if configured)
   - Derive radii from padding or element size for visual consistency
 - **Styling:** NativeWind/Tailwind classes in `className`
 - **Responsive:** Adapt layouts for iOS/Android/Web differences in screenshots
+- **Sleep Intelligence & Manual Entry Flows:** The `SleepScreen` now includes the Sleep Intelligence AI insight card and the `SleepAnalysisScreen` deep-dive, plus the circular clock picker for manual entries (`packages/docs/mobile/screens.md`); reuse the same cards/pickers when surfacing hints or edits so animations and tokens stay consistent.
 
 ### Sleep Data Conventions
 
@@ -279,6 +288,9 @@ docker-compose up   # Start API + Supabase (if configured)
 - **Data Sources:** `health_connect`, `digital_wellbeing`, `usage_stats`, `wearable`, `manual`
 - **Edit Tracking:** All manual edits include `edit_reason` and full history
 - **Calculations:** Deterministic, unit-tested for edge cases
+- **Sleep Intelligence Contextualization:** Nightly summaries drive the Sleep Intelligence card and the `SleepAnalysisScreen` deep-dive timeline, so reliability expectations (efficiency, sleep debt, timeline color key) must align with the AI insight output described in `packages/docs/mobile/screens.md`
+- **Phase Timeline API Contract:** Mobile reads timeline data from API responses shaped as `{ sleep_data_id, date, phases[], meta }`, where phases mirror `sleep_phase_timeline` rows (`stage`, `start_time`, `end_time`, `duration_minutes`, `cycle_number`, confidence metadata)
+- **Plan Gating:** Timeline fetch/render paths are premium-only in UI (`isPaidPlan` guard); free users see locked hypnogram overlay
 
 ### Git & Commits
 
@@ -313,5 +325,5 @@ docker-compose up   # Start API + Supabase (if configured)
 
 ---
 
-**Last Updated:** February 2026  
+**Last Updated:** 22 February 2026  
 **Version:** 0.1 Alpha

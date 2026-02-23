@@ -1,4 +1,4 @@
-import { NutritionEntry } from "@project-delta/shared";
+import { NutritionEntry } from '@shared';
 
 export function getTodaysMacros(food: NutritionEntry[]) {
   const start = new Date();

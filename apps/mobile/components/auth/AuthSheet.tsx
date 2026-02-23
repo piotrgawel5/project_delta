@@ -216,7 +216,7 @@ export default function AuthSheet({ setStarted }: Props) {
     setAuthStatus('Connecting to Google...');
     try {
       const ok = await signInWithGoogle(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID!);
-      if (ok) handleSuccess('google', true);
+      if (ok) handleSuccess('google', false);
       else setMode('choose');
     } catch (err: any) {
       if (!err.message?.includes('cancelled')) showError('Google sign-in failed');

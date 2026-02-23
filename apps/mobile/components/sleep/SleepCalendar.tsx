@@ -1,14 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  Dimensions,
-  Pressable,
-  ScrollView,
-  Platform,
-} from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Modal, Dimensions, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import Animated, {
@@ -20,8 +11,6 @@ import Animated, {
   FadeIn,
   FadeOut,
   Layout,
-  SlideInDown,
-  SlideOutDown,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,12 +19,10 @@ import { useAuthStore } from '@store/authStore';
 import { getSleepScoreGrade } from '@lib/sleepColors';
 
 // Colors & Visual Constants
-const CARD_BG = '#1C1C1E';
-const POPUP_BG = '#2C2C2E';
-const TEXT_PRIMARY = '#FFFFFF';
-const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.5)';
-const TEXT_DISABLED = 'rgba(255, 255, 255, 0.3)';
-const ACCENT_COLOR = '#818CF8'; // Indigo 400 - Brighter accent
+const CARD_BG = '#000000';
+const TEXT_PRIMARY = '#F5F6F7';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
+const TEXT_DISABLED = 'rgba(255, 255, 255, 0.35)';
 
 // Neon Colors for OLED Contrast
 const NEON_COLORS = {
@@ -49,8 +36,42 @@ const NEON_COLORS = {
   NA: '#52525B', // Zinc 600
 };
 
-const BORDER_RADIUS = 36;
+const SHEET_PADDING = 20;
+const SHEET_INNER_RADIUS = 24;
+const SHEET_RADIUS = SHEET_INNER_RADIUS + SHEET_PADDING;
+const HANDLE_HEIGHT = 5;
+const HANDLE_RADIUS = HANDLE_HEIGHT / 2;
+const CLOSE_BTN_PADDING = 8;
+const CLOSE_BTN_INNER_RADIUS = 10;
+const CLOSE_BTN_RADIUS = CLOSE_BTN_INNER_RADIUS + CLOSE_BTN_PADDING;
+const SEGMENT_PADDING = 4;
+const SEGMENT_INNER_RADIUS = 24;
+const SEGMENT_RADIUS = SEGMENT_INNER_RADIUS + SEGMENT_PADDING;
+const DAY_CELL_SIZE = 36;
+const DAY_CELL_RADIUS = DAY_CELL_SIZE / 2;
+const STRIP_DAY_SIZE = 40;
+const STRIP_DAY_RADIUS = STRIP_DAY_SIZE / 2;
+const SELECTED_DAY_SIZE = 36;
+const SELECTED_DAY_RADIUS = 12;
+const DETAIL_CARD_PADDING = 20;
+const DETAIL_CARD_INNER_RADIUS = 16;
+const DETAIL_CARD_RADIUS = DETAIL_CARD_INNER_RADIUS + DETAIL_CARD_PADDING;
+const INDICATOR_WIDTH = 4;
+const INDICATOR_RADIUS = INDICATOR_WIDTH / 2;
+const GRADE_BADGE_PADDING_Y = 4;
+const GRADE_BADGE_INNER_RADIUS = 6;
+const GRADE_BADGE_RADIUS = GRADE_BADGE_INNER_RADIUS + GRADE_BADGE_PADDING_Y;
+const STROKE = 'rgba(255,255,255,0.08)';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+type SleepQuality = 'Excellent' | 'Good' | 'Fair' | 'Bad';
+
+const QUALITY_BADGE: Record<SleepQuality, { bg: string; text: string }> = {
+  Excellent: { bg: '#1A3A2A', text: '#4CD97B' },
+  Good: { bg: '#1A2E3A', text: '#4AADDB' },
+  Fair: { bg: '#3A2E1A', text: '#DBA84A' },
+  Bad: { bg: '#3A1A1A', text: '#E05C5C' },
+};
 
 interface SleepCalendarProps {
   isVisible: boolean;
@@ -86,13 +107,13 @@ export const SleepCalendar = ({
     } else {
       translateY.value = SCREEN_HEIGHT;
     }
-  }, [isVisible, selectedDate]); // Removed user?.id dependency as it's not used inside
+  }, [isVisible, selectedDate, translateY]); // Removed user?.id dependency as it's not used inside
 
   useEffect(() => {
     if (user?.id && isVisible) {
       fetchMonthHistory(user.id, baseDate.getFullYear(), baseDate.getMonth());
     }
-  }, [baseDate.getFullYear(), baseDate.getMonth(), user?.id, isVisible]);
+  }, [user?.id, isVisible, fetchMonthHistory, baseDate]);
 
   // --- Animation Handlers ---
   const closeWithAnimation = useCallback(() => {
@@ -101,7 +122,7 @@ export const SleepCalendar = ({
       easing: Easing.in(Easing.cubic),
     });
     setTimeout(onClose, 260);
-  }, [onClose]);
+  }, [onClose, translateY]);
 
   const sheetGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -139,17 +160,26 @@ export const SleepCalendar = ({
     return NEON_COLORS[grade] || NEON_COLORS.NA;
   };
 
+  const toSleepQuality = (grade: string): SleepQuality => {
+    if (grade === 'Excellent') return 'Excellent';
+    if (grade === 'Good' || grade === 'Great') return 'Good';
+    if (grade === 'Fair') return 'Fair';
+    return 'Bad';
+  };
+
   const isSameDay = (d1: Date, d2: Date) =>
     d1.getDate() === d2.getDate() &&
     d1.getMonth() === d2.getMonth() &&
     d1.getFullYear() === d2.getFullYear();
 
-  const getWeekNumber = (d: Date) => {
-    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
-    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-    return weekNo;
+  const formatWeekRange = (startOfWeek: Date, endOfWeek: Date) => {
+    const sameYear = startOfWeek.getFullYear() === endOfWeek.getFullYear();
+    const formatDate = (d: Date) =>
+      d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    return sameYear
+      ? `${formatDate(startOfWeek)} – ${formatDate(endOfWeek)}`
+      : `${formatDate(startOfWeek)}, ${startOfWeek.getFullYear()} – ${formatDate(endOfWeek)}, ${endOfWeek.getFullYear()}`;
   };
 
   const isFutureDate = (date: Date) => {
@@ -225,8 +255,11 @@ export const SleepCalendar = ({
             const dayData = getDayData(date);
             const isSelected = isSameDay(date, selectedDate);
             const isToday = isSameDay(date, new Date());
-            const dayColor = getDayColor(dayData?.sleep_score);
+            const dayScore = dayData?.sleep_score ?? dayData?.quality_score;
+            const dayGrade = dayScore !== undefined ? getSleepScoreGrade(dayScore) : null;
+            const dayBadgeColors = dayGrade ? QUALITY_BADGE[toSleepQuality(dayGrade.grade)] : null;
             const isFuture = isFutureDate(date);
+            const hasSleepData = Boolean(dayData && !isFuture);
 
             return (
               <Pressable
@@ -237,19 +270,22 @@ export const SleepCalendar = ({
                 <View
                   style={[
                     styles.dayCellContent,
-                    isSelected && { backgroundColor: dayColor, transform: [{ scale: 1.1 }] },
+                    isSelected && styles.selectedDayIndicator,
                     !isSelected && isToday && styles.todayCell,
                     isFuture && styles.futureCell,
                   ]}>
                   <Text
                     style={[
                       styles.dayText,
-                      isSelected && { color: 'white', fontWeight: '800' },
+                      isSelected && styles.selectedDayText,
                       !isSelected && isToday && { color: 'white', fontWeight: '600' },
                       !isSelected && !isToday && !dayData && { color: TEXT_DISABLED },
                     ]}>
                     {date.getDate()}
                   </Text>
+                  {hasSleepData ? (
+                    <View style={[styles.dayDataDot, { backgroundColor: dayBadgeColors?.text }]} />
+                  ) : null}
                 </View>
               </Pressable>
             );
@@ -274,6 +310,7 @@ export const SleepCalendar = ({
     const dayData = getDayData(selectedDate);
     const dayColor = getDayColor(dayData?.sleep_score);
     const grade = dayData ? getSleepScoreGrade(dayData.sleep_score || 0) : null;
+    const badgeColors = grade ? QUALITY_BADGE[toSleepQuality(grade.grade)] : null;
     const score = dayData?.sleep_score ?? dayData?.quality_score ?? 0;
     const durationH = dayData ? Math.floor((dayData.duration_minutes || 0) / 60) : 0;
     const durationM = dayData ? (dayData.duration_minutes || 0) % 60 : 0;
@@ -292,7 +329,6 @@ export const SleepCalendar = ({
               const isSelected = isSameDay(date, selectedDate);
               const isToday = isSameDay(date, new Date());
               const dData = getDayData(date);
-              const dColor = getDayColor(dData?.sleep_score);
               const isFuture = isFutureDate(date);
 
               return (
@@ -308,8 +344,7 @@ export const SleepCalendar = ({
                     style={[
                       styles.stripDayCircle,
                       isSelected && {
-                        backgroundColor: dColor,
-                        transform: [{ scale: 1.15 }],
+                        ...styles.selectedDayIndicator,
                       },
                       !isSelected && isToday && styles.todayCell,
                       isFuture && styles.futureCell,
@@ -317,7 +352,7 @@ export const SleepCalendar = ({
                     <Text
                       style={[
                         styles.stripDayDate,
-                        isSelected && { color: 'white', fontWeight: '800' },
+                        isSelected && styles.selectedDayText,
                         !isSelected && isToday && { color: 'white', fontWeight: '700' },
                         !isSelected && !isToday && !dData && { color: TEXT_DISABLED },
                       ]}>
@@ -341,8 +376,14 @@ export const SleepCalendar = ({
 
               <View style={styles.dcHeader}>
                 <Text style={styles.dcTitle}>{fullDateStr}</Text>
-                <View style={[styles.gradeBadge, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-                  <Text style={[styles.gradeText, { color: dayColor }]}>{grade?.grade}</Text>
+                <View
+                  style={[
+                    styles.gradeBadge,
+                    { backgroundColor: badgeColors?.bg ?? 'rgba(255,255,255,0.1)' },
+                  ]}>
+                  <Text style={[styles.gradeText, { color: badgeColors?.text ?? dayColor }]}>
+                    {grade?.grade}
+                  </Text>
                 </View>
               </View>
 
@@ -381,10 +422,17 @@ export const SleepCalendar = ({
     );
   };
 
-  const navTitle =
-    viewMode === 'week'
-      ? `Week ${getWeekNumber(baseDate)}, ${baseDate.getFullYear()}`
-      : baseDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const navTitle = (() => {
+    if (viewMode !== 'week') {
+      return baseDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+
+    const startOfWeek = new Date(baseDate);
+    startOfWeek.setDate(baseDate.getDate() - baseDate.getDay());
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    return formatWeekRange(startOfWeek, endOfWeek);
+  })();
 
   if (!isVisible) return null;
 
@@ -485,14 +533,13 @@ const styles = StyleSheet.create({
   },
   segmentBtn: { flex: 1, borderRadius: BORDER_RADIUS, justifyContent: 'center', alignItems: 'center' },
   segmentBtnActive: {
-    backgroundColor: '#48484A',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
+    backgroundColor: '#2C2C2E',
+    borderRadius: SEGMENT_RADIUS,
+    paddingVertical: 6,
+    paddingHorizontal: 20,
   },
-  segmentText: { color: '#8E8E93', fontSize: 15, fontWeight: '600' },
-  segmentTextActive: { color: 'white', fontWeight: '700' },
+  segmentText: { color: 'rgba(255,255,255,0.45)', fontSize: 15, fontWeight: '400' },
+  segmentTextActive: { color: '#FFFFFF', fontWeight: '600' },
 
   navHeader: {
     flexDirection: 'row',
@@ -535,7 +582,20 @@ const styles = StyleSheet.create({
   },
   futureCell: { opacity: 0.3 },
   todayCell: { backgroundColor: 'rgba(255,255,255,0.1)' },
+  selectedDayIndicator: {
+    width: SELECTED_DAY_SIZE,
+    height: SELECTED_DAY_SIZE,
+    borderRadius: SELECTED_DAY_RADIUS,
+    backgroundColor: '#C0120F',
+  },
+  selectedDayText: { color: '#FFFFFF', fontWeight: '700' },
   dayText: { fontSize: 15, fontWeight: '500', color: TEXT_PRIMARY },
+  dayDataDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginTop: 2,
+  },
 
   // Weekly View Styles
   weekStripContainer: { marginBottom: 20, paddingHorizontal: 20 },

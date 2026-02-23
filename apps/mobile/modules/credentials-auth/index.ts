@@ -1,6 +1,6 @@
-import { requireNativeModule } from "expo-modules-core";
+import { requireOptionalNativeModule } from "expo-modules-core";
 
-const CredentialAuthModule = requireNativeModule("CredentialAuth");
+const CredentialAuthModule = requireOptionalNativeModule("CredentialAuth");
 
 export interface GoogleCredentials {
   idToken: string;
@@ -23,6 +23,9 @@ export const CredentialAuth = {
     webClientId: string,
     autoSelect: boolean,
   ): Promise<GoogleCredentials> {
+    if (!CredentialAuthModule) {
+      throw new Error("CredentialAuth native module unavailable");
+    }
     return CredentialAuthModule.signInWithGoogleAutoSelect(
       webClientId,
       autoSelect,
@@ -30,16 +33,25 @@ export const CredentialAuth = {
   },
 
   async registerPasskey(requestJson: string): Promise<PasskeyCredentials> {
+    if (!CredentialAuthModule) {
+      throw new Error("CredentialAuth native module unavailable");
+    }
     return CredentialAuthModule.registerPasskey(requestJson);
   },
 
   async authenticateWithPasskey(
     requestJson: string,
   ): Promise<PasskeyCredentials> {
+    if (!CredentialAuthModule) {
+      throw new Error("CredentialAuth native module unavailable");
+    }
     return CredentialAuthModule.authenticateWithPasskey(requestJson);
   },
 
   async isPasskeyAvailable(): Promise<{ available: boolean }> {
+    if (!CredentialAuthModule) {
+      return { available: false };
+    }
     return CredentialAuthModule.isPasskeyAvailable();
   },
 };

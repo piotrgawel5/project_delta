@@ -24,11 +24,35 @@ const KNOB_SIZE = 32;
 const KNOB_HALF = KNOB_SIZE / 2;
 
 // Visual Constants
-const BORDER_RADIUS = 36;
-const CARD_BG = '#1C1C1E';
-const POPUP_BG = '#2C2C2E';
-const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.6)';
-const BTN_COLOR = '#818CF8';
+const SHEET_PADDING = 20;
+const SHEET_INNER_RADIUS = 24;
+const SHEET_RADIUS = SHEET_INNER_RADIUS + SHEET_PADDING;
+const CONTROL_PADDING = 14;
+const CONTROL_INNER_RADIUS = 8;
+const CONTROL_RADIUS = CONTROL_INNER_RADIUS + CONTROL_PADDING;
+const CLOSE_BTN_PADDING = 6;
+const CLOSE_BTN_INNER_RADIUS = 6;
+const CLOSE_BTN_RADIUS = CLOSE_BTN_INNER_RADIUS + CLOSE_BTN_PADDING;
+const HANDLE_HEIGHT = 5;
+const HANDLE_RADIUS = HANDLE_HEIGHT / 2;
+const SAVE_BTN_PADDING_Y = 12;
+const SAVE_BTN_INNER_RADIUS = 10;
+const SAVE_BTN_RADIUS = SAVE_BTN_INNER_RADIUS + SAVE_BTN_PADDING_Y;
+const CARD_BG = '#000000';
+const POPUP_BG = '#0B0B0D';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
+const TEXT_TERTIARY = 'rgba(255,255,255,0.5)';
+const STROKE = 'rgba(255,255,255,0.08)';
+const BTN_SOLID = '#F8FAFC';
+const ARC_GRADIENT = {
+  start: '#5B5B61',
+  end: '#3E3E44',
+} as const;
+const SAVE_BTN_BG = '#FFFFFF';
+const SAVE_BTN_BORDER = 'rgba(15, 17, 23, 0.14)';
+const SAVE_BTN_TEXT = '#111111';
+const SAVE_BTN_DISABLED_BG = '#E5E7EB';
+const SAVE_BTN_DISABLED_TEXT = '#9CA3AF';
 
 interface AddSleepRecordModalProps {
   isVisible: boolean;
@@ -120,6 +144,7 @@ export const AddSleepRecordModal = ({
   const startAngle = useSharedValue(timeToRad(23, 0));
   const endAngle = useSharedValue(timeToRad(7, 0));
   const activeKnob = useSharedValue<'start' | 'end' | null>(null);
+  const lastKnob = useSharedValue<'start' | 'end'>('end');
   const translateY = useSharedValue(height);
 
   const [bedtime, setBedtime] = useState({ h: 23, m: 0 });
@@ -127,6 +152,7 @@ export const AddSleepRecordModal = ({
   const [durationStr, setDurationStr] = useState('8h 00m');
   const [headerDate, setHeaderDate] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Stabilize date to prevent infinite re-renders when parent passes new Date()
   const stableDate = useMemo(() => {
@@ -152,6 +178,7 @@ export const AddSleepRecordModal = ({
     if (isVisible) {
       setHeaderDate(getSmartDateLabel(stableDate));
       setIsSaving(false);
+      setValidationError(null);
       startAngle.value = timeToRad(23, 0);
       endAngle.value = timeToRad(7, 0);
       updateTimes(startAngle.value, endAngle.value);
@@ -188,7 +215,10 @@ export const AddSleepRecordModal = ({
 
       const threshold = STROKE_WIDTH + 30;
 
-      if (dS <= threshold && dS <= dE) {
+      if (dS <= threshold && dE <= threshold) {
+        activeKnob.value = lastKnob.value === 'start' ? 'end' : 'start';
+        state.activate();
+      } else if (dS <= threshold) {
         activeKnob.value = 'start';
         state.activate();
       } else if (dE <= threshold) {
@@ -230,6 +260,9 @@ export const AddSleepRecordModal = ({
     })
     .onFinalize(() => {
       'worklet';
+      if (activeKnob.value !== null) {
+        lastKnob.value = activeKnob.value;
+      }
       activeKnob.value = null;
     });
 
@@ -287,6 +320,15 @@ export const AddSleepRecordModal = ({
   const handleSave = async () => {
     if (isSaving || !userId) return;
 
+    let diff = endAngle.value - startAngle.value;
+    if (diff <= 0) diff += TAU;
+    const durMins = Math.round(((diff / TAU) * 24 * 60) / 10) * 10;
+    if (durMins < 30) {
+      setValidationError('Sleep duration must be at least 30 minutes.');
+      return;
+    }
+
+    setValidationError(null);
     setIsSaving(true);
 
     const n = new Date(stableDate); // Use the stabilized date
@@ -347,10 +389,10 @@ export const AddSleepRecordModal = ({
                 <View style={styles.sliderContainer}>
                   <Svg width={SLIDER_SIZE} height={SLIDER_SIZE}>
                     <Defs>
-                      <LinearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <Stop offset="0" stopColor="#8E86FF" />
-                        <Stop offset="1" stopColor="#A855F7" />
-                      </LinearGradient>
+                      <SvgGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <Stop offset="0" stopColor={ARC_GRADIENT.start} />
+                        <Stop offset="1" stopColor={ARC_GRADIENT.end} />
+                      </SvgGradient>
                     </Defs>
                     <Circle
                       cx={CENTER}
@@ -388,13 +430,13 @@ export const AddSleepRecordModal = ({
                   <Text style={[styles.clockLabel, { left: 16, top: CENTER - 7 }]}>18</Text>
 
                   <Animated.View style={[styles.knobWrap, startKnobStyle]}>
-                    <View style={styles.knob}>
-                      <Ionicons name="bed" size={13} color="#000" />
+                    <View style={[styles.knob, { borderColor: ARC_GRADIENT.start }]}>
+                      <Ionicons name="bed" size={13} color="#FFFFFF" />
                     </View>
                   </Animated.View>
                   <Animated.View style={[styles.knobWrap, endKnobStyle]}>
-                    <View style={styles.knob}>
-                      <Ionicons name="alarm" size={13} color="#000" />
+                    <View style={[styles.knob, { borderColor: ARC_GRADIENT.end }]}>
+                      <Ionicons name="alarm" size={13} color="#FFFFFF" />
                     </View>
                   </Animated.View>
 
@@ -424,16 +466,20 @@ export const AddSleepRecordModal = ({
                 </View>
               </View>
 
+              {validationError && <Text style={styles.validationError}>{validationError}</Text>}
+
               {/* Save button */}
               <Pressable
                 onPress={handleSave}
                 disabled={isSaving || !userId}
                 style={({ pressed }) => [
                   styles.saveBtn,
-                  pressed && { opacity: 0.85 },
-                  (isSaving || !userId) && { opacity: 0.5 },
+                  (isSaving || !userId) && styles.saveBtnDisabled,
+                  pressed && !(isSaving || !userId) && { opacity: 0.85 },
                 ]}>
-                <Text style={styles.saveBtnText}>{isSaving ? 'Saving...' : 'Save Sleep'}</Text>
+                <Text style={[styles.saveBtnText, (isSaving || !userId) && styles.saveBtnTextDisabled]}>
+                  {isSaving ? 'Saving...' : 'Save Sleep'}
+                </Text>
               </Pressable>
             </View>
           </Animated.View>
@@ -478,6 +524,7 @@ const styles = StyleSheet.create({
     width: SLIDER_SIZE,
     height: SLIDER_SIZE,
     marginBottom: 16,
+    borderRadius: SHEET_RADIUS,
   },
   clockLabel: {
     position: 'absolute',
@@ -491,7 +538,8 @@ const styles = StyleSheet.create({
     width: KNOB_SIZE,
     height: KNOB_SIZE,
     borderRadius: KNOB_SIZE / 2,
-    backgroundColor: 'white',
+    backgroundColor: '#1C1C1E',
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -521,16 +569,33 @@ const styles = StyleSheet.create({
   timeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
   timeLabelText: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '500' },
   timeValue: { color: 'white', fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  divider: { width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 12 },
+  divider: { width: 1, height: 36, backgroundColor: STROKE, marginHorizontal: 12 },
+  validationError: {
+    color: '#FF6B6B',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
   saveBtn: {
     backgroundColor: BTN_COLOR,
     width: '100%',
-    height: 50,
-    borderRadius: BORDER_RADIUS,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+    backgroundColor: SAVE_BTN_BG,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: SAVE_BTN_BORDER,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  saveBtnText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  saveBtnDisabled: {
+    backgroundColor: SAVE_BTN_DISABLED_BG,
+  },
+  saveBtnText: { color: SAVE_BTN_TEXT, fontSize: 17, fontWeight: '600', letterSpacing: 0.2 },
+  saveBtnTextDisabled: { color: SAVE_BTN_DISABLED_TEXT },
 });

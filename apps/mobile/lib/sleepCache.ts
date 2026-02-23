@@ -4,12 +4,12 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-    ConfidenceLevel,
-    DataSource,
-    ScreenTimeSummary,
-    SleepEditRecord,
-    SleepScoreBreakdown,
-} from "./sleepCalculations";
+  ConfidenceLevel,
+  DataSource,
+  ScreenTimeSummary,
+  SleepEditRecord,
+} from './sleepCalculations';
+import type { ScoreBreakdown } from '@shared';
 
 // ============================================================================
 // CACHE KEYS

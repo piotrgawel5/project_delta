@@ -3,6 +3,7 @@ import CredentialAuth from '@modules/credentials-auth';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { Alert } from 'react-native';
+import { api } from './api';
 
 const AuthContext = createContext<{
   session: Session | null;
@@ -30,9 +31,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
-
-// apps/mobile/lib/auth.tsx
-import { api } from '@lib/api';
 
 export async function signInWithGoogle(webClientID: string) {
   console.log('[Google SignIn] Starting, webClientID:', webClientID ? 'present' : 'MISSING');
@@ -67,26 +65,26 @@ export async function signInWithGoogle(webClientID: string) {
 
 export async function signInWithEmail(email: string, password: string) {
   if (!email || !password) throw new Error('Missing email or password');
-
-  const { error, data } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
-
-  if (error) throw error;
-  return data;
+  const response = await api.post('/auth/email/login', { email, password });
+  if (response.access_token && response.refresh_token) {
+    await supabase.auth.setSession({
+      access_token: response.access_token,
+      refresh_token: response.refresh_token,
+    });
+  }
+  return response;
 }
 
 export async function signUpWithEmail(email: string, password: string) {
   if (!email || !password) throw new Error('Missing email or password');
-
-  const { error, data } = await supabase.auth.signUp({
-    email,
-    password,
-  });
-
-  if (error) throw error;
-  return data;
+  const response = await api.post('/auth/email/signup', { email, password });
+  if (response.access_token && response.refresh_token) {
+    await supabase.auth.setSession({
+      access_token: response.access_token,
+      refresh_token: response.refresh_token,
+    });
+  }
+  return response;
 }
 
 export async function safeSignInWithGoogle(webClientId: string) {

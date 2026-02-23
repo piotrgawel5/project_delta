@@ -28,6 +28,7 @@ export interface UserProfile {
     full_name?: string;
     avatar_url?: string;
     email?: string;
+    plan?: "free" | "pro" | "premium";
 
     // Onboarding Data
     sex?: Sex;
