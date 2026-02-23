@@ -35,7 +35,7 @@ const CYCLE_LINE_COLOR = 'rgba(255,255,255,0.15)';
 const CYCLE_LINE_DASH = [3, 5];
 const TIME_LABEL_COLOR = '#6B7280';
 const SELECTED_RING = 'rgba(255,255,255,0.35)';
-const SKELETON_BARS: Array<{ wFrac: number; hFrac: number; cycleGapAfter?: boolean }> = [
+const SKELETON_BARS: { wFrac: number; hFrac: number; cycleGapAfter?: boolean }[] = [
   { wFrac: 0.05, hFrac: 0.1 },
   { wFrac: 0.04, hFrac: 0.42 },
   { wFrac: 0.07, hFrac: 0.42 },
@@ -256,13 +256,13 @@ function HypnogramSkeleton({ chartWidth }: { chartWidth: number }) {
           toValue: 1,
           duration: 1400,
           useNativeDriver: true,
-          easing: Easing.inOut(Easing.sine),
+          easing: Easing.inOut(Easing.sin),
         }),
         Animated.timing(shimmer, {
           toValue: 0,
           duration: 1400,
           useNativeDriver: true,
-          easing: Easing.inOut(Easing.sine),
+          easing: Easing.inOut(Easing.sin),
         }),
       ])
     );
