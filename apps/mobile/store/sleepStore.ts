@@ -1,14 +1,14 @@
-import { create } from "zustand";
-import { supabase } from "../lib/supabase";
-import { AppState, AppStateStatus, Platform } from "react-native";
+import { create } from 'zustand';
+import { supabase } from '../lib/supabase';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import {
-    calculateSleepQuality,
-    checkPermissions,
-    getSleepSessions,
-    isAvailable,
-    requestPermissions,
-    SleepSession,
-} from "../modules/health-connect";
+  calculateSleepQuality,
+  checkPermissions,
+  getSleepSessions,
+  isAvailable,
+  requestPermissions,
+  SleepSession,
+} from '../modules/health-connect';
 import {
   CachedSleepRecord,
   getPendingSyncRecords,
@@ -918,74 +918,15 @@ export const useSleepStore = create<SleepState>((set, get) => ({
     }
   },
 
-            // If no stage data, use PERSONALIZED ESTIMATION based on profile
-            if (
-                deepMinutes + remMinutes + lightMinutes + awakeMinutes === 0 &&
-                durationMinutes > 0
-            ) {
-                const estimated = estimateSleepStages(durationMinutes, profile);
-                deepMinutes = estimated.deep;
-                remMinutes = estimated.rem;
-                lightMinutes = estimated.light;
-                awakeMinutes = estimated.awake;
-                console.log(
-                    `[SleepStore] Personalized stages for ${date}: deep=${deepMinutes}, rem=${remMinutes}, light=${lightMinutes}, awake=${awakeMinutes}`,
-                );
-            }
+  fetchSleepDataRange: async (userId: string, startDate: Date, endDate: Date) => {
+    if (!userId) return;
 
-            // Calculate quality score
-            let qualityScore = 0;
-            if (session.stages && session.stages.length > 0) {
-                qualityScore = calculateSleepQuality(session);
-            } else {
-                qualityScore = calculateQualityFromDuration(
-                    durationMinutes,
-                    profile,
-                );
-            }
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = endDate.toISOString().split('T')[0];
+    const key = `${startStr}|${endStr}`;
 
-            // Cache the record (will be synced later)
-            await upsertCacheRecord({
-                user_id: userId,
-                date,
-                start_time: session.startTime,
-                end_time: session.endTime,
-                duration_minutes: durationMinutes,
-                quality_score: qualityScore,
-                deep_sleep_minutes: deepMinutes,
-                rem_sleep_minutes: remMinutes,
-                light_sleep_minutes: lightMinutes,
-                awake_minutes: awakeMinutes,
-                data_source: session.metadata?.dataOrigin || "health_connect",
-                source: "health_connect",
-                confidence: session.stages && session.stages.length > 0
-                    ? "high"
-                    : "medium",
-            });
-        } catch (error) {
-            console.error("Error processing sleep data:", error);
-        }
-    },
-
-    /**
-     * Sync pending records to Supabase (batched)
-     * Respects cooldown to avoid excessive calls
-     */
-    syncPendingRecords: async (userId: string) => {
-        const canSync = await shouldSync();
-        if (!canSync) {
-            console.log(
-                "[SleepStore] Skipping Supabase sync - cooldown active",
-            );
-            return;
-        }
-
-        try {
-            const pending = await getPendingSyncRecords();
-            if (pending.length === 0) {
-                console.log("[SleepStore] No pending records to sync");
-                return;
-            }
+    if (inFlightRanges.has(key)) return;
+    inFlightRanges.add(key);
 
     try {
       const profile = useProfileStore.getState().profile;
@@ -1086,37 +1027,136 @@ export const useSleepStore = create<SleepState>((set, get) => ({
               break;
           }
         }
-    },
+      }
 
-    refreshData: async (userId: string, forceRefresh = false) => {
-        // Reset cooldowns if force refresh requested (e.g., pull-to-refresh)
-        if (forceRefresh) {
-            console.log("[SleepStore] Force refresh - bypassing cooldowns");
-            await resetCooldowns();
+      // If no stage data, use PERSONALIZED ESTIMATION based on profile
+      if (deepMinutes + remMinutes + lightMinutes + awakeMinutes === 0 && durationMinutes > 0) {
+        const estimated = estimateSleepStages(durationMinutes, profile);
+        deepMinutes = estimated.deep;
+        remMinutes = estimated.rem;
+        lightMinutes = estimated.light;
+        awakeMinutes = estimated.awake;
+        console.log(
+          `[SleepStore] Personalized stages for ${date}: deep=${deepMinutes}, rem=${remMinutes}, light=${lightMinutes}, awake=${awakeMinutes}`
+        );
+      }
+
+      // Calculate quality score
+      let qualityScore = 0;
+      if (session.stages && session.stages.length > 0) {
+        qualityScore = calculateSleepQuality(session);
+      } else {
+        qualityScore = calculateQualityFromDuration(durationMinutes, profile);
+      }
+
+      // Cache the record (will be synced later)
+      await upsertCacheRecord({
+        user_id: userId,
+        date,
+        start_time: session.startTime,
+        end_time: session.endTime,
+        duration_minutes: durationMinutes,
+        quality_score: qualityScore,
+        deep_sleep_minutes: deepMinutes,
+        rem_sleep_minutes: remMinutes,
+        light_sleep_minutes: lightMinutes,
+        awake_minutes: awakeMinutes,
+        data_source: session.metadata?.dataOrigin || 'health_connect',
+        source: 'health_connect',
+        confidence: session.stages && session.stages.length > 0 ? 'high' : 'medium',
+      });
+    } catch (error) {
+      console.error('Error processing sleep data:', error);
+    }
+  },
+
+  /**
+   * Sync pending records to Supabase (batched)
+   * Respects cooldown to avoid excessive calls
+   */
+  syncPendingRecords: async (userId: string) => {
+    const canSync = await shouldSync();
+    if (!canSync) {
+      console.log('[SleepStore] Skipping Supabase sync - cooldown active');
+      return;
+    }
+
+    try {
+      const pending = await getPendingSyncRecords();
+      if (pending.length === 0) {
+        console.log('[SleepStore] No pending records to sync');
+        return;
+      }
+
+      console.log(`[SleepStore] Syncing ${pending.length} records to Supabase via batch`);
+
+      // Prepare batch upsert data (max 30 per batch)
+      const records = pending.slice(0, 30).map((r: CachedSleepRecord) => ({
+        date: r.date,
+        start_time: r.start_time,
+        end_time: r.end_time,
+        duration_minutes: r.duration_minutes,
+        quality_score: r.quality_score,
+        deep_sleep_minutes: r.deep_sleep_minutes,
+        rem_sleep_minutes: r.rem_sleep_minutes,
+        light_sleep_minutes: r.light_sleep_minutes,
+        awake_minutes: r.awake_minutes,
+        data_source: r.data_source,
+      }));
+
+      // Use batch sync API for efficiency
+      const result = await api.post('/api/sleep/sync-batch', {
+        user_id: userId,
+        records,
+      });
+
+      const synced = result?.data?.synced || records.length;
+      console.log(`[SleepStore] Batch sync complete: ${synced} synced`);
+
+      // Mark synced records
+      await markRecordsSynced(records.map((r) => r.date));
+      set({ lastSyncTime: Date.now() });
+
+      // If there are more pending records, schedule another sync
+      if (pending.length > 30) {
+        console.log(
+          `[SleepStore] ${pending.length - 30} records remaining, will sync on next cycle`
+        );
+      }
+    } catch (error) {
+      console.error('[SleepStore] Error syncing pending records:', error);
+      // Fallback to individual sync on batch failure
+      try {
+        const pending = await getPendingSyncRecords();
+        for (const record of pending.slice(0, 10)) {
+          await api.post('/api/sleep/log', {
+            user_id: record.user_id,
+            date: record.date,
+            start_time: record.start_time,
+            end_time: record.end_time,
+            duration_minutes: record.duration_minutes,
+            quality_score: record.quality_score,
+            deep_sleep_minutes: record.deep_sleep_minutes,
+            rem_sleep_minutes: record.rem_sleep_minutes,
+            light_sleep_minutes: record.light_sleep_minutes,
+            awake_minutes: record.awake_minutes,
+            data_source: record.data_source,
+          });
+          await markRecordsSynced([record.date]);
         }
+        console.log('[SleepStore] Fallback individual sync completed');
+      } catch (fallbackError) {
+        console.error('[SleepStore] Fallback sync also failed:', fallbackError);
+      }
+    }
+  },
 
-        await get().checkHealthConnectStatus();
-        await get().fetchSleepData(userId);
-    },
-
-    /**
-     * Force save a manual sleep entry directly to database
-     * Bypasses all cooldowns for immediate sync
-     */
-    forceSaveManualSleep: async (
-        userId: string,
-        startTime: string,
-        endTime: string,
-    ): Promise<boolean> => {
-        if (!userId) return false;
-
-        try {
-            const profile = useProfileStore.getState().profile;
-            const startDate = new Date(startTime);
-            const endDate = new Date(endTime);
-            const date = endDate.toISOString().split("T")[0];
-            const durationMs = endDate.getTime() - startDate.getTime();
-            const durationMinutes = Math.round(durationMs / 60000);
+  refreshData: async (userId: string, forceRefresh = false) => {
+    // Reset cooldowns if force refresh requested (e.g., pull-to-refresh)
+    if (forceRefresh) {
+      console.log('[SleepStore] Force refresh - bypassing cooldowns');
+      await resetCooldowns();
+    }
 
     await get().checkHealthConnectStatus();
     await get().fetchSleepData(userId, forceRefresh);
@@ -1478,28 +1518,26 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 let appStateSubscription: any = null;
 
 export function initSleepStoreListeners(userId: string | undefined) {
-    if (appStateSubscription) {
-        appStateSubscription.remove();
-    }
+  if (appStateSubscription) {
+    appStateSubscription.remove();
+  }
 
-    appStateSubscription = AppState.addEventListener(
-        "change",
-        async (nextAppState: AppStateStatus) => {
-            if (nextAppState === "active" && userId) {
-                console.log(
-                    "[SleepStore] App resumed - checking for pending syncs",
-                );
-                const store = useSleepStore.getState();
-                await store.loadCachedData();
-                await store.syncPendingRecords(userId);
-            }
-        },
-    );
+  appStateSubscription = AppState.addEventListener(
+    'change',
+    async (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active' && userId) {
+        console.log('[SleepStore] App resumed - checking for pending syncs');
+        const store = useSleepStore.getState();
+        await store.loadCachedData();
+        await store.syncPendingRecords(userId);
+      }
+    }
+  );
 }
 
 export function cleanupSleepStoreListeners() {
-    if (appStateSubscription) {
-        appStateSubscription.remove();
-        appStateSubscription = null;
-    }
+  if (appStateSubscription) {
+    appStateSubscription.remove();
+    appStateSubscription = null;
+  }
 }

@@ -1,8 +1,14 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Circle } from 'react-native-svg';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
+import Svg, {
+  Path,
+  Circle,
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Stop,
+} from 'react-native-svg';
 
 type MetricStatus = 'up' | 'down' | 'neutral';
 
@@ -89,18 +95,38 @@ const toDateKey = (value?: Date | string | null) => {
   ).padStart(2, '0')}`;
 };
 
-/**
- * Generate a smooth cubic bezier path from points
- */
-function generateSmoothPath(
-  points: { x: number; y: number }[],
-  width: number,
-  height: number
-): { linePath: string; areaPath: string } {
-  if (points.length < 2) return { linePath: '', areaPath: '' };
+const formatShortDate = (value: Date | string) => {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
+};
 
-  const tension = 0.3; // Controls curve smoothness
-  let linePath = `M ${points[0].x} ${points[0].y}`;
+const getRelativeDateLabel = (value?: Date | string | null, selected?: Date | string | null) => {
+  const key = toDateKey(value);
+  if (!key) return null;
+  const selectedKey = toDateKey(selected);
+  if (selectedKey && selectedKey === key) return null;
+  const todayKey = toDateKey(new Date());
+  if (todayKey === key) return 'Today';
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = toDateKey(yesterday);
+  if (yesterdayKey === key) return 'Yesterday';
+  return formatShortDate(value as Date | string);
+};
+
+const buildBarHeights = (data: TrendValue[]) => {
+  const numeric = data.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+  if (!numeric.length) return data.map(() => MINI_BAR_MIN);
+  const min = Math.min(...numeric);
+  const max = Math.max(...numeric);
+  const range = max - min || 1;
+  return data.map((value) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return MINI_BAR_MIN;
+    const normalized = (value - min) / range;
+    return MINI_BAR_MIN + normalized * (MINI_BAR_MAX - MINI_BAR_MIN);
+  });
+};
 
 const MetricTag = ({ label }: MetricTagProps) => (
   <View style={styles.metricTag}>
@@ -118,15 +144,26 @@ const MetricActionTag = ({ label, onPress }: MetricActionTagProps) => (
   </Pressable>
 );
 
-export default function MetricCard({
+function MetricCard({
   label,
   value,
   unit,
   status = 'neutral',
-  sparkline,
+  subLabel,
+  accent,
+  trend,
+  chartType = 'bars',
+  dotThreshold = 0,
+  stages,
+  icon,
+  showDays = true,
   onPress,
+  dataDate,
+  selectedDate,
 }: MetricCardProps) {
   const meta = STATUS_META[status];
+  const accentColor = accent ?? meta.color;
+  const isInteractive = Boolean(onPress);
 
   const trendData = useMemo(() => padToSeven(trend ?? []), [trend]);
   const barHeights = useMemo(() => buildBarHeights(trendData), [trendData]);
@@ -161,17 +198,40 @@ export default function MetricCard({
       <Pressable
         style={({ pressed }) => [
           styles.card,
-          { width: CARD_WIDTH },
-          pressed && { opacity: 0.92, transform: [{ scale: 0.997 }] },
+          pressed && isInteractive ? { transform: [{ scale: 0.995 }], opacity: 0.96 } : null,
         ]}
-        android_ripple={{ color: 'rgba(255,255,255,0.04)', borderless: false }}
+        android_ripple={
+          isInteractive ? { color: 'rgba(255,255,255,0.04)', borderless: false } : undefined
+        }
+        disabled={!isInteractive}
         onPress={onPress}>
-        <LinearGradient
-          colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.01)']}
+        <ExpoLinearGradient
+          colors={['rgba(255,255,255,0.04)', 'transparent']}
           start={[0, 0]}
           end={[1, 1]}
-          style={styles.baseGlow}
+          style={styles.cardGlow}
         />
+        <View style={styles.rowTop}>
+          <View style={styles.labelRow}>
+            {icon ? (
+              <View
+                style={[styles.iconBadge, { backgroundColor: iconBg, borderColor: iconBorder }]}>
+                <Ionicons name={icon} size={14} color={accentColor} />
+              </View>
+            ) : (
+              <View style={[styles.dot, { backgroundColor: accentColor }]} />
+            )}
+            <Text style={styles.label} numberOfLines={1}>
+              {label}
+            </Text>
+          </View>
+          <View style={styles.todayRow}>
+            {dateLabel ? <Text style={styles.todayText}>{dateLabel}</Text> : null}
+            {isInteractive ? (
+              <Ionicons name="chevron-forward" size={14} color={TEXT_TERTIARY} />
+            ) : null}
+          </View>
+        </View>
 
         {isStageCard ? (
           <View style={styles.stageContent}>
@@ -226,8 +286,6 @@ export default function MetricCard({
               </View>
               {statusTag}
             </View>
-          )}
-        </View>
 
             <View style={styles.chartBlock}>
               {chartType === 'dots' ? (
@@ -265,96 +323,168 @@ export default function MetricCard({
                 </View>
               )}
 
-        {/* Sparkline or placeholder */}
-        <View style={sparklinePaths ? styles.rowBottomStacked : styles.rowBottom}>
-          {sparklinePaths ? renderSparkline() : <Text style={styles.subText}>Last 7 days</Text>}
-          <View style={[styles.weekBadge, sparklinePaths && styles.weekBadgeBelow]}>
-            <Text style={styles.weekBadgeText}>Week view</Text>
+              {showDays ? (
+                <View style={styles.daysRow}>
+                  {DAYS.map((day, index) => (
+                    <Text key={`${label}-day-${index}`} style={styles.dayText}>
+                      {day}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
           </View>
-        </View>
+        )}
       </Pressable>
     </View>
   );
 }
 
+const areTrendEqual = (a?: TrendValue[], b?: TrendValue[]) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+};
+
+const areStagesEqual = (a?: StageItem[], b?: StageItem[]) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const sa = a[i];
+    const sb = b[i];
+    if (!sa || !sb) return false;
+    if (
+      sa.label !== sb.label ||
+      sa.value !== sb.value ||
+      sa.percent !== sb.percent ||
+      sa.color !== sb.color
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const arePropsEqual = (prev: MetricCardProps, next: MetricCardProps) => {
+  if (
+    prev.label !== next.label ||
+    prev.value !== next.value ||
+    prev.unit !== next.unit ||
+    prev.status !== next.status ||
+    prev.subLabel !== next.subLabel ||
+    prev.accent !== next.accent ||
+    prev.chartType !== next.chartType ||
+    prev.dotThreshold !== next.dotThreshold ||
+    prev.icon !== next.icon ||
+    prev.showDays !== next.showDays ||
+    prev.dataDate !== next.dataDate ||
+    prev.selectedDate !== next.selectedDate
+  ) {
+    return false;
+  }
+
+  if (!areTrendEqual(prev.trend, next.trend)) return false;
+  if (!areStagesEqual(prev.stages, next.stages)) return false;
+
+  return true;
+};
+
+export default React.memo(MetricCard, arePropsEqual);
+
 const styles = StyleSheet.create({
   wrapper: {
-    marginBottom: 12,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  card: {
-    borderRadius: CARD_RADIUS,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: 'rgba(14,14,16,0.7)',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    // soft elevation
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-        shadowOffset: { height: 6, width: 0 },
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  baseGlow: {
+  cardGlow: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: CARD_RADIUS,
   },
-  topAccent: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 38,
-    top: 0,
-    borderTopLeftRadius: CARD_RADIUS,
-    borderTopRightRadius: CARD_RADIUS,
+  card: {
+    width: '100%',
+    borderRadius: CARD_RADIUS,
+    paddingHorizontal: CARD_PADDING_X,
+    paddingVertical: CARD_PADDING_Y,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_STROKE,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOpacity: 0.16,
+        shadowRadius: 10,
+        shadowOffset: { height: 6, width: 0 },
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   rowTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 12,
   },
-  divider: {
-    height: 2,
-    borderRadius: 999,
-    marginBottom: 10,
-    alignSelf: 'stretch',
-  },
-  label: {
-    color: 'rgba(255,255,255,0.78)',
-    fontSize: 12,
-    fontWeight: '600',
-    maxWidth: CARD_WIDTH * 0.6,
-  },
-  statusPill: {
+  labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    gap: 8,
+    maxWidth: '70%',
   },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
+  iconBadge: {
+    width: ICON_BADGE_SIZE,
+    height: ICON_BADGE_SIZE,
+    borderRadius: ICON_BADGE_RADIUS,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  dot: {
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_RADIUS,
+  },
+  label: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  todayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  todayText: {
+    color: TEXT_TERTIARY,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  contentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: 16,
+  },
+  valueBlock: {
+    flexShrink: 1,
   },
   valueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginBottom: 8,
+    gap: 0,
   },
   valueText: {
-    color: 'white',
-    fontSize: 36,
-    fontWeight: '700',
-    letterSpacing: -0.8,
+    color: TEXT_PRIMARY,
+    fontSize: 32,
+    fontWeight: '600',
+    letterSpacing: -0.6,
   },
   unitText: {
     color: TEXT_SECONDARY,
@@ -417,35 +547,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  weekBadge: {
-    marginLeft: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+  dotItem: {
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_RADIUS,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
-  weekBadgeBelow: {
-    marginLeft: 0,
+  daysRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginTop: 6,
+    gap: 6,
   },
-  weekBadgeText: {
-    color: 'rgba(255,255,255,0.7)',
+  dayText: {
+    color: TEXT_TERTIARY,
     fontSize: 10,
     fontWeight: '600',
-    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    width: 10,
   },
-  sparklineContainer: {
+  stageContent: {
+    gap: 10,
+  },
+  stageTotals: {
+    marginBottom: 2,
+  },
+  stageRows: {
+    gap: 8,
+  },
+  stageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stageDot: {
+    width: STAGE_DOT_SIZE,
+    height: STAGE_DOT_SIZE,
+    borderRadius: STAGE_DOT_RADIUS,
+  },
+  stageLabel: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '600',
     flex: 1,
-    marginTop: 4,
   },
-  sparkline: {
-    marginTop: 2,
+  stageValue: {
+    color: TEXT_PRIMARY,
+    fontSize: 12,
+    fontWeight: '700',
   },
-  subText: {
-    color: 'rgba(255,255,255,0.45)',
+  stagePercent: {
+    color: TEXT_TERTIARY,
     fontSize: 11,
     fontWeight: '600',
+    marginLeft: 6,
+  },
+  stageBar: {
+    flexDirection: 'row',
+    height: STAGE_BAR_HEIGHT,
+    borderRadius: STAGE_BAR_RADIUS,
+    overflow: 'hidden',
+    backgroundColor: CARD_BG,
+    gap: 2,
+  },
+  stageSegment: {
+    height: '100%',
+    borderRadius: STAGE_BAR_RADIUS,
   },
 });
