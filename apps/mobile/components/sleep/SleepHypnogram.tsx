@@ -1,16 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Text, View } from 'react-native';
 import Svg, { Defs, Line, LinearGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
-import Animated, {
+import Reanimated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
 
 const CHART_HEIGHT = 160;
-const AXIS_HEIGHT = 24;
+const AXIS_HEIGHT = 32;
 const BAR_GAP = 1.5;
 const MIN_BAR_WIDTH = 2;
 const CORNER_RADIUS = 3;
@@ -35,6 +35,36 @@ const CYCLE_LINE_COLOR = 'rgba(255,255,255,0.15)';
 const CYCLE_LINE_DASH = [3, 5];
 const TIME_LABEL_COLOR = '#6B7280';
 const SELECTED_RING = 'rgba(255,255,255,0.35)';
+const SKELETON_BARS: Array<{ wFrac: number; hFrac: number; cycleGapAfter?: boolean }> = [
+  { wFrac: 0.05, hFrac: 0.1 },
+  { wFrac: 0.04, hFrac: 0.42 },
+  { wFrac: 0.07, hFrac: 0.42 },
+  { wFrac: 0.06, hFrac: 1.0 },
+  { wFrac: 0.08, hFrac: 1.0 },
+  { wFrac: 0.07, hFrac: 1.0 },
+  { wFrac: 0.06, hFrac: 0.72 },
+  { wFrac: 0.05, hFrac: 0.42 },
+  { wFrac: 0.04, hFrac: 0.1 },
+  { wFrac: 0.03, hFrac: 0.1, cycleGapAfter: true },
+  { wFrac: 0.05, hFrac: 0.42 },
+  { wFrac: 0.06, hFrac: 0.42 },
+  { wFrac: 0.07, hFrac: 0.72 },
+  { wFrac: 0.08, hFrac: 1.0 },
+  { wFrac: 0.07, hFrac: 0.72 },
+  { wFrac: 0.09, hFrac: 0.72 },
+  { wFrac: 0.06, hFrac: 0.42 },
+  { wFrac: 0.04, hFrac: 0.1, cycleGapAfter: true },
+  { wFrac: 0.06, hFrac: 0.42 },
+  { wFrac: 0.08, hFrac: 0.72 },
+  { wFrac: 0.1, hFrac: 0.72 },
+  { wFrac: 0.09, hFrac: 0.72 },
+  { wFrac: 0.07, hFrac: 0.42 },
+  { wFrac: 0.04, hFrac: 0.1, cycleGapAfter: true },
+  { wFrac: 0.07, hFrac: 0.72 },
+  { wFrac: 0.09, hFrac: 0.72 },
+  { wFrac: 0.08, hFrac: 0.72 },
+  { wFrac: 0.05, hFrac: 0.1 },
+];
 
 interface SleepPhaseRow {
   id: string;
@@ -216,35 +246,238 @@ function PhaseTooltip({ bar, chartWidth }: TooltipProps) {
 }
 
 function HypnogramSkeleton({ chartWidth }: { chartWidth: number }) {
-  const totalH = CHART_HEIGHT + AXIS_HEIGHT;
-  const bars = [
-    { w: 0.11, h: 0.78, o: 0.22 },
-    { w: 0.09, h: 0.95, o: 0.2 },
-    { w: 0.13, h: 0.7, o: 0.18 },
-    { w: 0.12, h: 0.56, o: 0.16 },
-    { w: 0.1, h: 0.62, o: 0.19 },
-    { w: 0.14, h: 0.68, o: 0.2 },
-    { w: 0.12, h: 0.74, o: 0.21 },
-    { w: 0.09, h: 0.6, o: 0.17 },
-  ];
+  const shimmer = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const shimAnim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, {
+          toValue: 1,
+          duration: 1400,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.sine),
+        }),
+        Animated.timing(shimmer, {
+          toValue: 0,
+          duration: 1400,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.sine),
+        }),
+      ])
+    );
+    const pulseAnim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.quad),
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.quad),
+        }),
+      ])
+    );
+
+    shimAnim.start();
+    pulseAnim.start();
+    return () => {
+      shimAnim.stop();
+      pulseAnim.stop();
+    };
+  }, [pulse, shimmer]);
+
+  const barOpacity = shimmer.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.07, 0.18],
+  });
+  const dotOpacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.35, 1.0],
+  });
+  const effectiveChartWidth = Math.max(chartWidth, 1);
+  const gapCount = SKELETON_BARS.filter((b) => b.cycleGapAfter).length;
+  const totalFrac = SKELETON_BARS.reduce((sum, bar) => sum + bar.wFrac, 0);
+  const scale = (effectiveChartWidth - gapCount * 12) / (totalFrac * effectiveChartWidth);
 
   return (
-    <View style={{ height: totalH, justifyContent: 'flex-end' }}>
-      <View style={{ height: CHART_HEIGHT, flexDirection: 'row', alignItems: 'flex-end', gap: BAR_GAP }}>
-        {bars.map((bar, idx) => (
-          <View
-            key={`sk-${idx}`}
-            style={{
-              width: chartWidth > 0 ? Math.max(MIN_BAR_WIDTH, chartWidth * bar.w - BAR_GAP) : MIN_BAR_WIDTH + 8,
-              height: CHART_HEIGHT * bar.h,
-              borderRadius: CORNER_RADIUS,
-              backgroundColor: `rgba(255,255,255,${bar.o})`,
-            }}
+    <View style={{ width: effectiveChartWidth, height: CHART_HEIGHT + 32 }}>
+      <Animated.View
+        style={{
+          opacity: barOpacity,
+          flexDirection: 'row',
+          alignItems: 'flex-end',
+          height: CHART_HEIGHT,
+          overflow: 'hidden',
+        }}
+      >
+        {SKELETON_BARS.map((bar, idx) => {
+          const barW = Math.max(3, bar.wFrac * effectiveChartWidth * scale);
+          const barH = bar.hFrac * CHART_HEIGHT;
+          return (
+            <View
+              key={`sk-${idx}`}
+              style={{
+                width: barW,
+                height: barH,
+                borderRadius: 3,
+                backgroundColor: '#FFFFFF',
+                marginRight: bar.cycleGapAfter ? 14 : 2,
+              }}
+            />
+          );
+        })}
+      </Animated.View>
+      <View style={{ height: 1, backgroundColor: '#1F2937', width: effectiveChartWidth }} />
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          marginTop: 7,
+          gap: 5,
+          paddingRight: 2,
+        }}
+      >
+        <Animated.View
+          style={{
+            opacity: dotOpacity,
+            width: 5,
+            height: 5,
+            borderRadius: 2.5,
+            backgroundColor: '#4B5563',
+          }}
+        />
+        <Text style={{ color: '#4B5563', fontSize: 10, letterSpacing: 0.3 }}>
+          Estimating sleep stages
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function EmptyPremiumChart({ chartWidth }: { chartWidth: number }) {
+  return (
+    <View style={{ height: CHART_HEIGHT + AXIS_HEIGHT }}>
+      <Svg width={chartWidth} height={CHART_HEIGHT + AXIS_HEIGHT}>
+        <Line x1={0} y1={CHART_HEIGHT} x2={chartWidth} y2={CHART_HEIGHT} stroke={AXIS_LINE_COLOR} strokeWidth={1} />
+      </Svg>
+      <PremiumLockOverlay />
+    </View>
+  );
+}
+
+function ChartContent({
+  chartWidth,
+  geometry,
+  selectedBar,
+  isPremium,
+  maskStyle,
+  handleTouchMove,
+  clearSelection,
+}: {
+  chartWidth: number;
+  geometry: ChartGeometry;
+  selectedBar: BarGeometry | null;
+  isPremium: boolean;
+  maskStyle: any;
+  handleTouchMove: (x: number) => void;
+  clearSelection: () => void;
+}) {
+  const totalH = CHART_HEIGHT + AXIS_HEIGHT;
+
+  return (
+    <>
+      <Svg width={chartWidth} height={totalH}>
+        <Defs>
+          {Object.entries(STAGE_GRADIENT).map(([stage, colors]) => (
+            <LinearGradient key={stage} id={`grad_${stage}`} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={colors.top} stopOpacity="1" />
+              <Stop offset="1" stopColor={colors.bottom} stopOpacity="0.85" />
+            </LinearGradient>
+          ))}
+        </Defs>
+
+        {geometry.cycleLines.map((cl, i) => (
+          <Line
+            key={`cl-${i}`}
+            x1={cl.x}
+            y1={0}
+            x2={cl.x}
+            y2={CHART_HEIGHT}
+            stroke={CYCLE_LINE_COLOR}
+            strokeWidth={1}
+            strokeDasharray={CYCLE_LINE_DASH.join(',')}
           />
         ))}
-      </View>
-      <View style={{ height: AXIS_HEIGHT, borderTopWidth: 1, borderTopColor: AXIS_LINE_COLOR }} />
-    </View>
+
+        {geometry.bars.map((bar) => (
+          <Rect
+            key={bar.phase.id}
+            x={bar.x}
+            y={bar.y}
+            width={bar.width}
+            height={bar.height}
+            rx={CORNER_RADIUS}
+            ry={CORNER_RADIUS}
+            fill={`url(#${bar.gradientId})`}
+            stroke={selectedBar?.phase.id === bar.phase.id ? SELECTED_RING : 'none'}
+            strokeWidth={selectedBar?.phase.id === bar.phase.id ? 1.5 : 0}
+          />
+        ))}
+
+        <Line x1={0} y1={CHART_HEIGHT} x2={chartWidth} y2={CHART_HEIGHT} stroke={AXIS_LINE_COLOR} strokeWidth={1} />
+
+        {geometry.timeLabels.map((tl, i) => {
+          const anchor = i === 0 ? 'start' : i === geometry.timeLabels.length - 1 ? 'end' : 'middle';
+          return (
+            <SvgText
+              key={`tl-${i}`}
+              x={tl.x}
+              y={CHART_HEIGHT + AXIS_HEIGHT - 4}
+              fontSize={9}
+              fill={TIME_LABEL_COLOR}
+              textAnchor={anchor}
+            >
+              {tl.label}
+            </SvgText>
+          );
+        })}
+      </Svg>
+
+      <Reanimated.View
+        style={[
+          {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: totalH,
+            backgroundColor: CARD_BG,
+          },
+          maskStyle,
+        ]}
+        pointerEvents="none"
+      />
+
+      {isPremium && (
+        <View
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: CHART_HEIGHT }}
+          onStartShouldSetResponder={() => true}
+          onResponderGrant={(e) => handleTouchMove(e.nativeEvent.locationX)}
+          onResponderMove={(e) => handleTouchMove(e.nativeEvent.locationX)}
+          onResponderRelease={clearSelection}
+          onResponderTerminate={clearSelection}
+        />
+      )}
+
+      {selectedBar && isPremium && <PhaseTooltip bar={selectedBar} chartWidth={chartWidth} />}
+      {!isPremium && <PremiumLockOverlay />}
+    </>
   );
 }
 
@@ -327,107 +560,30 @@ export const SleepHypnogram = React.memo(function SleepHypnogram({
 
   const clearSelection = useCallback(() => setSelectedBar(null), []);
   const totalH = CHART_HEIGHT + AXIS_HEIGHT;
-  const showGeneratingState = !isLoading && isPremium && phases.length === 0;
+  const resolvedChartWidth = Math.max(chartWidth, 0);
 
   return (
     <View style={{ width: '100%' }} onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}>
       <StageLegend />
 
       <View style={{ height: totalH }}>
-        {isLoading ? (
-          <HypnogramSkeleton chartWidth={chartWidth} />
-        ) : showGeneratingState ? (
-          <View style={{ height: totalH, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: '#6B7280', fontSize: 13 }}>Generating sleep timeline</Text>
-          </View>
-        ) : (
-          <>
-            <Svg width={chartWidth} height={totalH}>
-              <Defs>
-                {Object.entries(STAGE_GRADIENT).map(([stage, colors]) => (
-                  <LinearGradient key={stage} id={`grad_${stage}`} x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0" stopColor={colors.top} stopOpacity="1" />
-                    <Stop offset="1" stopColor={colors.bottom} stopOpacity="0.85" />
-                  </LinearGradient>
-                ))}
-              </Defs>
-
-              {geometry.cycleLines.map((cl, i) => (
-                <Line
-                  key={`cl-${i}`}
-                  x1={cl.x}
-                  y1={0}
-                  x2={cl.x}
-                  y2={CHART_HEIGHT}
-                  stroke={CYCLE_LINE_COLOR}
-                  strokeWidth={1}
-                  strokeDasharray={CYCLE_LINE_DASH.join(',')}
-                />
-              ))}
-
-              {geometry.bars.map((bar) => (
-                <Rect
-                  key={bar.phase.id}
-                  x={bar.x}
-                  y={bar.y}
-                  width={bar.width}
-                  height={bar.height}
-                  rx={CORNER_RADIUS}
-                  ry={CORNER_RADIUS}
-                  fill={`url(#${bar.gradientId})`}
-                  stroke={selectedBar?.phase.id === bar.phase.id ? SELECTED_RING : 'none'}
-                  strokeWidth={selectedBar?.phase.id === bar.phase.id ? 1.5 : 0}
-                />
-              ))}
-
-              <Line x1={0} y1={CHART_HEIGHT} x2={chartWidth} y2={CHART_HEIGHT} stroke={AXIS_LINE_COLOR} strokeWidth={1} />
-
-              {geometry.timeLabels.map((tl, i) => {
-                const anchor = i === 0 ? 'start' : i === geometry.timeLabels.length - 1 ? 'end' : 'middle';
-                return (
-                  <SvgText
-                    key={`tl-${i}`}
-                    x={tl.x}
-                    y={CHART_HEIGHT + AXIS_HEIGHT - 4}
-                    fontSize={9}
-                    fill={TIME_LABEL_COLOR}
-                    textAnchor={anchor}
-                  >
-                    {tl.label}
-                  </SvgText>
-                );
-              })}
-            </Svg>
-
-            <Animated.View
-              style={[
-                {
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: totalH,
-                  backgroundColor: CARD_BG,
-                },
-                maskStyle,
-              ]}
-              pointerEvents="none"
-            />
-
-            {isPremium && (
-              <View
-                style={{ position: 'absolute', top: 0, left: 0, right: 0, height: CHART_HEIGHT }}
-                onStartShouldSetResponder={() => true}
-                onResponderGrant={(e) => handleTouchMove(e.nativeEvent.locationX)}
-                onResponderMove={(e) => handleTouchMove(e.nativeEvent.locationX)}
-                onResponderRelease={clearSelection}
-                onResponderTerminate={clearSelection}
-              />
-            )}
-
-            {selectedBar && isPremium && <PhaseTooltip bar={selectedBar} chartWidth={chartWidth} />}
-            {!isPremium && <PremiumLockOverlay />}
-          </>
+        {isLoading && <HypnogramSkeleton chartWidth={resolvedChartWidth} />}
+        {!isLoading && (!phases || phases.length === 0) && !isPremium && (
+          <EmptyPremiumChart chartWidth={resolvedChartWidth} />
+        )}
+        {!isLoading && (!phases || phases.length === 0) && isPremium && (
+          <HypnogramSkeleton chartWidth={resolvedChartWidth} />
+        )}
+        {!isLoading && phases && phases.length > 0 && (
+          <ChartContent
+            chartWidth={resolvedChartWidth}
+            geometry={geometry}
+            selectedBar={selectedBar}
+            isPremium={isPremium}
+            maskStyle={maskStyle}
+            handleTouchMove={handleTouchMove}
+            clearSelection={clearSelection}
+          />
         )}
       </View>
     </View>
