@@ -135,10 +135,14 @@ export function computeSOL(estimatedRestingHR: number, age: number): number {
 
 export function computeCycleLengths(remainingAfterSOL: number): number[] {
   const remaining = Math.max(0, Math.round(remainingAfterSOL));
+  const rawCycles = remaining / CYCLE_DISTRIBUTOR_CONSTANTS.MEDIAN_CYCLE_MINUTES;
+  const MIN_CYCLE_DURATION_MEANINGFUL = 50;
+  const dynamicMinCycles = Math.max(1, Math.floor(remaining / MIN_CYCLE_DURATION_MEANINGFUL));
+  const effectiveMin = Math.min(CYCLE_DISTRIBUTOR_CONSTANTS.MIN_CYCLES, dynamicMinCycles);
 
   const estimatedCycles = clamp(
-    Math.round(remaining / CYCLE_DISTRIBUTOR_CONSTANTS.MEDIAN_CYCLE_MINUTES),
-    CYCLE_DISTRIBUTOR_CONSTANTS.MIN_CYCLES,
+    Math.round(rawCycles),
+    effectiveMin,
     CYCLE_DISTRIBUTOR_CONSTANTS.MAX_CYCLES
   );
 
@@ -489,17 +493,27 @@ export function distributeSleepcycles(
     return null;
   }
 
-  try {
-    const timestampDuration = Math.round(
-      (new Date(input.endTime).getTime() - new Date(input.startTime).getTime()) / 60_000
+  const timestampDuration = Math.round(
+    (new Date(input.endTime).getTime() - new Date(input.startTime).getTime()) / 60_000
+  );
+  const durationFromInput = Number.isFinite(input.durationMinutes)
+    ? Math.round(input.durationMinutes)
+    : NaN;
+  const effectiveDuration =
+    Number.isFinite(durationFromInput) && durationFromInput > 0
+      ? durationFromInput
+      : timestampDuration;
+  const MINIMUM_SESSION_MINUTES = 45;
+  if (effectiveDuration < MINIMUM_SESSION_MINUTES) {
+    console.info(
+      '[SleepCycleDistributor] Session too short for timeline generation:',
+      effectiveDuration,
+      'min - skipping'
     );
-    const durationFromInput = Number.isFinite(input.durationMinutes)
-      ? Math.round(input.durationMinutes)
-      : NaN;
-    const effectiveDuration =
-      Number.isFinite(durationFromInput) && durationFromInput > 0
-        ? durationFromInput
-        : timestampDuration;
+    return null;
+  }
+
+  try {
     const duration = Math.max(0, effectiveDuration);
     const inputWithEffectiveDuration: CycleDistributorInput = {
       ...input,
