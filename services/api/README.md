@@ -40,6 +40,7 @@ cp .env.example .env
 - `SUPABASE_URL`: Your Supabase project URL
 - `SUPABASE_SERVICE_ROLE_KEY`: Service role key (for admin operations)
 - `SUPABASE_ANON_KEY`: Anon/public key
+- `CORS_ORIGIN` (or `CORS_ORIGINS`): Comma-separated allowed origins in production
 
 ### Development
 
