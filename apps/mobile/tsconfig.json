@@ -9,8 +9,7 @@
       "@lib/*": ["lib/*"],
       "@components/*": ["components/*"],
       "@store/*": ["store/*"],
-      "@shared": ["../../packages/shared/src/index.ts"],
-      "@constants": ["../../packages/constants/src/index.ts"]
+      "@project-delta/shared": ["../../packages/shared/src/index.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts", "nativewind-env.d.ts"]

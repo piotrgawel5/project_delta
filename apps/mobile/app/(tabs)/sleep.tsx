@@ -7,7 +7,6 @@ import {
   Pressable,
   Dimensions,
   FlatList,
-  LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/authStore';
@@ -20,12 +19,19 @@ import Animated, {
   useSharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
+  useAnimatedProps,
+  interpolate,
+  Extrapolation,
   useAnimatedReaction,
   runOnJS,
+  withTiming,
+  Easing,
   SharedValue,
 } from 'react-native-reanimated';
+import Svg, { Rect, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { SleepCalendar } from '../../components/sleep/SleepCalendar';
 import { AddSleepRecordModal } from '../../components/sleep/AddSleepRecordModal';
+import { transformToHypnogramStages } from '@lib/sleepTransform';
 import { getSleepScoreGrade, brightenColor } from '@lib/sleepColors';
 import {
   formatDuration,
@@ -103,46 +109,41 @@ const resolveSleepScore = (item: any): number | undefined => {
 
 const GradientBackground = React.memo(function GradientBackground({
   baseColor,
-  overlayAColor,
-  overlayBColor,
-  overlayAOpacity,
-  overlayBOpacity,
+  overlayColor,
+  progress,
 }: {
   baseColor: string;
-  overlayAColor: string;
-  overlayBColor: string;
-  overlayAOpacity: SharedValue<number>;
-  overlayBOpacity: SharedValue<number>;
+  overlayColor: string;
+  progress: SharedValue<number>;
 }) {
-  const overlayAStyle = useAnimatedStyle(() => ({
-    opacity: overlayAOpacity.value,
-  }));
-  const overlayBStyle = useAnimatedStyle(() => ({
-    opacity: overlayBOpacity.value,
+  const animatedOverlayProps = useAnimatedProps(() => ({
+    opacity: progress.value,
   }));
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <LinearGradient
-        colors={[baseColor, BG_PRIMARY, BG_PRIMARY]}
-        locations={GRADIENT_LOCATIONS}
-        style={StyleSheet.absoluteFill}
+    <Svg width={BG_WIDTH} height={BG_HEIGHT} style={StyleSheet.absoluteFill}>
+      <Defs>
+        <SvgGradient id="sleepGradientBase" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={baseColor} />
+          <Stop offset="0.55" stopColor={BG_PRIMARY} />
+          <Stop offset="1" stopColor={BG_PRIMARY} />
+        </SvgGradient>
+        <SvgGradient id="sleepGradientOverlay" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={overlayColor} />
+          <Stop offset="0.55" stopColor={BG_PRIMARY} />
+          <Stop offset="1" stopColor={BG_PRIMARY} />
+        </SvgGradient>
+      </Defs>
+      <Rect x="0" y="0" width={BG_WIDTH} height={BG_HEIGHT} fill="url(#sleepGradientBase)" />
+      <AnimatedRect
+        x="0"
+        y="0"
+        width={BG_WIDTH}
+        height={BG_HEIGHT}
+        fill="url(#sleepGradientOverlay)"
+        animatedProps={animatedOverlayProps}
       />
-      <Animated.View style={[StyleSheet.absoluteFill, overlayAStyle]}>
-        <LinearGradient
-          colors={[overlayAColor, BG_PRIMARY, BG_PRIMARY]}
-          locations={GRADIENT_LOCATIONS}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
-      <Animated.View style={[StyleSheet.absoluteFill, overlayBStyle]}>
-        <LinearGradient
-          colors={[overlayBColor, BG_PRIMARY, BG_PRIMARY]}
-          locations={GRADIENT_LOCATIONS}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
-    </View>
+    </Svg>
   );
 });
 
@@ -156,11 +157,30 @@ export default function SleepScreen() {
   const {
     recentHistory,
     monthlyData,
+    loading,
     fetchSleepData,
     fetchSleepDataRange,
-    forceSaveManualSleep,
     checkHealthConnectStatus,
   } = useSleepStore();
+
+  const normalizeDate = useCallback((date: Date) => {
+    const d = new Date(date);
+    d.setHours(12, 0, 0, 0);
+    return d;
+  }, []);
+
+  const dateKey = useCallback((date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  const addDays = useCallback((date: Date, days: number) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+  }, []);
 
   const [selectedDate, setSelectedDate] = useState(() => {
     return normalizeDate(new Date());
@@ -168,8 +188,7 @@ export default function SleepScreen() {
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [topSectionHeight, setTopSectionHeight] = useState(0);
-  const [isTopOverlayFront, setIsTopOverlayFront] = useState(true);
+  const [isHeaderInteractable, setIsHeaderInteractable] = useState(false);
   const pagerRef = useRef<FlatList<Date>>(null);
   const [activeIndex, setActiveIndex] = useState<number>(() => {
     const today = normalizeDate(new Date());
@@ -180,10 +199,9 @@ export default function SleepScreen() {
   });
   const selectedYear = selectedDate.getFullYear();
   const selectedMonth = selectedDate.getMonth();
-  const currentMonthKey = useMemo(
-    () => `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`,
-    [selectedYear, selectedMonth]
-  );
+  const gradientProgress = useSharedValue(1);
+  const [gradientBase, setGradientBase] = useState('#000000');
+  const [gradientOverlay, setGradientOverlay] = useState('#000000');
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
   const populatedKeysRef = useRef<Set<string>>(new Set());
@@ -195,7 +213,7 @@ export default function SleepScreen() {
       checkHealthConnectStatus();
       fetchSleepData(user.id);
     }
-  }, [checkHealthConnectStatus, fetchSleepData, user?.id]);
+  }, [user?.id]);
 
   const onRefresh = useCallback(async () => {
     if (user?.id) {
@@ -203,25 +221,31 @@ export default function SleepScreen() {
       await fetchSleepData(user.id);
       setRefreshing(false);
     }
-  }, [fetchSleepData, user?.id]);
+  }, [user?.id]);
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y;
   });
 
   useAnimatedReaction(
-    () => scrollY.value <= 2,
-    (isFront, prev) => {
-      if (isFront !== prev) {
-        runOnJS(setIsTopOverlayFront)(isFront);
+    () => scrollY.value > 20,
+    (isScrolled, prev) => {
+      if (isScrolled !== prev) {
+        runOnJS(setIsHeaderInteractable)(isScrolled);
       }
     }
   );
 
-  const handleTopSectionLayout = useCallback((event: LayoutChangeEvent) => {
-    const measuredHeight = Math.round(event.nativeEvent.layout.height);
-    setTopSectionHeight((prev) => (prev === measuredHeight ? prev : measuredHeight));
-  }, []);
+  const headerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 40], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  // Helper to format minutes into H M
+  const formatDuration = (totalMinutes: number) => {
+    const h = Math.floor(totalMinutes / 60);
+    const m = Math.round(totalMinutes % 60);
+    return { h, m };
+  };
 
   const currentData = useMemo(() => {
     const targetDateStr = dateKey(selectedDate);
@@ -326,7 +350,6 @@ export default function SleepScreen() {
       .slice(-7);
   }, [recentHistory]);
 
-  const trendData = useMemo(() => {
     return {
       duration: padToSeven(
         weeklySeries.map((item) => item.duration_minutes ?? null),
@@ -490,12 +513,15 @@ export default function SleepScreen() {
     (recentHistory || []).forEach((item) => {
       map.set(item.date, item);
     });
-    const monthRecords = monthlyData?.[currentMonthKey] || [];
-    monthRecords.forEach((item) => {
-      if (!map.has(item.date)) {
-        map.set(item.date, item);
-      }
-    });
+    if (monthlyData) {
+      Object.keys(monthlyData).forEach((monthKey) => {
+        (monthlyData[monthKey] || []).forEach((item) => {
+          if (!map.has(item.date)) {
+            map.set(item.date, item);
+          }
+        });
+      });
+    }
     return map;
   }, [recentHistory, monthlyData, currentMonthKey]);
 
@@ -547,13 +573,9 @@ export default function SleepScreen() {
 
   const monthDates = useMemo(() => {
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-    const today = normalizeDate(new Date());
-    const isCurrentMonth =
-      selectedYear === today.getFullYear() && selectedMonth === today.getMonth();
-    const maxDay = isCurrentMonth ? today.getDate() : lastDay;
     return Array.from({ length: lastDay }, (_, i) =>
       normalizeDate(new Date(selectedYear, selectedMonth, i + 1))
-    ).filter((d) => d.getDate() <= maxDay);
+    );
   }, [selectedYear, selectedMonth]);
 
   useEffect(() => {
@@ -608,7 +630,7 @@ export default function SleepScreen() {
       const end = addDays(selectedDate, -1);
       fetchSleepDataRange(user.id, start, end);
     }
-  }, [activeIndex, cacheRange, selectedDate, user?.id, fetchSleepDataRange, monthDates.length]);
+  }, [activeIndex, cacheRange, selectedDate, user?.id, fetchSleepDataRange, addDays, monthDates.length]);
 
   useEffect(() => {
     populatedKeysRef.current.clear();
@@ -700,10 +722,8 @@ export default function SleepScreen() {
       {/* Background Gradient */}
       <GradientBackground
         baseColor={gradientBase}
-        overlayAColor={overlayAColor}
-        overlayBColor={overlayBColor}
-        overlayAOpacity={overlayAOpacity}
-        overlayBOpacity={overlayBOpacity}
+        overlayColor={gradientOverlay}
+        progress={gradientProgress}
       />
 
       <View
@@ -757,7 +777,10 @@ export default function SleepScreen() {
                     <View style={styles.labelRow}>
                       <Ionicons name="moon" size={16} color={brightenColor(itemGrade.color)} />
                       <Text
-                        style={[styles.sectionLabel, { color: brightenColor(itemGrade.color) }]}>
+                        style={[
+                          styles.sectionLabel,
+                          { color: brightenColor(itemGrade.color) },
+                        ]}>
                         Sleep
                       </Text>
                     </View>
@@ -788,7 +811,6 @@ export default function SleepScreen() {
             }}
           />
         </View>
-      </View>
 
       <View style={[styles.persistentControls, { top: insets.top + 20, zIndex: 10 }]}>
         <View style={{ width: 44 }} />
@@ -834,19 +856,24 @@ export default function SleepScreen() {
                 <View style={styles.emptyBadge}>
                   <Ionicons name="moon-outline" size={22} color={TEXT_SECONDARY} />
                 </View>
-                <Text style={styles.emptyTitle}>No sleep data</Text>
-                <Text style={styles.emptyCopy}>
-                  Add a sleep record for this day to unlock metrics and trends.
-                </Text>
-                <Pressable style={styles.emptyButton} onPress={() => setIsAddModalVisible(true)}>
-                  <Text style={styles.emptyButtonText}>Add data</Text>
-                  <Ionicons name="add" size={18} color="black" />
-                </Pressable>
               </View>
-            )}
-          </View>
+            </>
+          ) : (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyBadge}>
+                <Ionicons name="moon-outline" size={22} color={TEXT_SECONDARY} />
+              </View>
+              <Text style={styles.emptyTitle}>No sleep data</Text>
+              <Text style={styles.emptyCopy}>
+                Add a sleep record for this day to unlock metrics and trends.
+              </Text>
+              <Pressable style={styles.emptyButton} onPress={() => setIsAddModalVisible(true)}>
+                <Text style={styles.emptyButtonText}>Add data</Text>
+                <Ionicons name="add" size={18} color="black" />
+              </Pressable>
+            </View>
+          )}
         </View>
-      </Animated.ScrollView>
 
       <SleepCalendar
         isVisible={isCalendarVisible}
@@ -911,21 +938,27 @@ const styles = StyleSheet.create({
   pagerWrap: {
     marginBottom: 24,
   },
-  bottomSheet: {
-    width: '100%',
-    backgroundColor: SHEET_BG,
-    borderTopLeftRadius: SHEET_RADIUS,
-    borderTopRightRadius: SHEET_RADIUS,
-    paddingTop: SHEET_PADDING_TOP,
-    minHeight: SCREEN_H,
-    overflow: 'hidden',
-  },
-  bottomSheetContent: {
-    paddingHorizontal: SHEET_PADDING_X,
-  },
   pagerItem: {
     width: SCREEN_W,
     paddingHorizontal: 20,
+  },
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    alignItems: 'center',
+    paddingBottom: 10,
+  },
+  stickyHeaderContent: {
+    height: 44,
+    justifyContent: 'center',
+  },
+  stickyTitle: {
+    color: 'white',
+    fontSize: 17,
+    fontWeight: '600',
   },
   navRow: {
     flexDirection: 'row',
@@ -986,19 +1019,17 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   emptyState: {
-    borderRadius: EMPTY_STATE_RADIUS,
-    padding: EMPTY_STATE_PADDING,
-    backgroundColor: SURFACE_ALT,
-    borderWidth: 1,
-    borderColor: STROKE,
-  },
-  emptyBadge: {
-    width: EMPTY_BADGE_SIZE,
-    height: EMPTY_BADGE_SIZE,
-    borderRadius: EMPTY_BADGE_RADIUS,
+    borderRadius: UI_RADIUS,
+    padding: 22,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
-    borderColor: STROKE,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  emptyBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: UI_RADIUS,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -1010,7 +1041,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptyCopy: {
-    color: TEXT_TERTIARY,
+    color: TEXT_SECONDARY,
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 16,
@@ -1020,10 +1051,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: 'white',
     paddingHorizontal: 14,
-    paddingVertical: EMPTY_BUTTON_PADDING_Y,
-    borderRadius: EMPTY_BUTTON_RADIUS,
+    paddingVertical: 10,
+    borderRadius: UI_RADIUS,
   },
   emptyButtonText: {
     color: 'black',

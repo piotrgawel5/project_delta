@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
 // Production API URL (Render deployment)
-const RENDER_API_URL = 'https://project-delta-3mqz.onrender.com';
+const RENDER_API_URL = "https://project-delta-3mqz.onrender.com";
 
 // Local development URLs (uncomment and change API_URL below to use local Docker/server)
 // const LOCALHOST = Platform.select({
@@ -13,14 +13,12 @@ const RENDER_API_URL = 'https://project-delta-3mqz.onrender.com';
 // Use Render deployment URL (change to LOCALHOST for local development)
 const API_URL = RENDER_API_URL;
 
-console.log('[API] Base URL:', API_URL);
+console.log("[API] Base URL:", API_URL);
 
 // Helper to get the current access token from Supabase session
 const getAccessToken = async (): Promise<string | null> => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return session?.access_token || null;
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || null;
 };
 
 export const api = {

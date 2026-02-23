@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Modal, Dimensions, Pressable } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle, Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import Animated, {
   useSharedValue,
   useAnimatedProps,
@@ -362,8 +362,8 @@ export const AddSleepRecordModal = ({
   return (
     <Modal animationType="none" transparent visible={isVisible} onRequestClose={closeWithAnimation}>
       <Pressable style={styles.backdrop} onPress={closeWithAnimation}>
-        <BlurView intensity={20} style={StyleSheet.absoluteFill} tint="dark" />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]} />
+        <BlurView intensity={25} style={StyleSheet.absoluteFill} tint="dark" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
       </Pressable>
 
       <GestureHandlerRootView style={styles.gestureRoot} pointerEvents="box-none">
@@ -398,7 +398,7 @@ export const AddSleepRecordModal = ({
                       cx={CENTER}
                       cy={CENTER}
                       r={RADIUS}
-                      stroke="rgba(255,255,255,0.12)"
+                      stroke="#2C2C2E"
                       strokeWidth={STROKE_WIDTH}
                       fill="none"
                     />
@@ -418,7 +418,7 @@ export const AddSleepRecordModal = ({
                         <Path
                           key={i}
                           d={`M ${CENTER + inner * Math.cos(ang)} ${CENTER + inner * Math.sin(ang)} L ${CENTER + outer * Math.cos(ang)} ${CENTER + outer * Math.sin(ang)}`}
-                          stroke={isMajor ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.12)'}
+                          stroke={isMajor ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'}
                           strokeWidth={isMajor ? 1.5 : 1}
                         />
                       );
@@ -442,16 +442,16 @@ export const AddSleepRecordModal = ({
 
                   <View style={styles.centerInfo} pointerEvents="none">
                     <Text style={styles.durationLabel}>Duration</Text>
-                  <Text style={styles.durationValue}>{durationStr}</Text>
+                    <Text style={styles.durationValue}>{durationStr}</Text>
+                  </View>
                 </View>
-              </View>
               </GestureDetector>
 
               {/* Time display */}
               <View style={styles.timeRow}>
                 <View style={styles.timeItem}>
                   <View style={styles.timeLabelRow}>
-                    <Ionicons name="bed" size={13} color="#7DD3FC" />
+                    <Ionicons name="bed" size={13} color="#8E86FF" />
                     <Text style={styles.timeLabelText}>Bedtime</Text>
                   </View>
                   <Text style={styles.timeValue}>{formatTime(bedtime.h, bedtime.m)}</Text>
@@ -459,7 +459,7 @@ export const AddSleepRecordModal = ({
                 <View style={styles.divider} />
                 <View style={styles.timeItem}>
                   <View style={styles.timeLabelRow}>
-                    <Ionicons name="alarm" size={13} color="#C4B5FD" />
+                    <Ionicons name="alarm" size={13} color="#A855F7" />
                     <Text style={styles.timeLabelText}>Wake Up</Text>
                   </View>
                   <Text style={styles.timeValue}>{formatTime(waketime.h, waketime.m)}</Text>
@@ -494,10 +494,8 @@ const styles = StyleSheet.create({
   gestureRoot: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
   sheet: {
     backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: STROKE,
-    borderTopLeftRadius: SHEET_RADIUS,
-    borderTopRightRadius: SHEET_RADIUS,
+    borderTopLeftRadius: BORDER_RADIUS,
+    borderTopRightRadius: BORDER_RADIUS,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.25,
@@ -509,15 +507,10 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     backgroundColor: 'transparent',
     // Increase top padding to add "some space at the top" for gestures
-    paddingTop: 12,
+    paddingTop: 16,
   },
   handleContainer: { alignItems: 'center', marginBottom: 8 },
-  handle: {
-    width: 36,
-    height: HANDLE_HEIGHT,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderRadius: HANDLE_RADIUS,
-  },
+  handle: { width: 36, height: 5, backgroundColor: '#48484A', borderRadius: BORDER_RADIUS },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -525,13 +518,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   title: { color: 'white', fontSize: 19, fontWeight: '700' },
-  closeBtn: {
-    padding: 6,
-    backgroundColor: '#0F1117',
-    borderRadius: CLOSE_BTN_RADIUS,
-    borderWidth: 1,
-    borderColor: STROKE,
-  },
+  closeBtn: { padding: 6, backgroundColor: POPUP_BG, borderRadius: BORDER_RADIUS },
   content: { alignItems: 'center', paddingHorizontal: 20 },
   sliderContainer: {
     width: SLIDER_SIZE,
@@ -541,7 +528,7 @@ const styles = StyleSheet.create({
   },
   clockLabel: {
     position: 'absolute',
-    color: TEXT_TERTIARY,
+    color: TEXT_SECONDARY,
     fontSize: 11,
     fontWeight: '600',
     alignSelf: 'center',
@@ -570,13 +557,13 @@ const styles = StyleSheet.create({
   durationValue: { color: 'white', fontSize: 26, fontWeight: '700', fontVariant: ['tabular-nums'] },
   timeRow: {
     flexDirection: 'row',
-    backgroundColor: '#0F1117',
-    borderRadius: CONTROL_RADIUS,
-    padding: CONTROL_PADDING,
+    backgroundColor: POPUP_BG,
+    borderRadius: BORDER_RADIUS,
+    padding: 14,
     width: '100%',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: STROKE,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   timeItem: { flex: 1, alignItems: 'center' },
   timeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
@@ -590,6 +577,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   saveBtn: {
+    backgroundColor: BTN_COLOR,
     width: '100%',
     height: 56,
     borderRadius: 28,

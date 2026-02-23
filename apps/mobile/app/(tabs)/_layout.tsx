@@ -22,13 +22,42 @@ const TAB_BAR_WIDTH = SCREEN_WIDTH - TAB_BAR_MARGIN * 2;
 // Animated SVG components
 const AnimatedG = Animated.createAnimatedComponent(G);
 
-function CustomTabBar({ state, descriptors, navigation }: MaterialTopTabBarProps) {
+function CustomTabBar({ state, descriptors, navigation, position }: MaterialTopTabBarProps) {
   const routes = state.routes;
+  const tabWidth = TAB_BAR_WIDTH / routes.length;
+  const isSleepActive = state.index === 2; // sleep is at index 2
+
+  // Indicator position
+  const indicatorLeft = position.interpolate({
+    inputRange: routes.map((_, i) => i),
+    outputRange: routes.map((_, i) => i * tabWidth),
+  });
+
+  // Determine current accent color based on active tab
+  const currentAccent = isSleepActive ? SLEEP_ACCENT : ACCENT;
+
   return (
     <View style={styles.tabBarContainer}>
       <BlurView intensity={30} tint="dark" style={styles.blurBackground} />
 
       <View style={styles.tabsContent}>
+        {/* Animated Pill Indicator */}
+        <Animated.View
+          style={[
+            styles.activeIndicator,
+            {
+              width: tabWidth,
+              transform: [{ translateX: indicatorLeft }],
+            },
+          ]}>
+          <View
+            style={[
+              styles.activeIndicatorInner,
+              isSleepActive && { backgroundColor: 'rgba(62, 66, 169, 0.2)' },
+            ]}
+          />
+        </Animated.View>
+
         {routes.map((route, index) => {
           const { options } = descriptors[route.key];
           const isFocused = state.index === index;
@@ -47,7 +76,7 @@ function CustomTabBar({ state, descriptors, navigation }: MaterialTopTabBarProps
           };
 
           // Determine icon color
-          const iconColor = isFocused ? (isSleep ? SLEEP_ACCENT : ACCENT) : 'rgba(255,255,255,0.5)';
+          const iconColor = isFocused ? (isSleep ? SLEEP_ACCENT : ACCENT) : 'rgba(255,255,255,0.4)';
 
           return (
             <Pressable key={route.key} onPress={onPress} style={styles.tabItem}>
@@ -142,7 +171,7 @@ function SleepTabIcon({
           </AnimatedG>
         </Svg>
       </View>
-      <Animated.Text style={[styles.label, { color }]}>
+      <Animated.Text style={[styles.label, { color, opacity: focused ? 1 : 0.7 }]}>
         {label}
       </Animated.Text>
     </View>
@@ -177,7 +206,7 @@ function TabIcon({
   return (
     <View style={styles.iconContainer}>
       <MaterialCommunityIcons name={name} size={24} color={color} />
-      <Animated.Text style={[styles.label, { color }]}>
+      <Animated.Text style={[styles.label, { color, opacity: focused ? 1 : 0.7 }]}>
         {label}
       </Animated.Text>
     </View>
@@ -268,13 +297,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1,
   },
+  activeIndicator: {
+    position: 'absolute',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 0,
+  },
+  activeIndicatorInner: {
+    width: 80,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(48, 209, 88, 0.15)',
+  },
   iconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
   },
   label: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     fontFamily: 'Inter-SemiBold',
   },
