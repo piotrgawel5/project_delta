@@ -639,65 +639,59 @@ export default function SleepScreen() {
     const date = currentRecord?.date;
     const id = currentRecord?.id;
 
-    let active = true;
-    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+    let retryAttempt = 0;
+    const RETRY_DELAYS = [6000, 12000];
+
+    const attemptRetry = () => {
+      if (retryAttempt >= RETRY_DELAYS.length || cancelled) return;
+      const delay = RETRY_DELAYS[retryAttempt++];
+      setTimeout(async () => {
+        if (cancelled) return;
+        try {
+          const retry = await fetchSleepTimeline(userId!, date!);
+          if (retry && retry.phases.length > 0) {
+            setTimeline(retry);
+          } else {
+            attemptRetry();
+          }
+        } catch {
+          // silent
+        }
+      }, delay);
+    };
 
     const loadTimeline = async () => {
-      if (!isPremium) {
-        if (active) {
-          setTimeline(null);
-          setTimelineLoading(false);
-        }
+      if (!userId || !date) {
         return;
       }
-      if (!userId || !date) {
-        if (active) setTimeline(null);
+      if (!isPremium) {
+        setTimeline(null);
         return;
       }
       if (id && !UUID_REGEX.test(id)) {
-        if (active) {
-          setTimeline(null);
-          setTimelineLoading(false);
-        }
         return;
       }
 
-      if (active) setTimelineLoading(true);
+      setTimelineLoading(true);
       try {
         const result = await fetchSleepTimeline(userId, date);
-        if (!active) return;
-
         if (result && result.phases.length > 0) {
           setTimeline(result);
-          return;
+        } else {
+          attemptRetry();
         }
-
-        setTimeline(null);
-        retryTimeout = setTimeout(async () => {
-          try {
-            const retry = await fetchSleepTimeline(userId, date);
-            if (!active) return;
-            if (retry && retry.phases.length > 0) {
-              setTimeline(retry);
-            } else {
-              setTimeline(null);
-            }
-          } catch {
-            if (active) setTimeline(null);
-          }
-        }, 3000);
       } catch {
-        if (active) setTimeline(null);
+        setTimeline(null);
       } finally {
-        if (active) setTimelineLoading(false);
+        setTimelineLoading(false);
       }
     };
 
     void loadTimeline();
 
     return () => {
-      active = false;
-      if (retryTimeout) clearTimeout(retryTimeout);
+      cancelled = true;
     };
   }, [currentRecord?.user_id, currentRecord?.date, currentRecord?.id, isPremium]);
 
