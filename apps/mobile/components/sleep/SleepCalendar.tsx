@@ -20,6 +20,7 @@ import { getSleepScoreGrade } from '@lib/sleepColors';
 
 // Colors & Visual Constants
 const CARD_BG = '#000000';
+const POPUP_BG = '#0B0B0D';
 const TEXT_PRIMARY = '#F5F6F7';
 const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
 const TEXT_DISABLED = 'rgba(255, 255, 255, 0.35)';
@@ -503,15 +504,15 @@ const styles = StyleSheet.create({
   },
   contentClipper: {
     backgroundColor: CARD_BG,
-    borderTopLeftRadius: BORDER_RADIUS,
-    borderTopRightRadius: BORDER_RADIUS,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
     overflow: 'hidden',
     width: '100%',
   },
   innerContent: {},
 
   handleContainer: { alignItems: 'center', paddingTop: 10, paddingBottom: 10 },
-  handle: { width: 40, height: 5, backgroundColor: '#48484A', borderRadius: BORDER_RADIUS },
+  handle: { width: 40, height: 5, backgroundColor: '#48484A', borderRadius: HANDLE_RADIUS },
 
   header: {
     flexDirection: 'row',
@@ -521,17 +522,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: { color: 'white', fontSize: 20, fontWeight: '700' },
-  closeBtn: { padding: 8, backgroundColor: POPUP_BG, borderRadius: BORDER_RADIUS },
+  closeBtn: { padding: 8, backgroundColor: POPUP_BG, borderRadius: CLOSE_BTN_RADIUS },
 
   controlsSection: { paddingHorizontal: 20, marginBottom: 20 },
   segmentedContainer: {
     flexDirection: 'row',
     backgroundColor: POPUP_BG,
-    borderRadius: BORDER_RADIUS,
+    borderRadius: SEGMENT_RADIUS,
     padding: 4,
     height: 48,
   },
-  segmentBtn: { flex: 1, borderRadius: BORDER_RADIUS, justifyContent: 'center', alignItems: 'center' },
+  segmentBtn: { flex: 1, borderRadius: SEGMENT_RADIUS, justifyContent: 'center', alignItems: 'center' },
   segmentBtnActive: {
     backgroundColor: '#2C2C2E',
     borderRadius: SEGMENT_RADIUS,
@@ -549,7 +550,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   navTitle: { color: 'white', fontSize: 17, fontWeight: '600' },
-  arrowBtn: { padding: 8, borderRadius: BORDER_RADIUS, backgroundColor: POPUP_BG },
+  arrowBtn: { padding: 8, borderRadius: CLOSE_BTN_RADIUS, backgroundColor: POPUP_BG },
 
   // Month Grid
   gridContainer: { paddingHorizontal: 20, paddingBottom: 10 },
@@ -620,7 +621,7 @@ const styles = StyleSheet.create({
   detailCardContainer: { paddingHorizontal: 20 },
   detailCard: {
     backgroundColor: POPUP_BG,
-    borderRadius: BORDER_RADIUS,
+    borderRadius: DETAIL_CARD_RADIUS,
     padding: 24,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
@@ -631,8 +632,8 @@ const styles = StyleSheet.create({
     left: 0,
     width: 4,
     height: 32,
-    borderTopRightRadius: BORDER_RADIUS,
-    borderBottomRightRadius: BORDER_RADIUS,
+    borderTopRightRadius: INDICATOR_RADIUS,
+    borderBottomRightRadius: INDICATOR_RADIUS,
   },
   dcHeader: {
     flexDirection: 'row',
@@ -641,7 +642,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   dcTitle: { fontSize: 18, fontWeight: '700', color: 'white', flex: 1 },
-  gradeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: BORDER_RADIUS },
+  gradeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: GRADE_BADGE_RADIUS },
   gradeText: { fontWeight: '800', fontSize: 14 },
 
   dcMetricsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },

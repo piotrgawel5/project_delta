@@ -389,10 +389,10 @@ export const AddSleepRecordModal = ({
                 <View style={styles.sliderContainer}>
                   <Svg width={SLIDER_SIZE} height={SLIDER_SIZE}>
                     <Defs>
-                      <SvgGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <LinearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                         <Stop offset="0" stopColor={ARC_GRADIENT.start} />
                         <Stop offset="1" stopColor={ARC_GRADIENT.end} />
-                      </SvgGradient>
+                      </LinearGradient>
                     </Defs>
                     <Circle
                       cx={CENTER}
@@ -494,8 +494,8 @@ const styles = StyleSheet.create({
   gestureRoot: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
   sheet: {
     backgroundColor: CARD_BG,
-    borderTopLeftRadius: BORDER_RADIUS,
-    borderTopRightRadius: BORDER_RADIUS,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.25,
@@ -510,7 +510,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   handleContainer: { alignItems: 'center', marginBottom: 8 },
-  handle: { width: 36, height: 5, backgroundColor: '#48484A', borderRadius: BORDER_RADIUS },
+  handle: { width: 36, height: 5, backgroundColor: '#48484A', borderRadius: HANDLE_RADIUS },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -518,7 +518,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   title: { color: 'white', fontSize: 19, fontWeight: '700' },
-  closeBtn: { padding: 6, backgroundColor: POPUP_BG, borderRadius: BORDER_RADIUS },
+  closeBtn: { padding: 6, backgroundColor: POPUP_BG, borderRadius: CLOSE_BTN_RADIUS },
   content: { alignItems: 'center', paddingHorizontal: 20 },
   sliderContainer: {
     width: SLIDER_SIZE,
@@ -558,7 +558,7 @@ const styles = StyleSheet.create({
   timeRow: {
     flexDirection: 'row',
     backgroundColor: POPUP_BG,
-    borderRadius: BORDER_RADIUS,
+    borderRadius: CONTROL_RADIUS,
     padding: 14,
     width: '100%',
     marginBottom: 16,
@@ -577,7 +577,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   saveBtn: {
-    backgroundColor: BTN_COLOR,
     width: '100%',
     height: 56,
     borderRadius: 28,

@@ -817,8 +817,7 @@ export default function SleepScreen() {
               <>
                 <SleepMetricsList metrics={metricCards} />
                 {currentRecord?.start_time && currentRecord?.end_time ? (
-                  <View style={styles.stageSectionCard}>
-                    <Text style={styles.stageSectionTitle}>Sleep Stages</Text>
+                  <View style={styles.stageSection}>
                     <SleepHypnogram
                       phases={timeline?.phases ?? []}
                       sessionStart={currentRecord.start_time}
@@ -1030,19 +1029,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  stageSectionCard: {
-    borderRadius: 24,
-    padding: 20,
-    backgroundColor: '#1C1C1E',
-    borderWidth: 1,
-    borderColor: STROKE,
+  stageSection: {
     marginBottom: 32,
-  },
-  stageSectionTitle: {
-    color: 'white',
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 12,
   },
   chartSection: {
     marginBottom: 40,

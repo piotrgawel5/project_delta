@@ -1,0 +1,25 @@
+interface:
+  display_name: 'Staged Delivery Workflow'
+  short_description: 'P0–P5 staged execution with mandatory validation, scope guarding, and context.md as source of truth'
+  default_prompt: |
+    Execute this task using the Staged Delivery Workflow skill.
+
+    MANDATORY PRE-FLIGHT before writing any code:
+    1. Read packages/docs/context.md in full.
+    2. Read every implementation doc referenced in this task.
+    3. Declare: which stages (P0–P5) are needed, which files will be touched in each stage, and what the validation commands are for this repo.
+    4. Surface any ambiguity that would require you to guess at an architectural decision — do not proceed past pre-flight until it is resolved.
+
+    STAGE EXECUTION:
+    - P0: Types, schemas, interfaces, contracts, file scaffolding. Zero business logic.
+    - P1: Core logic, services, route handlers, DB queries. No UI.
+    - P2: UI integration, loading/error/empty states, interactions.
+    - P3: Full validation, implementation summary, invariant checklist, residual risks, context.md update.
+    - P4 (if needed): Retry, idempotency, rate limiting, race condition hardening.
+    - P5 (if needed): Feature flags, logging, migration, final docs.
+
+    AFTER EVERY STAGE: run the required checks (typecheck, lint, tests). Do not advance to the next stage until all checks pass. State explicitly when each check passes.
+
+    SCOPE GUARD: If you notice something out-of-scope, log it and defer. Do not implement it silently. If it is a blocker, stop and ask.
+
+    FAILURE PROTOCOL: If a check fails, stop, diagnose, fix the root cause, re-run, confirm it passes. Never suppress errors with any/ts-ignore/eslint-disable as a workaround.
