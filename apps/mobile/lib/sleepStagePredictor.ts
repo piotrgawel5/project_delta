@@ -76,14 +76,13 @@ function clampAndNormalise(draft: DistributionDraft): DistributionDraft {
   };
 
   // Final residual correction while preserving bounds.
-  const keys: Array<keyof DistributionDraft> = [
+  const keys: (keyof DistributionDraft)[] = [
     'lightPercent',
     'awakePercent',
     'remPercent',
     'deepPercent',
   ];
-  let residual =
-    100 - (norm.deepPercent + norm.remPercent + norm.lightPercent + norm.awakePercent);
+  let residual = 100 - (norm.deepPercent + norm.remPercent + norm.lightPercent + norm.awakePercent);
 
   for (const key of keys) {
     if (Math.abs(residual) < 1e-6) break;
@@ -347,10 +346,14 @@ function generatePhaseTimeline(
         : ((totalMinutes * dist.remPercent) / 100) * (0.4 / nonBackCycles);
 
     const lightDescentPlan = Math.min(lightRemaining, cycleTarget * 0.18);
-    const lightAscentPlan = Math.min(Math.max(0, lightRemaining - lightDescentPlan), cycleTarget * 0.18);
+    const lightAscentPlan = Math.min(
+      Math.max(0, lightRemaining - lightDescentPlan),
+      cycleTarget * 0.18
+    );
     const deepCyclePlan = Math.min(deepRemaining, deepPlan);
     const remCyclePlan = Math.min(remRemaining, remPlan);
-    const microAwakePlan = awakeRemaining > 0 ? Math.min(awakeRemaining, awakeRemaining >= 3 ? 3 : 2) : 0;
+    const microAwakePlan =
+      awakeRemaining > 0 ? Math.min(awakeRemaining, awakeRemaining >= 3 ? 3 : 2) : 0;
 
     const planned = [
       lightDescentPlan,
@@ -376,14 +379,15 @@ function generatePhaseTimeline(
 
     const cycleDuration = cycleLight + cycleDeep + cycleLight2 + cycleRem + cycleAwake;
     const cycleStartIndex = phaseTimeline.length - 5;
-    const cycleStartTime = phaseTimeline[Math.max(0, cycleStartIndex)]?.startTime ?? new Date(currentMs).toISOString();
+    const cycleStartTime =
+      phaseTimeline[Math.max(0, cycleStartIndex)]?.startTime ?? new Date(currentMs).toISOString();
     const cycleEndTime = new Date(currentMs).toISOString();
     const dominantStage: 'deep' | 'rem' | 'light' =
       cycleDeep >= cycleRem && cycleDeep >= cycleLight + cycleLight2
         ? 'deep'
         : cycleRem >= cycleLight + cycleLight2
-        ? 'rem'
-        : 'light';
+          ? 'rem'
+          : 'light';
 
     cycleBreakdown.push({
       cycleNumber: cycle,
@@ -400,7 +404,8 @@ function generatePhaseTimeline(
 
   const remainingMinutes = totalMinutes - usedMinutes;
   if (remainingMinutes > 0) {
-    const finalStage: SleepPhaseEvent['stage'] = lightRemaining >= awakeRemaining ? 'light' : 'awake';
+    const finalStage: SleepPhaseEvent['stage'] =
+      lightRemaining >= awakeRemaining ? 'light' : 'awake';
     pushPhase(finalStage, remainingMinutes, estimatedCycles);
   }
 
@@ -431,7 +436,10 @@ function generatePhaseTimeline(
   };
 }
 
-function calculateRecoveryIndex(dist: PredictedStageDistribution, input: SleepPredictionInput): number {
+function calculateRecoveryIndex(
+  dist: PredictedStageDistribution,
+  input: SleepPredictionInput
+): number {
   const deepScore = Math.min(100, (dist.deepPercent / 20) * 100) * 0.4;
   const remScore = Math.min(100, (dist.remPercent / 22) * 100) * 0.3;
   const durationScore = Math.min(100, (input.durationMinutes / 480) * 100) * 0.2;
@@ -467,7 +475,9 @@ export function buildPremiumPrediction(input: SleepPredictionInput): PremiumSlee
   const predictedScore = calculateSleepScore({
     current: {
       id: 'premium_prediction',
-      date: input.startTime ? new Date(input.startTime).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      date: input.startTime
+        ? new Date(input.startTime).toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10),
       durationMinutes: input.durationMinutes,
       deepSleepMinutes: Math.round((input.durationMinutes * dist.deepPercent) / 100),
       remSleepMinutes: Math.round((input.durationMinutes * dist.remPercent) / 100),

@@ -1,599 +1,359 @@
-import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Text, View } from 'react-native';
-import Svg, { Defs, Line, LinearGradient, Rect, Stop } from 'react-native-svg';
-import Reanimated, {
-  Easing as ReanimatedEasing,
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { Dimensions, Text, TouchableWithoutFeedback, View } from 'react-native';
+import Animated, {
+  FadeIn,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import { Defs, Line, LinearGradient, Rect, Stop, Svg, Text as SvgText } from 'react-native-svg';
+import type { SleepHypnogramData, SleepPhase, SleepStage } from '@project-delta/shared';
 
-const CHART_HEIGHT = 200;
-const AXIS_HEIGHT = 24;
-const BAR_GAP = 1.5;
-const CYCLE_GAP = 8;
-const BAR_MIN_WIDTH = 3;
-const CORNER_RADIUS = 3;
+// --- Layout -----------------------------------------------------------------
+const SVG_HEIGHT = 260;
+const AXIS_H = 36; // reserved at bottom for time labels
+const CHART_H = SVG_HEIGHT - AXIS_H; // 224 - the actual drawing area
 
-const STAGE_DEPTH: Record<'awake' | 'light' | 'deep' | 'rem', number> = {
-  awake: 0.1,
-  light: 0.45,
-  rem: 0.7,
-  deep: 1.0,
+// --- Stage vertical positions (y = top edge of rect, origin = top of SVG) --
+// Visual order top->bottom: awake . core . light . deep
+const STAGE_Y: Record<SleepStage, number> = {
+  awake: 8, // thin awakening line near top
+  core: 60, // upper-mid block
+  light: 118, // mid block
+  deep: 176, // bottom block
+  rem: 60, // same row as core (REM shares upper-mid position)
 };
 
-const STAGE_GRADIENT: Record<'awake' | 'light' | 'deep' | 'rem', { top: string; bottom: string }> = {
-  awake: { top: '#F97316', bottom: '#7C2D12' },
-  light: { top: '#3B82F6', bottom: '#1E3A8A' },
-  rem: { top: '#06B6D4', bottom: '#0E4C61' },
-  deep: { top: '#8B5CF6', bottom: '#4C1D95' },
+const STAGE_H: Record<SleepStage, number> = {
+  awake: 6, // intentionally thin - momentary arousals
+  core: 50,
+  light: 50,
+  deep: 50,
+  rem: 50,
 };
 
-const CHART_BG = '#0F0F0F';
-const AXIS_LINE = '#1F2937';
-const CYCLE_LINE = '#4B5563';
-const CYCLE_LINE_DASH = [3, 5];
-const GRID_LINE_COLOR = 'rgba(156, 163, 175, 0.28)';
-const MASK_BG = CHART_BG;
-const TOOLTIP_BG = '#1F2937';
-const TOOLTIP_BORDER = '#374151';
-const LEGEND_TEXT = '#9CA3AF';
-const AXIS_TEXT = '#6B7280';
-const SELECTED_STROKE = 'rgba(255,255,255,0.4)';
+// --- Colors -----------------------------------------------------------------
+const STAGE_COLOR: Record<SleepStage, string> = {
+  awake: '#f97316', // orange
+  core: '#2dd4bf', // teal
+  light: '#60a5fa', // periwinkle blue
+  deep: '#9333ea', // vivid purple
+  rem: '#2dd4bf', // teal (same as core)
+};
 
-const SKELETON_BARS: { wFrac: number; depth: number; cycleGapAfter?: boolean }[] = [
-  { wFrac: 0.05, depth: 0.1 },
-  { wFrac: 0.04, depth: 0.45 },
-  { wFrac: 0.06, depth: 0.45 },
-  { wFrac: 0.05, depth: 1 },
-  { wFrac: 0.07, depth: 1 },
-  { wFrac: 0.05, depth: 0.7, cycleGapAfter: true },
-  { wFrac: 0.08, depth: 0.45 },
-  { wFrac: 0.07, depth: 1 },
-  { wFrac: 0.08, depth: 0.7, cycleGapAfter: true },
-  { wFrac: 0.1, depth: 0.45 },
-  { wFrac: 0.08, depth: 0.7 },
-  { wFrac: 0.07, depth: 0.1 },
+// --- Gradient IDs for transition wicks --------------------------------------
+// Pre-define all stage-pair gradients so SVG <Defs> is static
+const STAGE_PAIRS: [SleepStage, SleepStage][] = [
+  ['awake', 'core'],
+  ['awake', 'light'],
+  ['awake', 'deep'],
+  ['core', 'light'],
+  ['core', 'deep'],
+  ['core', 'awake'],
+  ['light', 'deep'],
+  ['light', 'core'],
+  ['light', 'awake'],
+  ['deep', 'core'],
+  ['deep', 'light'],
+  ['deep', 'awake'],
+  ['rem', 'light'],
+  ['rem', 'deep'],
+  ['rem', 'awake'],
 ];
+function gradId(a: SleepStage, b: SleepStage) {
+  return `wick-${a}-${b}`;
+}
 
-interface SleepPhaseRow {
-  id: string;
-  cycle_number: number;
-  stage: 'awake' | 'light' | 'deep' | 'rem';
-  start_time: string;
-  end_time: string;
-  duration_minutes: number;
-  confidence: 'high' | 'medium' | 'low';
+/** Convert absolute minute-from-midnight to SVG x coordinate */
+function minToX(absoluteMin: number, onsetMin: number, totalMin: number, svgW: number): number {
+  return ((absoluteMin - onsetMin) / totalMin) * svgW;
+}
+
+/** Convert a duration in minutes to SVG width - minimum 5px so short phases are visible */
+function minToW(durationMin: number, totalMin: number, svgW: number): number {
+  return Math.max(5, (durationMin / totalMin) * svgW);
+}
+
+/** Format absolute minutes-from-midnight as HH:MM */
+function fmtMin(m: number): string {
+  const h = Math.floor(m / 60) % 24;
+  const mm = m % 60;
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+/** Format absolute minutes-from-midnight as "H AM/PM" for axis labels */
+function fmtAxisHour(m: number): string {
+  const h = Math.floor(m / 60) % 24;
+  return h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
 }
 
 interface SleepHypnogramProps {
-  phases: SleepPhaseRow[];
-  sessionStart: string;
-  sessionEnd: string;
-  isPremium: boolean;
+  data: SleepHypnogramData;
+  isPaidPlan: boolean;
   isLoading?: boolean;
+  /** Defaults to full screen width. Pass explicit value if inside a constrained container. */
+  width?: number;
 }
 
-interface BarGeometry {
-  x: number;
-  width: number;
-  height: number;
-  phase: SleepPhaseRow;
-}
-
-interface TimeLabel {
-  x: number;
-  label: string;
-  align: 'left' | 'center' | 'right';
-}
-
-interface ChartGeometry {
-  bars: BarGeometry[];
-  cycleLines: number[];
-  hourLines: number[];
-  timeLabels: TimeLabel[];
-}
-
-const STAGE_LABEL: Record<SleepPhaseRow['stage'], string> = {
-  awake: 'Wake',
-  light: 'Light',
-  rem: 'REM',
-  deep: 'Deep',
-};
-
-const formatClock = (iso: string, includeMinutesIfNeeded: boolean): string => {
-  const date = new Date(iso);
-  const h24 = date.getHours();
-  const h12 = h24 % 12 || 12;
-  const minutes = date.getMinutes();
-  const meridiem = h24 >= 12 ? 'PM' : 'AM';
-  if (includeMinutesIfNeeded && minutes !== 0) {
-    return `${h12}:${String(minutes).padStart(2, '0')} ${meridiem}`;
-  }
-  return `${h12} ${meridiem}`;
-};
-
-const formatTooltipClock = (iso: string): string => {
-  const date = new Date(iso);
-  const h24 = date.getHours();
-  const h12 = h24 % 12 || 12;
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const meridiem = h24 >= 12 ? 'PM' : 'AM';
-  return `${h12}:${minutes} ${meridiem}`;
-};
-
-function computeGeometry(
-  phases: SleepPhaseRow[],
-  sessionStart: string,
-  sessionEnd: string,
-  chartWidth: number
-): ChartGeometry {
-  if (!sessionStart || !sessionEnd || !chartWidth || phases.length === 0) {
-    return { bars: [], cycleLines: [], hourLines: [], timeLabels: [] };
-  }
-
-  const startMs = new Date(sessionStart).getTime();
-  const endMs = new Date(sessionEnd).getTime();
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
-    return { bars: [], cycleLines: [], hourLines: [], timeLabels: [] };
-  }
-
-  const sorted = [...phases].sort(
-    (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
-  );
-
-  const cycleBoundaryMs: number[] = [];
-  for (let i = 1; i < sorted.length; i += 1) {
-    const prevCycle = sorted[i - 1].cycle_number;
-    const nextCycle = sorted[i].cycle_number;
-    if (prevCycle >= 1 && nextCycle >= 1 && prevCycle !== nextCycle) {
-      const boundaryMs = new Date(sorted[i].start_time).getTime();
-      if (Number.isFinite(boundaryMs) && boundaryMs > startMs && boundaryMs < endMs) {
-        cycleBoundaryMs.push(boundaryMs);
-      }
-    }
-  }
-
-  const totalGapWidth = cycleBoundaryMs.length * CYCLE_GAP;
-  const usableWidth = Math.max(1, chartWidth - totalGapWidth);
-  const totalMs = endMs - startMs;
-  const baseScale = usableWidth / totalMs;
-
-  const gapsBeforeMs = (ms: number) => {
-    let count = 0;
-    for (let i = 0; i < cycleBoundaryMs.length; i += 1) {
-      if (cycleBoundaryMs[i] <= ms) count += 1;
-      else break;
-    }
-    return count;
-  };
-
-  const timeToX = (ms: number) => {
-    const elapsed = ms - startMs;
-    return elapsed * baseScale + gapsBeforeMs(ms) * CYCLE_GAP;
-  };
-
-  const bars: BarGeometry[] = sorted
-    .map((phase) => {
-      const phaseStart = new Date(phase.start_time).getTime();
-      const phaseEnd = new Date(phase.end_time).getTime();
-      if (!Number.isFinite(phaseStart) || !Number.isFinite(phaseEnd) || phaseEnd <= phaseStart) {
-        return null;
-      }
-      const x = Math.max(0, timeToX(phaseStart));
-      const rawWidth = timeToX(phaseEnd) - x - BAR_GAP;
-      const width = Math.max(BAR_MIN_WIDTH, rawWidth);
-      const depthFraction = STAGE_DEPTH[phase.stage] ?? STAGE_DEPTH.awake;
-      const height = depthFraction * CHART_HEIGHT;
-      return { x, width, height, phase };
-    })
-    .filter((bar): bar is BarGeometry => bar !== null);
-
-  const cycleLines = cycleBoundaryMs.map((ms) => timeToX(ms));
-
-  const hourLines: number[] = [];
-  const firstHourMs = Math.ceil(startMs / 3_600_000) * 3_600_000;
-  for (let ms = firstHourMs; ms < endMs; ms += 3_600_000) {
-    const x = timeToX(ms);
-    if (x > 6 && x < chartWidth - 6) {
-      hourLines.push(x);
-    }
-  }
-
-  const edgeGuardMs = 15 * 60_000;
-  const labelCandidates: TimeLabel[] = hourLines
-    .map((x, idx) => {
-      const ms = firstHourMs + idx * 3_600_000;
-      return { x, label: formatClock(new Date(ms).toISOString(), false), align: 'center' as const };
-    })
-    .filter((_, idx) => {
-      const ms = firstHourMs + idx * 3_600_000;
-      return ms - startMs >= edgeGuardMs && endMs - ms >= edgeGuardMs;
-    });
-
-  const maxInnerLabels = 4;
-  const stride = labelCandidates.length > maxInnerLabels ? Math.ceil(labelCandidates.length / maxInnerLabels) : 1;
-  const innerLabels = labelCandidates.filter((_, idx) => idx % stride === 0).slice(0, maxInnerLabels);
-
-  const timeLabels: TimeLabel[] = [
-    { x: 0, label: formatClock(sessionStart, true), align: 'left' },
-    ...innerLabels,
-    { x: chartWidth, label: formatClock(sessionEnd, true), align: 'right' },
-  ];
-
-  return { bars, cycleLines, hourLines, timeLabels };
-}
-
-function StageLegend() {
-  const order: SleepPhaseRow['stage'][] = ['awake', 'rem', 'light', 'deep'];
-
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-        marginBottom: 10,
-        gap: 8,
-      }}
-    >
-      {order.map((stage) => (
-        <View key={stage} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <View
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: STAGE_GRADIENT[stage].top,
-            }}
-          />
-          <Text style={{ color: LEGEND_TEXT, fontSize: 9 }}>{STAGE_LABEL[stage]}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function PhaseTooltip({
-  bar,
-  chartWidth,
-}: {
-  bar: BarGeometry;
-  chartWidth: number;
-}) {
-  const tooltipWidth = 160;
-  const tooltipHeight = 70;
-  let left = bar.x + bar.width / 2 - tooltipWidth / 2;
-  left = Math.max(0, Math.min(left, chartWidth - tooltipWidth));
-
-  return (
-    <View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top: -(tooltipHeight + 8),
-        left,
-        width: tooltipWidth,
-        minHeight: tooltipHeight,
-        backgroundColor: TOOLTIP_BG,
-        borderWidth: 1,
-        borderColor: TOOLTIP_BORDER,
-        borderRadius: 8,
-        paddingHorizontal: 8,
-        paddingVertical: 8,
-      }}
-    >
-      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>{STAGE_LABEL[bar.phase.stage]}</Text>
-      <Text style={{ color: '#9CA3AF', fontSize: 10, marginTop: 2 }}>{bar.phase.duration_minutes} min</Text>
-      <Text style={{ color: '#9CA3AF', fontSize: 10, marginTop: 2 }}>
-        {formatTooltipClock(bar.phase.start_time)} - {formatTooltipClock(bar.phase.end_time)}
-      </Text>
-    </View>
-  );
-}
-
-function HypnogramSkeleton({ chartWidth }: { chartWidth: number }) {
-  const shimmer = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, {
-          toValue: 1,
-          duration: 1200,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.sin),
-        }),
-        Animated.timing(shimmer, {
-          toValue: 0,
-          duration: 1200,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.sin),
-        }),
-      ])
-    );
-
-    animation.start();
-    return () => animation.stop();
-  }, [shimmer]);
-
-  const opacity = shimmer.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.12, 0.3],
-  });
-
-  const width = Math.max(1, chartWidth);
-  const gapCount = SKELETON_BARS.filter((b) => b.cycleGapAfter).length;
-  const totalFrac = SKELETON_BARS.reduce((sum, b) => sum + b.wFrac, 0);
-  const scale = (width - gapCount * CYCLE_GAP) / (totalFrac * width);
-
-  return (
-    <View style={{ width, height: CHART_HEIGHT + AXIS_HEIGHT }}>
-      <Animated.View style={{ opacity, flexDirection: 'row', height: CHART_HEIGHT, alignItems: 'flex-start' }}>
-        {SKELETON_BARS.map((bar, idx) => {
-          const w = Math.max(BAR_MIN_WIDTH, bar.wFrac * width * scale);
-          const h = bar.depth * CHART_HEIGHT;
-          return (
-            <View
-              key={`s-${idx}`}
-              style={{
-                width: w,
-                height: h,
-                marginRight: bar.cycleGapAfter ? CYCLE_GAP : BAR_GAP,
-                borderRadius: CORNER_RADIUS,
-                backgroundColor: '#1F2937',
-              }}
-            />
-          );
-        })}
-      </Animated.View>
-      <View style={{ height: 1, backgroundColor: AXIS_LINE }} />
-    </View>
-  );
-}
-
-function PremiumLockOverlay() {
-  return (
-    <View style={{ position: 'absolute', inset: 0 }} pointerEvents="none">
-      <BlurView intensity={25} tint="dark" style={{ position: 'absolute', inset: 0 }} />
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Ionicons name="lock-closed" size={16} color="#FFFFFF" />
-        <Text style={{ color: '#FFFFFF', marginTop: 6, fontWeight: '600' }}>Upgrade to Pro</Text>
-        <Text style={{ color: AXIS_TEXT, marginTop: 2, fontSize: 12 }}>Unlock sleep stages</Text>
-      </View>
-    </View>
-  );
-}
-
-export const SleepHypnogram = React.memo(function SleepHypnogram({
-  phases,
-  sessionStart,
-  sessionEnd,
-  isPremium,
+const SleepHypnogram = React.memo(function SleepHypnogram({
+  data,
+  isPaidPlan,
   isLoading = false,
+  width: widthProp,
 }: SleepHypnogramProps) {
-  const [chartWidth, setChartWidth] = useState(0);
-  const [selectedBar, setSelectedBar] = useState<BarGeometry | null>(null);
+  // --- Dimensions -----------------------------------------------------------
+  // CRITICAL: svgW must be resolved at render time. Never use 0 as default.
+  const screenW = Dimensions.get('window').width;
+  const svgW = widthProp ?? screenW;
+  const totalMin = data.wakeMin - data.sleepOnsetMin; // e.g. 490 minutes
 
-  const geometry = useMemo(
-    () => computeGeometry(phases, sessionStart, sessionEnd, chartWidth),
-    [phases, sessionStart, sessionEnd, chartWidth]
-  );
+  // --- Tooltip state --------------------------------------------------------
+  const [active, setActive] = useState<SleepPhase | null>(null);
 
-  const maskY = useSharedValue(CHART_HEIGHT);
-  const maskStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: maskY.value }],
-  }));
-
-  useEffect(() => {
-    if (!phases.length || !chartWidth) {
-      maskY.value = CHART_HEIGHT;
-      return;
-    }
-
-    maskY.value = CHART_HEIGHT;
-    maskY.value = withTiming(0, {
-      duration: 1200,
-      easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
-    });
-  }, [phases, chartWidth, maskY]);
-
-  const handleTouchMove = useCallback(
-    (x: number) => {
-      if (!isPremium) return;
-      const hit = geometry.bars.find((bar) => x >= bar.x && x <= bar.x + bar.width);
-      setSelectedBar(hit ?? null);
-    },
-    [geometry.bars, isPremium]
-  );
-
-  const clearSelection = useCallback(() => {
-    setSelectedBar(null);
+  // --- Internal lifecycle guard --------------------------------------------
+  const mountedRef = useRef(false);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
-  const hasChart = phases.length > 0 && chartWidth > 0;
+  // --- Skeleton animation ---------------------------------------------------
+  const skeletonOpacity = useSharedValue(0.4);
+  React.useEffect(() => {
+    if (isLoading) {
+      skeletonOpacity.value = withRepeat(withTiming(0.8, { duration: 800 }), -1, true);
+    } else {
+      skeletonOpacity.value = 1;
+    }
+  }, [isLoading, skeletonOpacity]);
+  const skeletonStyle = useAnimatedStyle(() => ({ opacity: skeletonOpacity.value }));
+
+  // --- Memoised: cycle boundary lines --------------------------------------
+  const cycleBoundaries = useMemo(() => {
+    const lines: React.ReactNode[] = [];
+    data.phases.forEach((phase, i) => {
+      if (i === 0) return;
+      if (phase.cycleNumber !== data.phases[i - 1].cycleNumber) {
+        const x = minToX(phase.startMin, data.sleepOnsetMin, totalMin, svgW);
+        lines.push(
+          <Line
+            key={`cb-${i}`}
+            x1={x}
+            x2={x}
+            y1={0}
+            y2={CHART_H}
+            stroke="#1f2937"
+            strokeWidth={1}
+            strokeDasharray="3,5"
+          />
+        );
+      }
+    });
+    return lines;
+  }, [data.phases, data.sleepOnsetMin, totalMin, svgW]);
+
+  // --- Memoised: connector wicks between consecutive blocks -----------------
+  // A wick is a vertical line connecting the BOTTOM EDGE of the previous block
+  // to the TOP EDGE of the next block. It must NOT span the full chart height.
+  const wicks = useMemo(() => {
+    const lines: React.ReactNode[] = [];
+    for (let i = 0; i < data.phases.length - 1; i += 1) {
+      const curr = data.phases[i];
+      const next = data.phases[i + 1];
+      // x is the meeting point: end of current block = start of next block
+      const x = minToX(curr.startMin + curr.durationMin, data.sleepOnsetMin, totalMin, svgW);
+      // y1 = bottom of current block
+      const y1 = STAGE_Y[curr.stage] + STAGE_H[curr.stage];
+      // y2 = top of next block
+      const y2 = STAGE_Y[next.stage];
+      // Only draw wick if there's actually a vertical gap between the blocks
+      if (Math.abs(y2 - y1) < 2) continue;
+      lines.push(
+        <Line
+          key={`wick-${i}`}
+          x1={x}
+          x2={x}
+          y1={Math.min(y1, y2)}
+          y2={Math.max(y1, y2)}
+          stroke={`url(#${gradId(curr.stage, next.stage)})`}
+          strokeWidth={1.5}
+        />
+      );
+    }
+    return lines;
+  }, [data.phases, data.sleepOnsetMin, totalMin, svgW]);
+
+  // --- Memoised: phase rect blocks -----------------------------------------
+  const phaseRects = useMemo(() => {
+    return data.phases.map((phase, i) => {
+      const x = minToX(phase.startMin, data.sleepOnsetMin, totalMin, svgW);
+      const w = minToW(phase.durationMin, totalMin, svgW);
+      const y = STAGE_Y[phase.stage];
+      const h = STAGE_H[phase.stage];
+      return (
+        <Rect
+          key={`phase-${i}`}
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          rx={4}
+          ry={4}
+          fill={STAGE_COLOR[phase.stage]}
+          onPress={() => setActive(phase)}
+        />
+      );
+    });
+  }, [data.phases, data.sleepOnsetMin, totalMin, svgW]);
+
+  // --- Memoised: time axis labels ------------------------------------------
+  const axisLabels = useMemo(() => {
+    const labels: React.ReactNode[] = [];
+    // Find first whole hour at or after sleepOnsetMin
+    const firstHour = Math.ceil(data.sleepOnsetMin / 60) * 60;
+    for (let m = firstHour; m <= data.wakeMin; m += 60) {
+      const x = minToX(m, data.sleepOnsetMin, totalMin, svgW);
+      labels.push(
+        <SvgText
+          key={`axis-${m}`}
+          x={x}
+          y={CHART_H + 22}
+          fill="#4b5563"
+          fontSize={11}
+          fontWeight="500"
+          textAnchor="middle">
+          {fmtAxisHour(m)}
+        </SvgText>
+      );
+    }
+    return labels;
+  }, [data.sleepOnsetMin, data.wakeMin, totalMin, svgW]);
+
+  // --- Tooltip position (clamped to screen edges) ---------------------------
+  const TOOLTIP_W = 156;
+  const TOOLTIP_H = 76;
+  const tooltipPos = useMemo(() => {
+    if (!active) return { left: 0, top: 0 };
+    const centerX = minToX(
+      active.startMin + active.durationMin / 2,
+      data.sleepOnsetMin,
+      totalMin,
+      svgW
+    );
+    const rawLeft = centerX - TOOLTIP_W / 2;
+    const left = Math.max(8, Math.min(rawLeft, svgW - TOOLTIP_W - 8));
+    const blockTop = STAGE_Y[active.stage];
+    const rawTop = blockTop - TOOLTIP_H - 10;
+    const top = Math.max(8, rawTop);
+    return { left, top };
+  }, [active, data.sleepOnsetMin, totalMin, svgW]);
+
+  // --- Skeleton rects -------------------------------------------------------
+  const SKELETON_RECTS = [
+    { x: svgW * 0.05, y: STAGE_Y.deep, w: svgW * 0.18, h: STAGE_H.deep },
+    { x: svgW * 0.1, y: STAGE_Y.light, w: svgW * 0.12, h: STAGE_H.light },
+    { x: svgW * 0.28, y: STAGE_Y.deep, w: svgW * 0.2, h: STAGE_H.deep },
+    { x: svgW * 0.3, y: STAGE_Y.core, w: svgW * 0.14, h: STAGE_H.core },
+    { x: svgW * 0.55, y: STAGE_Y.light, w: svgW * 0.22, h: STAGE_H.light },
+    { x: svgW * 0.72, y: STAGE_Y.core, w: svgW * 0.16, h: STAGE_H.core },
+  ];
+
+  const clearActive = useCallback(() => {
+    if (!mountedRef.current) {
+      return;
+    }
+    setActive(null);
+  }, []);
+
+  // --- Render ---------------------------------------------------------------
+  if (isLoading) {
+    return (
+      <Animated.View style={[{ width: svgW, height: SVG_HEIGHT }, skeletonStyle]}>
+        <Svg width={svgW} height={SVG_HEIGHT}>
+          {SKELETON_RECTS.map((r, i) => (
+            <Rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} rx={4} ry={4} fill="#1f2937" />
+          ))}
+        </Svg>
+      </Animated.View>
+    );
+  }
 
   return (
-    <View
-      style={{
-        width: '100%',
-        borderRadius: 26,
-        backgroundColor: '#111827',
-        paddingHorizontal: 16,
-        paddingTop: 14,
-        paddingBottom: 10,
-      }}
-      onLayout={(e) => setChartWidth(e.nativeEvent.layout.width - 32)}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-        <Text style={{ color: '#F9FAFB', fontSize: 48, fontWeight: '700', lineHeight: 52 }}>Sleep Stages</Text>
-        <View
-          style={{
-            marginLeft: 12,
-            width: 34,
-            height: 34,
-            borderRadius: 17,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(255,255,255,0.7)',
-          }}
-        >
-          <Ionicons name="information-circle" size={24} color="#111827" />
-        </View>
-      </View>
+    <TouchableWithoutFeedback onPress={clearActive}>
+      <View style={{ width: svgW, height: SVG_HEIGHT }}>
+        {/* Main SVG chart */}
+        <Svg width={svgW} height={SVG_HEIGHT}>
+          {/* 1. Gradient defs for wicks */}
+          <Defs>
+            {STAGE_PAIRS.map(([a, b]) => (
+              <LinearGradient key={gradId(a, b)} id={gradId(a, b)} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={STAGE_COLOR[a]} stopOpacity="1" />
+                <Stop offset="1" stopColor={STAGE_COLOR[b]} stopOpacity="1" />
+              </LinearGradient>
+            ))}
+          </Defs>
 
-      <StageLegend />
+          {/* 2. Cycle boundary dashed lines (behind everything) */}
+          {cycleBoundaries}
 
-      <View style={{ width: chartWidth, height: CHART_HEIGHT + AXIS_HEIGHT, alignSelf: 'center' }}>
-        {isLoading ? <HypnogramSkeleton chartWidth={chartWidth} /> : null}
+          {/* 3. Connector wicks (behind blocks) */}
+          {wicks}
 
-        {!isLoading && isPremium && !hasChart ? (
-          <View style={{ height: CHART_HEIGHT + AXIS_HEIGHT, justifyContent: 'center', alignItems: 'center' }}>
-            <Text style={{ color: AXIS_TEXT, fontSize: 13 }}>Generating sleep timeline</Text>
-          </View>
-        ) : null}
+          {/* 4. Phase blocks (on top) */}
+          {phaseRects}
 
-        {!isLoading && !isPremium ? (
-          <View style={{ height: CHART_HEIGHT + AXIS_HEIGHT }}>
-            <Svg width={chartWidth} height={CHART_HEIGHT}>
-              {Array.from({ length: 8 }).map((_, idx) => {
-                const x = ((idx + 1) / 9) * chartWidth;
-                return (
-                  <Line
-                    key={`lock-grid-${idx}`}
-                    x1={x}
-                    y1={0}
-                    x2={x}
-                    y2={CHART_HEIGHT}
-                    stroke={GRID_LINE_COLOR}
-                    strokeWidth={1}
-                    strokeDasharray={CYCLE_LINE_DASH.join(' ')}
-                  />
-                );
-              })}
-              <Rect x={0} y={CHART_HEIGHT - 1} width={chartWidth} height={1} fill={AXIS_LINE} />
-            </Svg>
-            <PremiumLockOverlay />
-          </View>
-        ) : null}
+          {/* 5. Time axis labels */}
+          {axisLabels}
+        </Svg>
 
-        {!isLoading && isPremium && hasChart ? (
-          <>
-            <Svg width={chartWidth} height={CHART_HEIGHT}>
-              <Defs>
-                {(Object.keys(STAGE_GRADIENT) as (keyof typeof STAGE_GRADIENT)[]).map((stage) => (
-                  <LinearGradient key={stage} id={`grad-${stage}`} x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0" stopColor={STAGE_GRADIENT[stage].top} stopOpacity="1" />
-                    <Stop offset="1" stopColor={STAGE_GRADIENT[stage].bottom} stopOpacity="1" />
-                  </LinearGradient>
-                ))}
-              </Defs>
+        {/* Tooltip - absolutely positioned RN View over SVG */}
+        {active && (
+          <Animated.View
+            entering={FadeIn.duration(150)}
+            style={{
+              position: 'absolute',
+              left: tooltipPos.left,
+              top: tooltipPos.top,
+              width: TOOLTIP_W,
+              pointerEvents: 'none',
+            }}
+            className="rounded-2xl border border-white/10 bg-[#111827] p-3 shadow-2xl">
+            <Text className="text-sm font-semibold" style={{ color: STAGE_COLOR[active.stage] }}>
+              {active.stage.charAt(0).toUpperCase() + active.stage.slice(1)}
+            </Text>
+            <Text className="mt-0.5 text-xs text-gray-400">
+              {fmtMin(active.startMin)} - {fmtMin(active.startMin + active.durationMin)}
+            </Text>
+            <Text className="mt-1 text-xs text-gray-500">
+              {active.durationMin}m . {active.confidence}
+            </Text>
+          </Animated.View>
+        )}
 
-              {geometry.hourLines.map((x, idx) => (
-                <Line
-                  key={`hour-${idx}`}
-                  x1={x}
-                  y1={0}
-                  x2={x}
-                  y2={CHART_HEIGHT}
-                  stroke={GRID_LINE_COLOR}
-                  strokeWidth={1}
-                  strokeDasharray={CYCLE_LINE_DASH.join(' ')}
-                />
-              ))}
-
-              {geometry.bars.map((bar) => (
-                <Rect
-                  key={bar.phase.id}
-                  x={bar.x}
-                  y={0}
-                  width={bar.width}
-                  height={bar.height}
-                  rx={CORNER_RADIUS}
-                  ry={CORNER_RADIUS}
-                  fill={`url(#grad-${bar.phase.stage})`}
-                  stroke={selectedBar?.phase.id === bar.phase.id ? SELECTED_STROKE : 'none'}
-                  strokeWidth={selectedBar?.phase.id === bar.phase.id ? 1.5 : 0}
-                />
-              ))}
-
-              {geometry.cycleLines.map((x, idx) => (
-                <Line
-                  key={`cycle-${idx}`}
-                  x1={x}
-                  y1={0}
-                  x2={x}
-                  y2={CHART_HEIGHT}
-                  stroke={CYCLE_LINE}
-                  strokeDasharray={CYCLE_LINE_DASH.join(' ')}
-                  strokeWidth={1}
-                />
-              ))}
-
-              <Rect x={0} y={CHART_HEIGHT - 1} width={chartWidth} height={1} fill={AXIS_LINE} />
-            </Svg>
-
-            <Reanimated.View
-              style={[
-                {
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  top: -CHART_HEIGHT,
-                  height: CHART_HEIGHT,
-                  backgroundColor: MASK_BG,
-                },
-                maskStyle,
-              ]}
-              pointerEvents="none"
+        {/* Premium lock overlay */}
+        {!isPaidPlan && (
+          <View
+            style={{ position: 'absolute', top: 0, left: 0, width: svgW, height: SVG_HEIGHT }}
+            className="items-center justify-center">
+            {/* Use expo-blur BlurView if available, otherwise dark overlay */}
+            <BlurView
+              intensity={18}
+              tint="dark"
+              style={{ position: 'absolute', top: 0, left: 0, width: svgW, height: SVG_HEIGHT }}
             />
-
-            <View
-              style={{ position: 'absolute', left: 0, right: 0, top: 0, height: CHART_HEIGHT }}
-              onStartShouldSetResponder={() => true}
-              onResponderGrant={(e) => handleTouchMove(e.nativeEvent.locationX)}
-              onResponderMove={(e) => handleTouchMove(e.nativeEvent.locationX)}
-              onResponderRelease={clearSelection}
-              onResponderTerminate={clearSelection}
-            />
-
-            {selectedBar ? <PhaseTooltip bar={selectedBar} chartWidth={chartWidth} /> : null}
-
-            <View
-              style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                top: CHART_HEIGHT + 5,
-                height: AXIS_HEIGHT - 5,
-              }}
-              pointerEvents="none"
-            >
-              {geometry.timeLabels.map((label, idx) => {
-                const textAlign = label.align;
-                const translateX = label.align === 'center' ? -16 : label.align === 'right' ? -32 : 0;
-                return (
-                  <Text
-                    key={`label-${idx}`}
-                    style={{
-                      position: 'absolute',
-                      left: label.x + translateX,
-                      color: AXIS_TEXT,
-                      fontSize: 10,
-                      textAlign,
-                      minWidth: label.align === 'center' ? 32 : 40,
-                    }}
-                  >
-                    {label.label}
-                  </Text>
-                );
-              })}
-            </View>
-          </>
-        ) : null}
+            <Text className="mb-2 text-2xl text-white">🔒</Text>
+            <Text className="px-8 text-center text-xs text-white">
+              Upgrade to view sleep stages
+            </Text>
+          </View>
+        )}
       </View>
-    </View>
+    </TouchableWithoutFeedback>
   );
 });
+
+export default SleepHypnogram;

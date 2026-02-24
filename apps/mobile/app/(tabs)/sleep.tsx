@@ -36,9 +36,10 @@ import {
 import { addDays, dateKey, isSameDay, normalizeDate, padToSeven } from '@lib/sleepDateUtils';
 import { useSleepGradient } from '@lib/useSleepGradient';
 import { SleepMetricsList, SleepMetricItem } from '@components/sleep/dashboard/SleepMetricsList';
-import { SleepHypnogram } from '@components/sleep/SleepHypnogram';
+import SleepHypnogram from '@components/sleep/SleepHypnogram';
 import { fetchSleepTimeline, SleepTimelineResponse } from '@lib/api';
 import { isPaidPlan } from '@lib/planUtils';
+import { MOCK_HYPNOGRAM } from '@lib/sleepMocks';
 
 // Colors
 const BG_PRIMARY = '#0B0B0D';
@@ -187,8 +188,8 @@ export default function SleepScreen() {
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
   const populatedKeysRef = useRef<Set<string>>(new Set());
-  const [timeline, setTimeline] = useState<SleepTimelineResponse | null>(null);
-  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [, setTimeline] = useState<SleepTimelineResponse | null>(null);
+  const [, setTimelineLoading] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -776,10 +777,7 @@ export default function SleepScreen() {
                     </Text>
                     <Text style={styles.description}>
                       {itemHasData
-                        ? getSleepDescription(
-                            itemScore ?? 0,
-                            itemHistory?.duration_minutes ?? 0
-                          )
+                        ? getSleepDescription(itemScore ?? 0, itemHistory?.duration_minutes ?? 0)
                         : 'No sleep data yet for this day. Add a record to see your score and trends.'}
                     </Text>
                   </View>
@@ -818,13 +816,16 @@ export default function SleepScreen() {
                 <SleepMetricsList metrics={metricCards} />
                 {currentRecord?.start_time && currentRecord?.end_time ? (
                   <View style={styles.stageSection}>
-                    <SleepHypnogram
-                      phases={timeline?.phases ?? []}
-                      sessionStart={currentRecord.start_time}
-                      sessionEnd={currentRecord.end_time}
-                      isPremium={isPremium}
-                      isLoading={timelineLoading}
-                    />
+                    <View className="mb-3 flex-row items-center gap-2 px-4">
+                      <Text className="text-xl font-bold text-white">Sleep Stages</Text>
+                      <View className="h-5 w-5 items-center justify-center rounded-full border border-gray-700">
+                        <Text className="text-[10px] text-gray-500">i</Text>
+                      </View>
+                    </View>
+
+                    <SleepHypnogram data={MOCK_HYPNOGRAM} isPaidPlan={true} isLoading={false} />
+
+                    <View className="h-6" />
                   </View>
                 ) : null}
               </>
@@ -1030,7 +1031,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   stageSection: {
-    marginBottom: 32,
+    marginBottom: 8,
+    marginHorizontal: -SHEET_PADDING_X,
   },
   chartSection: {
     marginBottom: 40,

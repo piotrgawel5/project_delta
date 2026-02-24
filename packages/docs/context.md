@@ -201,7 +201,7 @@ docker-compose up   # Start API + Supabase (if configured)
 
 ### TypeScript
 
-- **Mobile:** `apps/mobile/tsconfig.json` strict mode, path aliases (@lib, @components, @modules, @store, @project-delta/shared)
+- **Mobile:** `apps/mobile/tsconfig.json` strict mode, path aliases (@lib, @components, @modules, @store, @project-delta/shared, @project-delta/constants)
 - **API:** `services/api/tsconfig.json` strict mode, ES2020 target, CommonJS
 - **Shared:** `packages/shared/` – declared as main entry for monorepo imports
 
@@ -231,6 +231,7 @@ docker-compose up   # Start API + Supabase (if configured)
 - **TS Support:** ts-jest
 - **Location:** `apps/mobile/lib/__tests__/` for mobile unit tests
 - **Naming:** `.test.ts` suffix (e.g., `sleepTimeline.test.ts`)
+- **Config:** `apps/mobile/jest.config.js` maps mobile/shared/constants aliases for unit tests
 
 ## Deployment
 

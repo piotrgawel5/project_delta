@@ -10,6 +10,7 @@
       "@components/*": ["components/*"],
       "@store/*": ["store/*"],
       "@project-delta/shared": ["../../packages/shared/src/index.ts"],
+      "@project-delta/constants": ["../../packages/constants/src/index.ts"],
       "@shared": ["../../packages/shared/src/index.ts"],
       "@constants": ["constants/index.ts"]
     }

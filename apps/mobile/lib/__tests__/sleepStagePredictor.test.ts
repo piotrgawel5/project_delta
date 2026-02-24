@@ -103,8 +103,12 @@ describe('sleepStagePredictor', () => {
     const debt = buildPremiumPrediction(makePredictionInput({ recentSleepDebt: 250 }));
     const baseline = buildPremiumPrediction(makePredictionInput({ recentSleepDebt: 0 }));
 
-    expect(debt.stageDistribution.deepPercent).toBeGreaterThan(baseline.stageDistribution.deepPercent);
-    expect(debt.stageDistribution.remPercent).toBeGreaterThan(baseline.stageDistribution.remPercent);
+    expect(debt.stageDistribution.deepPercent).toBeGreaterThan(
+      baseline.stageDistribution.deepPercent
+    );
+    expect(debt.stageDistribution.remPercent).toBeGreaterThan(
+      baseline.stageDistribution.remPercent
+    );
   });
 
   test('4) Real existing stage data -> confidence high and exact distribution match', () => {
@@ -155,14 +159,14 @@ describe('sleepStagePredictor', () => {
     expect(Math.abs(total - durationMinutes)).toBeLessThanOrEqual(1);
   });
 
-  test("7) generatePhaseTimeline has no gaps/overlaps (event end == next start)", () => {
+  test('7) generatePhaseTimeline has no gaps/overlaps (event end == next start)', () => {
     const events = buildPremiumPrediction(makePredictionInput()).cycleMap.phaseTimeline;
     for (let i = 0; i < events.length - 1; i += 1) {
       expect(events[i].endTime).toBe(events[i + 1].startTime);
     }
   });
 
-  test("8) generatePhaseTimeline first event is awake with cycleNumber=0", () => {
+  test('8) generatePhaseTimeline first event is awake with cycleNumber=0', () => {
     const first = buildPremiumPrediction(makePredictionInput()).cycleMap.phaseTimeline[0];
     expect(first.stage).toBe('awake');
     expect(first.cycleNumber).toBe(0);
@@ -250,7 +254,9 @@ describe('score improvements', () => {
       userProfile: { age: 30, sleepGoalMinutes: 480, chronotype: 'intermediate' },
     });
 
-    expect((highAwake.scoreBreakdown.wasoScore ?? 0)).toBeLessThan(lowAwake.scoreBreakdown.wasoScore ?? 0);
+    expect(highAwake.scoreBreakdown.wasoScore ?? 0).toBeLessThan(
+      lowAwake.scoreBreakdown.wasoScore ?? 0
+    );
   });
 
   test('14) J-curve: 9.5h -> lower TST score than 7.5h', () => {
@@ -281,6 +287,8 @@ describe('score improvements', () => {
       userProfile: { age: 30, sleepGoalMinutes: 480, chronotype: 'intermediate' },
     });
 
-    expect((ninePointFive.scoreBreakdown.tstScore ?? 0)).toBeLessThan(sevenPointFive.scoreBreakdown.tstScore ?? 0);
+    expect(ninePointFive.scoreBreakdown.tstScore ?? 0).toBeLessThan(
+      sevenPointFive.scoreBreakdown.tstScore ?? 0
+    );
   });
 });

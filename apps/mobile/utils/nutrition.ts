@@ -13,6 +13,6 @@ export function getTodaysMacros(food: NutritionEntry[]) {
         carbs: acc.carbs + f.macros.carbs,
         fats: acc.fats + f.macros.fats,
       }),
-      { calories: 0, protein: 0, carbs: 0, fats: 0 },
+      { calories: 0, protein: 0, carbs: 0, fats: 0 }
     );
 }

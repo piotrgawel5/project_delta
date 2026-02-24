@@ -1,8 +1,5 @@
 import type { CycleDistributorInput, SleepPhaseEvent } from '@shared';
-import {
-  CYCLE_DISTRIBUTOR_CONSTANTS,
-  distributeSleepcycles,
-} from '../sleepCycleDistributor';
+import { CYCLE_DISTRIBUTOR_CONSTANTS, distributeSleepcycles } from '../sleepCycleDistributor';
 
 const BASE_INPUT: CycleDistributorInput = {
   startTime: '2024-01-15T23:30:00.000Z',
@@ -109,7 +106,9 @@ describe('sleepCycleDistributor', () => {
     const withDebt = requireOutput({ ...BASE_INPUT, recentSleepDebt: 250 });
     const noDebt = requireOutput({ ...BASE_INPUT, recentSleepDebt: 0 });
 
-    expect(deepInCycle1(withDebt.phaseTimeline)).toBeGreaterThan(deepInCycle1(noDebt.phaseTimeline));
+    expect(deepInCycle1(withDebt.phaseTimeline)).toBeGreaterThan(
+      deepInCycle1(noDebt.phaseTimeline)
+    );
   });
 
   test('5) Age 65 has less cycle 1 deep minutes than age 25', () => {

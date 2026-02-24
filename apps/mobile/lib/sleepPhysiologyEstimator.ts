@@ -48,9 +48,10 @@ function normalizeSex(sex?: string | null): { value: Sex | null; assumed: boolea
   return { value: null, assumed: true };
 }
 
-function normalizeActivityLevel(
-  activity_level?: string | null
-): { value: ActivityLevel; assumed: boolean } {
+function normalizeActivityLevel(activity_level?: string | null): {
+  value: ActivityLevel;
+  assumed: boolean;
+} {
   if (
     activity_level === 'sedentary' ||
     activity_level === 'light' ||

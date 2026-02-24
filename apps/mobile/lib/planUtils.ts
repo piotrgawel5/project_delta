@@ -8,6 +8,6 @@ export function getPlanFeatures(plan?: string | null) {
   return {
     premiumSleepPrediction: isPaidPlan(plan),
     advancedInsights: isPaidPlan(plan),
-    sleepTimeline: isPaidPlan(plan),   // flag for future UI gating
+    sleepTimeline: isPaidPlan(plan), // flag for future UI gating
   };
 }

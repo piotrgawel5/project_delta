@@ -1,6 +1,6 @@
-import { requireOptionalNativeModule } from "expo-modules-core";
+import { requireOptionalNativeModule } from 'expo-modules-core';
 
-const CredentialAuthModule = requireOptionalNativeModule("CredentialAuth");
+const CredentialAuthModule = requireOptionalNativeModule('CredentialAuth');
 
 export interface GoogleCredentials {
   idToken: string;
@@ -14,36 +14,31 @@ export interface GoogleCredentials {
 }
 
 export interface PasskeyCredentials {
-  type: "public-key";
+  type: 'public-key';
   credential: string; // JSON string from Android Credential Manager
 }
 
 export const CredentialAuth = {
   async signInWithGoogleAutoSelect(
     webClientId: string,
-    autoSelect: boolean,
+    autoSelect: boolean
   ): Promise<GoogleCredentials> {
     if (!CredentialAuthModule) {
-      throw new Error("CredentialAuth native module unavailable");
+      throw new Error('CredentialAuth native module unavailable');
     }
-    return CredentialAuthModule.signInWithGoogleAutoSelect(
-      webClientId,
-      autoSelect,
-    );
+    return CredentialAuthModule.signInWithGoogleAutoSelect(webClientId, autoSelect);
   },
 
   async registerPasskey(requestJson: string): Promise<PasskeyCredentials> {
     if (!CredentialAuthModule) {
-      throw new Error("CredentialAuth native module unavailable");
+      throw new Error('CredentialAuth native module unavailable');
     }
     return CredentialAuthModule.registerPasskey(requestJson);
   },
 
-  async authenticateWithPasskey(
-    requestJson: string,
-  ): Promise<PasskeyCredentials> {
+  async authenticateWithPasskey(requestJson: string): Promise<PasskeyCredentials> {
     if (!CredentialAuthModule) {
-      throw new Error("CredentialAuth native module unavailable");
+      throw new Error('CredentialAuth native module unavailable');
     }
     return CredentialAuthModule.authenticateWithPasskey(requestJson);
   },

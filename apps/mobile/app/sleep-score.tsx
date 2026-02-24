@@ -6,15 +6,12 @@ import { router, useLocalSearchParams } from 'expo-router';
 import Animated, {
   FadeIn,
   FadeInDown,
-  useAnimatedStyle,
   useSharedValue,
   withTiming,
-  withDelay,
   Easing,
 } from 'react-native-reanimated';
 import Svg, {
   Circle,
-  G,
   Defs,
   LinearGradient as SvgLinearGradient,
   Stop,
@@ -24,7 +21,6 @@ import Svg, {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const RECOVERY = '#3E42A9';
 const RECOVERY_LIGHT = '#5B5FC7';
-const ACCENT = '#30D158';
 
 const SCORE_FACTORS = [
   {
@@ -71,20 +67,11 @@ export default function SleepScoreScreen() {
   };
 
   const ringProgress = useSharedValue(0);
-  const barAnimations = SCORE_FACTORS.map(() => useSharedValue(0));
 
   useEffect(() => {
     ringProgress.value = withTiming(scores.total / 100, {
       duration: 800,
       easing: Easing.out(Easing.cubic),
-    });
-
-    barAnimations.forEach((anim, index) => {
-      const scoreKey = SCORE_FACTORS[index].id as keyof typeof scores;
-      anim.value = withDelay(
-        200 + index * 80,
-        withTiming(scores[scoreKey] / 100, { duration: 500 })
-      );
     });
   }, []);
 
@@ -215,7 +202,7 @@ export default function SleepScoreScreen() {
         {/* Insight Card */}
         <Animated.View entering={FadeInDown.delay(500).duration(400)}>
           <View style={styles.insightCard}>
-            <Text style={styles.insightTitle}>Tonight's Goal</Text>
+            <Text style={styles.insightTitle}>Tonight&apos;s Goal</Text>
             <Text style={styles.insightText}>
               Try to get to bed by 10:30 PM to improve your consistency score. Aim for at least 7
               hours of sleep.

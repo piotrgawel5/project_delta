@@ -4,10 +4,7 @@ import type { DataSource } from '@shared';
  * Source reliability factors grounded in consumer tracking accuracy vs PSG.
  * Wearables with PPG+accelerometer perform best; inferred sources are lower-reliability.
  */
-export const SOURCE_RELIABILITY: Record<
-  DataSource,
-  { factor: number; stageDataValid: boolean }
-> = {
+export const SOURCE_RELIABILITY: Record<DataSource, { factor: number; stageDataValid: boolean }> = {
   wearable: { factor: 1.0, stageDataValid: true },
   health_connect: { factor: 0.95, stageDataValid: true },
   manual: { factor: 0.85, stageDataValid: false },
@@ -182,7 +179,7 @@ export const AGE_NORMS = {
     wasoExpected: 15,
     wasoAcceptable: 20,
   },
-  "18-25": {
+  '18-25': {
     idealDurationMin: 490,
     minHealthyDurationMin: 420,
     deepPctIdeal: 20,
@@ -196,7 +193,7 @@ export const AGE_NORMS = {
     wasoExpected: 18,
     wasoAcceptable: 20,
   },
-  "26-35": {
+  '26-35': {
     idealDurationMin: 460,
     minHealthyDurationMin: 420,
     deepPctIdeal: 18,
@@ -210,7 +207,7 @@ export const AGE_NORMS = {
     wasoExpected: 22,
     wasoAcceptable: 25,
   },
-  "36-50": {
+  '36-50': {
     idealDurationMin: 450,
     minHealthyDurationMin: 420,
     deepPctIdeal: 15,
@@ -224,7 +221,7 @@ export const AGE_NORMS = {
     wasoExpected: 32,
     wasoAcceptable: 40,
   },
-  "51-65": {
+  '51-65': {
     idealDurationMin: 440,
     minHealthyDurationMin: 420,
     deepPctIdeal: 13,
@@ -238,7 +235,7 @@ export const AGE_NORMS = {
     wasoExpected: 42,
     wasoAcceptable: 55,
   },
-  "65plus": {
+  '65plus': {
     idealDurationMin: 420,
     minHealthyDurationMin: 390,
     deepPctIdeal: 11,
@@ -252,4 +249,23 @@ export const AGE_NORMS = {
     wasoExpected: 52,
     wasoAcceptable: 70,
   },
+} as const;
+
+export const sleepHypnogramColors = {
+  bg: '#0a0a0a',
+  grid: 'rgba(255,255,255,0.06)',
+  awake: '#ff8a00',
+  rem: '#3bd6c9',
+  core: '#4aa3ff',
+  deep: '#6d2cf3',
+  label: 'rgba(255,255,255,0.88)',
+  axis: 'rgba(255,255,255,0.32)',
+  lockOverlay: 'rgba(10,10,10,0.6)',
+  premiumOverlay: 'rgba(10,10,10,0.72)',
+  textPrimary: '#FFFFFF',
+  tooltipBg: 'rgba(8,8,8,0.98)',
+  tooltipBorder: 'rgba(255,255,255,0.12)',
+  selectionStroke: 'rgba(255,255,255,0.45)',
+  skeletonBase: 'rgba(255,255,255,0.03)',
+  skeletonShimmer: 'rgba(255,255,255,0.1)',
 } as const;

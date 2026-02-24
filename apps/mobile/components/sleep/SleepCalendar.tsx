@@ -532,7 +532,12 @@ const styles = StyleSheet.create({
     padding: 4,
     height: 48,
   },
-  segmentBtn: { flex: 1, borderRadius: SEGMENT_RADIUS, justifyContent: 'center', alignItems: 'center' },
+  segmentBtn: {
+    flex: 1,
+    borderRadius: SEGMENT_RADIUS,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   segmentBtnActive: {
     backgroundColor: '#2C2C2E',
     borderRadius: SEGMENT_RADIUS,

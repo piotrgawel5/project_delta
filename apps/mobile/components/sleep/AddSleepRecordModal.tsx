@@ -477,7 +477,8 @@ export const AddSleepRecordModal = ({
                   (isSaving || !userId) && styles.saveBtnDisabled,
                   pressed && !(isSaving || !userId) && { opacity: 0.85 },
                 ]}>
-                <Text style={[styles.saveBtnText, (isSaving || !userId) && styles.saveBtnTextDisabled]}>
+                <Text
+                  style={[styles.saveBtnText, (isSaving || !userId) && styles.saveBtnTextDisabled]}>
                   {isSaving ? 'Saving...' : 'Save Sleep'}
                 </Text>
               </Pressable>

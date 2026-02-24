@@ -138,7 +138,11 @@ const MetricActionTag = ({ label, onPress }: MetricActionTagProps) => (
   <Pressable
     accessibilityRole="button"
     onPress={onPress}
-    style={({ pressed }) => [styles.metricTag, styles.metricActionTag, pressed && styles.tagPressed]}>
+    style={({ pressed }) => [
+      styles.metricTag,
+      styles.metricActionTag,
+      pressed && styles.tagPressed,
+    ]}>
     <Text style={styles.metricTagText}>{label}</Text>
     <Text style={styles.metricActionChevron}>›</Text>
   </Pressable>
@@ -183,11 +187,12 @@ function MetricCard({
     () => (stages || []).filter((stage) => typeof stage.percent === 'number' && stage.percent > 0),
     [stages]
   );
-  const statusTag = isInteractive && onPress ? (
-    <MetricActionTag label={statusText} onPress={onPress} />
-  ) : (
-    <MetricTag label={statusText} />
-  );
+  const statusTag =
+    isInteractive && onPress ? (
+      <MetricActionTag label={statusText} onPress={onPress} />
+    ) : (
+      <MetricTag label={statusText} />
+    );
   const dateLabel = useMemo(
     () => getRelativeDateLabel(dataDate, selectedDate),
     [dataDate, selectedDate]

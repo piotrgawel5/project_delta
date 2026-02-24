@@ -14,6 +14,9 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
+// Hook for easy dialog usage
+import { createContext, useContext, useState, ReactNode } from 'react';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ACCENT = '#30D158';
 
@@ -159,9 +162,6 @@ export default function Dialog({
     </Modal>
   );
 }
-
-// Hook for easy dialog usage
-import { createContext, useContext, useState, ReactNode } from 'react';
 
 interface DialogContextType {
   showDialog: (config: Omit<DialogProps, 'visible' | 'onClose'>) => Promise<boolean>;

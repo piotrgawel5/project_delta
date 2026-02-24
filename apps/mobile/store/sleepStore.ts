@@ -249,7 +249,10 @@ async function flushScorePersistQueue(): Promise<void> {
           }
         } catch (error) {
           console.warn('[SleepStore] Error batch persisting scores', error);
-          if (isTransientScorePersistFailure(error) && item.attempts + 1 < MAX_SCORE_PERSIST_ATTEMPTS) {
+          if (
+            isTransientScorePersistFailure(error) &&
+            item.attempts + 1 < MAX_SCORE_PERSIST_ATTEMPTS
+          ) {
             scorePersistQueue.set(id, {
               update: item.update,
               attempts: item.attempts + 1,
@@ -1227,7 +1230,10 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         synced_at: new Date().toISOString(),
       };
 
-      const candidateRecentHistory = [sleepRecord, ...previousRecentHistory.filter((r) => r.date !== date)]
+      const candidateRecentHistory = [
+        sleepRecord,
+        ...previousRecentHistory.filter((r) => r.date !== date),
+      ]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 30);
       let scoredRecentHistory = computeScoresForRecords(candidateRecentHistory, profile);
@@ -1368,7 +1374,10 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                 (max, event) => Math.max(max, event.cycleNumber),
                 0
               );
-              const cycleBreakdown = buildCycleBreakdownFromTimeline(phaseTimeline, estimatedCycles);
+              const cycleBreakdown = buildCycleBreakdownFromTimeline(
+                phaseTimeline,
+                estimatedCycles
+              );
 
               record.premiumPrediction = {
                 ...record.premiumPrediction,

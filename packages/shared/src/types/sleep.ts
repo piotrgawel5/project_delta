@@ -7,6 +7,28 @@ export type DataSource =
 
 export type ConfidenceLevel = "high" | "medium" | "low";
 
+export type SleepStage = "awake" | "core" | "light" | "deep" | "rem";
+
+export interface SleepPhase {
+  stage: SleepStage;
+  startMin: number; // absolute minutes from midnight
+  durationMin: number;
+  cycleNumber: number;
+  confidence: ConfidenceLevel;
+}
+
+export interface SleepHypnogramData {
+  phases: SleepPhase[];
+  sleepOnsetMin: number;
+  wakeMin: number;
+}
+
+export interface WeeklySparkEntry {
+  day: string;
+  value: number;
+  active: boolean;
+}
+
 export interface ScreenTimeSummary {
   totalMinutesLast2Hours?: number;
   blueLight?: boolean;

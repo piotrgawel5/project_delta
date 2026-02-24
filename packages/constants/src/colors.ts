@@ -1,0 +1,18 @@
+export const sleepHypnogramColors = {
+  bg: '#0a0a0a',
+  grid: 'rgba(255,255,255,0.06)',
+  awake: '#ff8a00',
+  rem: '#3bd6c9',
+  core: '#4aa3ff',
+  deep: '#6d2cf3',
+  label: 'rgba(255,255,255,0.88)',
+  axis: 'rgba(255,255,255,0.32)',
+  lockOverlay: 'rgba(10,10,10,0.6)',
+  premiumOverlay: 'rgba(10,10,10,0.72)',
+  textPrimary: '#FFFFFF',
+  tooltipBg: 'rgba(8,8,8,0.98)',
+  tooltipBorder: 'rgba(255,255,255,0.12)',
+  selectionStroke: 'rgba(255,255,255,0.45)',
+  skeletonBase: 'rgba(255,255,255,0.03)',
+  skeletonShimmer: 'rgba(255,255,255,0.1)',
+} as const;

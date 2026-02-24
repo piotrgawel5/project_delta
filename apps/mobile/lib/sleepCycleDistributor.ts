@@ -25,8 +25,7 @@ export const CYCLE_DISTRIBUTOR_CONSTANTS = {
   HISTORY_MED_CONF: 3,
 } as const;
 
-const clamp = (val: number, min: number, max: number): number =>
-  Math.max(min, Math.min(max, val));
+const clamp = (val: number, min: number, max: number): number => Math.max(min, Math.min(max, val));
 
 function getAgeCalibratedStageTargets(age: number | null | undefined): {
   deepRatio: number;
@@ -61,9 +60,13 @@ export function resolveStagesBudgets(input: CycleDistributorInput): {
   const { deepRatio, remRatio } = getAgeCalibratedStageTargets(input.age);
 
   let deepBudget =
-    input.deepSleepMinutes != null ? Math.round(input.deepSleepMinutes) : Math.round(duration * deepRatio);
+    input.deepSleepMinutes != null
+      ? Math.round(input.deepSleepMinutes)
+      : Math.round(duration * deepRatio);
   let remBudget =
-    input.remSleepMinutes != null ? Math.round(input.remSleepMinutes) : Math.round(duration * remRatio);
+    input.remSleepMinutes != null
+      ? Math.round(input.remSleepMinutes)
+      : Math.round(duration * remRatio);
   const awakeBudget =
     input.awakeSleepMinutes != null
       ? Math.round(input.awakeSleepMinutes)
@@ -116,13 +119,7 @@ export function resolveStagesBudgets(input: CycleDistributorInput): {
 
 export function computeSOL(estimatedRestingHR: number, age: number): number {
   const baseSOL =
-    estimatedRestingHR > 70
-      ? 18
-      : estimatedRestingHR > 58
-        ? 13
-        : estimatedRestingHR > 48
-          ? 9
-          : 7;
+    estimatedRestingHR > 70 ? 18 : estimatedRestingHR > 58 ? 13 : estimatedRestingHR > 48 ? 9 : 7;
 
   const ageSOLAdj = Math.max(0, (age - 40) * 0.15);
 
@@ -391,11 +388,7 @@ export function buildTimeline(params: {
       cursor = targetEndMs;
     }
   } else {
-    console.warn(
-      '[SleepCycleDistributor] Drift exceeds correction limit:',
-      drift / 60_000,
-      'min'
-    );
+    console.warn('[SleepCycleDistributor] Drift exceeds correction limit:', drift / 60_000, 'min');
   }
 
   const totalMins = events.reduce((sum, event) => sum + event.durationMinutes, 0);
@@ -486,9 +479,7 @@ export function buildCycleBreakdown(
   return breakdown;
 }
 
-export function distributeSleepcycles(
-  input: CycleDistributorInput
-): CycleDistributorOutput | null {
+export function distributeSleepcycles(input: CycleDistributorInput): CycleDistributorOutput | null {
   if (!input.startTime?.trim() || !input.endTime?.trim()) {
     return null;
   }
@@ -649,9 +640,7 @@ function redistributeDifferenceToLaterCycles(values: number[], cycle0Difference:
     return;
   }
 
-  const laterIndices = values
-    .map((_, index) => index)
-    .filter((index) => index > 0);
+  const laterIndices = values.map((_, index) => index).filter((index) => index > 0);
 
   const requiredLaterDelta = -cycle0Difference;
 
@@ -784,4 +773,3 @@ function forceSumToTarget(values: number[], target: number, preferLastNonZero: b
     values[values.length - 1] = Math.max(0, values[values.length - 1] + delta);
   }
 }
-
