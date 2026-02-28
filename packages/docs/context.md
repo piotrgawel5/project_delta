@@ -99,6 +99,7 @@ project_delta/
 - Manual sleep entry uses the circular clock picker and swipe navigation on `SleepScreen` to refine data without leaving the dashboard
 - Premium sleep hypnogram (`apps/mobile/components/sleep/SleepHypnogram.tsx`) with SVG bars, cycle boundaries, tooltip interaction, reveal mask animation, loading skeleton, and lock overlay for free plans
 - Timeline fetch helper in `apps/mobile/lib/api.ts` (`fetchSleepTimeline`) uses the same authenticated API client pattern and treats 404 as "no timeline yet"
+- Timeline-to-hypnogram adapter (`apps/mobile/lib/hypnogramTimeline.ts`) normalizes API `phases[]` (`sleep_phase_timeline` shape) into `SleepHypnogramData` for rendering in `SleepScreen`
 
 ### API Service (`services/api/`)
 

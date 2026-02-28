@@ -1,0 +1,12 @@
+<svg width="4" height="5" viewBox="0 0 4 5" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="4" height="5" fill="#1E1E1E"/>
+<rect id="Background" x="-176" y="-192.592" width="380" height="280" rx="26" fill="black"/>
+<path id="Awake_bg" d="M-4 4.40817H57C58.6569 4.40817 60 5.75132 60 7.40817V33.4082C60 35.065 58.6569 36.4082 57 36.4082H-1C-2.65685 36.4082 -4 35.065 -4 33.4082V4.40817Z" fill="#FF5900" fill-opacity="0.4"/>
+<path id="Vector 1" d="M4 4.40817H2.2716e-06C2.2716e-06 4.40817 4.5432e-06 -1.59184 2.2716e-06 0.408166C0 2.40817 2 4.40817 4 4.40817Z" fill="url(#paint0_linear_0_1)"/>
+<defs>
+<linearGradient id="paint0_linear_0_1" x1="2" y1="-10.0918" x2="2" y2="4.40817" gradientUnits="userSpaceOnUse">
+<stop stop-color="#00FFEA" stop-opacity="0.4"/>
+<stop offset="1" stop-color="#FF5900" stop-opacity="0.4"/>
+</linearGradient>
+</defs>
+</svg>

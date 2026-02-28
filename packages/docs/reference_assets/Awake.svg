@@ -1,0 +1,6 @@
+<svg width="62" height="30" viewBox="0 0 62 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="62" height="30" fill="#1E1E1E"/>
+<rect id="Background" x="-173" y="-198" width="380" height="280" rx="26" fill="black"/>
+<path id="Awake_bg" d="M-1 -1H60C61.6569 -1 63 0.343146 63 2V28C63 29.6569 61.6569 31 60 31H2C0.343146 31 -1 29.6569 -1 28V-1Z" fill="#FF5900" fill-opacity="0.4"/>
+<rect id="Awake" width="62" height="30" rx="3" fill="#FF5900"/>
+</svg>

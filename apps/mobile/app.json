@@ -50,6 +50,12 @@
       },
       "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT"],
       "package": "com.itork.projectdelta"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c146845d-b15b-4219-8d9a-dcf8a36e42b0"
+      }
     }
   }
 }

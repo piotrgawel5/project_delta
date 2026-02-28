@@ -39,7 +39,8 @@ import { SleepMetricsList, SleepMetricItem } from '@components/sleep/dashboard/S
 import SleepHypnogram from '@components/sleep/SleepHypnogram';
 import { fetchSleepTimeline, SleepTimelineResponse } from '@lib/api';
 import { isPaidPlan } from '@lib/planUtils';
-import { MOCK_HYPNOGRAM } from '@lib/sleepMocks';
+import { buildHypnogramDataFromTimeline } from '@lib/hypnogramTimeline';
+import type { SleepHypnogramData } from '@project-delta/shared';
 
 // Colors
 const BG_PRIMARY = '#0B0B0D';
@@ -76,6 +77,11 @@ const METRIC_COLORS = {
   wakeTime: '#D4A017',
 } as const;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMPTY_HYPNOGRAM: SleepHypnogramData = {
+  sleepOnsetMin: 0,
+  wakeMin: 1,
+  phases: [],
+};
 
 const toBedMinutes = (iso?: string | null) => {
   if (!iso) return null;
@@ -188,8 +194,8 @@ export default function SleepScreen() {
   const [cacheRange, setCacheRange] = useState({ min: 0, max: 0 });
   const [cachedHistory, setCachedHistory] = useState<Map<string, any>>(new Map());
   const populatedKeysRef = useRef<Set<string>>(new Set());
-  const [, setTimeline] = useState<SleepTimelineResponse | null>(null);
-  const [, setTimelineLoading] = useState(false);
+  const [timeline, setTimeline] = useState<SleepTimelineResponse | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -253,6 +259,14 @@ export default function SleepScreen() {
   const hi = currentData.historyItem;
   const currentRecord = hi;
   const hasData = !!hi;
+  const hypnogramData = useMemo<SleepHypnogramData | null>(() => {
+    if (!timeline || !Array.isArray(timeline.phases) || timeline.phases.length === 0) {
+      return null;
+    }
+    return buildHypnogramDataFromTimeline({
+      phases: timeline.phases,
+    }).data;
+  }, [timeline]);
 
   // Metrics
   const durationMinutes = hi?.duration_minutes || 0;
@@ -664,6 +678,7 @@ export default function SleepScreen() {
 
     const loadTimeline = async () => {
       if (!userId || !date) {
+        setTimeline(null);
         return;
       }
       if (!isPremium) {
@@ -671,9 +686,11 @@ export default function SleepScreen() {
         return;
       }
       if (id && !UUID_REGEX.test(id)) {
+        setTimeline(null);
         return;
       }
 
+      setTimeline(null);
       setTimelineLoading(true);
       try {
         const result = await fetchSleepTimeline(userId, date);
@@ -823,7 +840,14 @@ export default function SleepScreen() {
                       </View>
                     </View>
 
-                    <SleepHypnogram data={MOCK_HYPNOGRAM} isPaidPlan={true} isLoading={false} />
+                    <View style={{ alignItems: 'center' }}>
+                      <SleepHypnogram
+                        data={hypnogramData ?? EMPTY_HYPNOGRAM}
+                        isPaidPlan={isPremium}
+                        isLoading={timelineLoading}
+                        width={SCREEN_W - SHEET_PADDING_X * 2}
+                      />
+                    </View>
 
                     <View className="h-6" />
                   </View>
