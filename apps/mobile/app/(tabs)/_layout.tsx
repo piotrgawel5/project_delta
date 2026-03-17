@@ -1,12 +1,15 @@
-// app/(tabs)/_layout.tsx
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Dimensions, Pressable, Animated } from 'react-native';
+import { View, StyleSheet, Dimensions, Pressable, Animated as RNAnimated } from 'react-native';
 import { MaterialTopTabs } from '../../components/navigation/MaterialTopTabs';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
-import Svg, { Circle, Path, G } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Svg, { G, Path } from 'react-native-svg';
 import { useAuthStore } from '@store/authStore';
+import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import {
   cleanupSleepStoreListeners,
   initSleepStoreListeners,
@@ -14,113 +17,28 @@ import {
 } from '@store/sleepStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ACCENT = '#30D158';
-const SLEEP_ACCENT = '#3E42A9'; // Blue for sleep page
-const TAB_BAR_MARGIN = 16;
-const TAB_BAR_WIDTH = SCREEN_WIDTH - TAB_BAR_MARGIN * 2;
+const TAB_BAR_WIDTH = SCREEN_WIDTH - SLEEP_LAYOUT.navbarSideMargin * 2;
+const INDICATOR_WIDTH = 80;
+const INDICATOR_HEIGHT = 56;
 
-// Animated SVG components
-const AnimatedG = Animated.createAnimatedComponent(G);
+const AnimatedG = RNAnimated.createAnimatedComponent(G);
 
-function CustomTabBar({ state, descriptors, navigation, position }: MaterialTopTabBarProps) {
-  const routes = state.routes;
-  const tabWidth = TAB_BAR_WIDTH / routes.length;
-  const isSleepActive = state.index === 2; // sleep is at index 2
-
-  // Indicator position
-  const indicatorLeft = position.interpolate({
-    inputRange: routes.map((_, i) => i),
-    outputRange: routes.map((_, i) => i * tabWidth),
-  });
-
-  // Determine current accent color based on active tab
-  const currentAccent = isSleepActive ? SLEEP_ACCENT : ACCENT;
-
-  return (
-    <View style={styles.tabBarContainer}>
-      <BlurView intensity={30} tint="dark" style={styles.blurBackground} />
-
-      <View style={styles.tabsContent}>
-        {/* Animated Pill Indicator */}
-        <Animated.View
-          style={[
-            styles.activeIndicator,
-            {
-              width: tabWidth,
-              transform: [{ translateX: indicatorLeft }],
-            },
-          ]}>
-          <View
-            style={[
-              styles.activeIndicatorInner,
-              isSleepActive && { backgroundColor: 'rgba(62, 66, 169, 0.2)' },
-            ]}
-          />
-        </Animated.View>
-
-        {routes.map((route, index) => {
-          const { options } = descriptors[route.key];
-          const isFocused = state.index === index;
-          const isSleep = route.name === 'sleep';
-
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
-
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
-            }
-          };
-
-          // Determine icon color
-          const iconColor = isFocused ? (isSleep ? SLEEP_ACCENT : ACCENT) : 'rgba(255,255,255,0.4)';
-
-          return (
-            <Pressable key={route.key} onPress={onPress} style={styles.tabItem}>
-              {isSleep ? (
-                <SleepTabIcon
-                  focused={isFocused}
-                  color={iconColor}
-                  label={options.title || route.name}
-                />
-              ) : (
-                <TabIcon
-                  name={getIconName(route.name, isFocused)}
-                  color={iconColor}
-                  focused={isFocused}
-                  label={options.title || route.name}
-                />
-              )}
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-// Sleep Tab Icon with Moon + Star animation
 function SleepTabIcon({
   focused,
   color,
-  label,
 }: {
   focused: boolean;
   color: string;
-  label: string;
 }) {
-  const starAnim = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const starAnim = useRef(new RNAnimated.Value(focused ? 1 : 0)).current;
 
   useEffect(() => {
-    Animated.timing(starAnim, {
+    RNAnimated.timing(starAnim, {
       toValue: focused ? 1 : 0,
       duration: 400,
       useNativeDriver: true,
     }).start();
-  }, [focused]);
+  }, [focused, starAnim]);
 
   const starTranslateX = starAnim.interpolate({
     inputRange: [0, 1],
@@ -143,43 +61,34 @@ function SleepTabIcon({
   });
 
   return (
-    <View style={styles.iconContainer}>
-      <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
-        <Svg width={28} height={28} viewBox="0 0 24 24">
-          {/* Moon crescent */}
+    <View style={styles.iconGlyphWrap}>
+      <Svg width={28} height={28} viewBox="0 0 24 24">
+        <Path
+          d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"
+          fill={color}
+        />
+        <AnimatedG
+          {...({
+            style: {
+              transform: [
+                { translateX: starTranslateX },
+                { translateY: starTranslateY },
+                { scale: starScale },
+              ],
+              opacity: starOpacity,
+            },
+          } as any)}>
           <Path
-            d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"
-            fill={color}
+            d="M19 5l.5 1l1 .5l-1 .5l-.5 1l-.5-1l-1-.5l1-.5z"
+            fill={focused ? '#FFD60A' : color}
           />
-
-          {/* Animated Star */}
-          <AnimatedG
-            {...({
-              style: {
-                transform: [
-                  { translateX: starTranslateX },
-                  { translateY: starTranslateY },
-                  { scale: starScale },
-                ],
-                opacity: starOpacity,
-              },
-            } as any)}>
-            <Path
-              d="M19 5l.5 1l1 .5l-1 .5l-.5 1l-.5-1l-1-.5l1-.5z"
-              fill={focused ? '#FFD60A' : color}
-            />
-          </AnimatedG>
-        </Svg>
-      </View>
-      <Animated.Text style={[styles.label, { color, opacity: focused ? 1 : 0.7 }]}>
-        {label}
-      </Animated.Text>
+        </AnimatedG>
+      </Svg>
     </View>
   );
 }
 
-// Standard Icon for other tabs
-function getIconName(routeName: string, focused: boolean): any {
+function getIconName(routeName: string, focused: boolean) {
   switch (routeName) {
     case 'nutrition':
       return focused ? 'food-apple' : 'food-apple-outline';
@@ -192,23 +101,105 @@ function getIconName(routeName: string, focused: boolean): any {
   }
 }
 
-function TabIcon({
-  name,
-  color,
-  focused,
+function TabButton({
+  routeName,
   label,
+  focused,
+  color,
+  onPress,
 }: {
-  name: any;
-  color: string;
-  focused: boolean;
+  routeName: string;
   label: string;
+  focused: boolean;
+  color: string;
+  onPress: () => void;
 }) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   return (
-    <View style={styles.iconContainer}>
-      <MaterialCommunityIcons name={name} size={24} color={color} />
-      <Animated.Text style={[styles.label, { color, opacity: focused ? 1 : 0.7 }]}>
-        {label}
-      </Animated.Text>
+    <Pressable
+      onPressIn={() => {
+        scale.value = withSpring(0.92, { damping: 15, stiffness: 200 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 15, stiffness: 200 });
+      }}
+      onPress={onPress}
+      style={styles.tabItem}>
+      <Animated.View style={[styles.tabInner, animatedStyle, !focused && styles.tabInnerInactive]}>
+        {routeName === 'sleep' ? (
+          <SleepTabIcon focused={focused} color={color} />
+        ) : (
+          <MaterialCommunityIcons name={getIconName(routeName, focused)} size={24} color={color} />
+        )}
+        {focused ? <Animated.Text style={styles.activeLabel}>{label}</Animated.Text> : null}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+function FloatingTabBar({ state, descriptors, navigation }: MaterialTopTabBarProps) {
+  const insets = useSafeAreaInsets();
+  const routes = state.routes;
+  const tabWidth = TAB_BAR_WIDTH / routes.length;
+  const indicatorX = useSharedValue(state.index * tabWidth + (tabWidth - INDICATOR_WIDTH) / 2);
+
+  useEffect(() => {
+    indicatorX.value = withSpring(state.index * tabWidth + (tabWidth - INDICATOR_WIDTH) / 2, {
+      damping: 18,
+      stiffness: 120,
+    });
+  }, [indicatorX, state.index, tabWidth]);
+
+  const indicatorStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: indicatorX.value }],
+  }));
+
+  return (
+    <View
+      style={[
+        styles.tabBarContainer,
+        {
+          bottom: SLEEP_LAYOUT.navbarBottom + insets.bottom,
+        },
+      ]}>
+      <BlurView intensity={SLEEP_THEME.navbarBlurIntensity} tint="dark" style={styles.blurBackground} />
+      <Animated.View style={[styles.activeIndicator, indicatorStyle]} />
+
+      <View style={styles.tabsContent}>
+        {routes.map((route, index) => {
+          const { options } = descriptors[route.key];
+          const isFocused = state.index === index;
+          const iconColor = SLEEP_THEME.navbarActiveColor;
+
+          const onPress = () => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
+          };
+
+          return (
+            <TabButton
+              key={route.key}
+              routeName={route.name}
+              label={options.title || route.name}
+              focused={isFocused}
+              color={iconColor}
+              onPress={onPress}
+            />
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -250,7 +241,7 @@ export default function TabLayout() {
   return (
     <MaterialTopTabs
       tabBarPosition="bottom"
-      tabBar={(props) => <CustomTabBar {...props} />}
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         swipeEnabled: false,
         animationEnabled: true,
@@ -266,24 +257,24 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   tabBarContainer: {
     position: 'absolute',
-    bottom: 24,
-    left: TAB_BAR_MARGIN,
-    right: TAB_BAR_MARGIN,
-    height: 72,
-    borderRadius: 36,
+    left: SLEEP_LAYOUT.navbarSideMargin,
+    right: SLEEP_LAYOUT.navbarSideMargin,
+    width: TAB_BAR_WIDTH,
+    height: SLEEP_LAYOUT.navbarHeight,
+    borderRadius: SLEEP_LAYOUT.navbarHeight / 2,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowColor: SLEEP_THEME.screenBg,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.6,
+    shadowRadius: 32,
+    elevation: 20,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: SLEEP_THEME.navbarBorder,
   },
   blurBackground: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(20, 20, 22, 0.75)',
+    backgroundColor: SLEEP_THEME.navbarBg,
   },
   tabsContent: {
     flexDirection: 'row',
@@ -297,27 +288,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1,
   },
+  tabInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 1,
+  },
+  tabInnerInactive: {
+    opacity: SLEEP_THEME.navbarInactiveOpacity,
+  },
+  iconGlyphWrap: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   activeIndicator: {
     position: 'absolute',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 0,
+    top: (SLEEP_LAYOUT.navbarHeight - INDICATOR_HEIGHT) / 2,
+    width: INDICATOR_WIDTH,
+    height: INDICATOR_HEIGHT,
+    borderRadius: INDICATOR_HEIGHT / 2,
+    backgroundColor: SLEEP_THEME.navbarBorder,
   },
-  activeIndicatorInner: {
-    width: 80,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(48, 209, 88, 0.15)',
-  },
-  iconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  label: {
-    fontSize: 10,
-    fontWeight: '600',
-    fontFamily: 'Inter-SemiBold',
+  activeLabel: {
+    marginTop: 2,
+    color: SLEEP_THEME.navbarActiveColor,
+    fontFamily: SLEEP_FONTS.semiBold,
+    fontSize: 11,
   },
 });

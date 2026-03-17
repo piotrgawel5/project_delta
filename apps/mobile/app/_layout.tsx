@@ -7,6 +7,12 @@ import { StatusBar } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_600SemiBold,
+  DMSans_700Bold,
+} from '@expo-google-fonts/dm-sans';
 import { Poppins_700Bold, Poppins_900Black } from '@expo-google-fonts/poppins';
 import { InclusiveSans_400Regular } from '@expo-google-fonts/inclusive-sans';
 import { DialogProvider } from '@components/ui/Dialog';
@@ -17,12 +23,16 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const { initialize, initialized, session, user } = useAuthStore();
-  const { fetchProfile, profile, loading: profileLoading } = useProfileStore();
+  const { fetchProfile, profile } = useProfileStore();
   const [appReady, setAppReady] = useState(false);
   const [splashHidden, setSplashHidden] = useState(false);
   const [profileChecked, setProfileChecked] = useState(false);
 
   const [fontsLoaded, fontError] = useFonts({
+    'DMSans-Regular': DMSans_400Regular,
+    'DMSans-Medium': DMSans_500Medium,
+    'DMSans-SemiBold': DMSans_600SemiBold,
+    'DMSans-Bold': DMSans_700Bold,
     'Inter-Regular': Inter_400Regular,
     'Inter-SemiBold': Inter_600SemiBold,
     'Poppins-Bold': Poppins_700Bold,
@@ -44,7 +54,7 @@ export default function RootLayout() {
       }
     };
     checkProfile();
-  }, [user, profileChecked]);
+  }, [user, profileChecked, fetchProfile]);
 
   // Check if everything is ready
   useEffect(() => {

@@ -162,7 +162,7 @@ export const SleepCalendar = ({
   };
 
   const toSleepQuality = (grade: string): SleepQuality => {
-    if (grade === 'Excellent') return 'Excellent';
+    if (grade === 'Excellent') return '';
     if (grade === 'Good' || grade === 'Great') return 'Good';
     if (grade === 'Fair') return 'Fair';
     return 'Bad';

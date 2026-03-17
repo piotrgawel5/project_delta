@@ -27,13 +27,13 @@ const STAGE_ROW: Record<SleepStage, number> = {
 };
 
 const ROW_HEIGHT = 40;
-const ROW_GAP = 20;
+const ROW_GAP = 30;
 const SVG_HEIGHT = 4 * ROW_HEIGHT + 3 * ROW_GAP;
 const MIN_SEGMENT_WIDTH = 2;
 const MERGE_GAP_MIN = 1;
 const BLOCK_INSET = 2;
 const OUTER_BLOCK_OPACITY = 0.4;
-const CONNECTOR_WIDTH = 3;
+const CONNECTOR_WIDTH = 2;
 const INNER_BLOCK_RADIUS = 5;
 const OUTER_BLOCK_RADIUS = INNER_BLOCK_RADIUS + BLOCK_INSET;
 
@@ -254,15 +254,12 @@ const SleepHypnogram = React.memo(function SleepHypnogram({
   const totalDuration = wakeMin - sleepOnsetMin;
   const canRenderPhases = isPaidPlan && !isLoading && totalDuration > 0;
 
-  const renderPhases = useMemo(
-    () => {
-      const normalized = normalizePhases(data.phases, sleepOnsetMin, wakeMin, chartWidth);
-      const totalOverlapShift = Math.max(0, (normalized.length - 1) * CONNECTOR_WIDTH);
-      const stretched = stretchPhasesToChartWidth(normalized, chartWidth + totalOverlapShift);
-      return applyConnectorOverlapShift(stretched);
-    },
-    [chartWidth, data.phases, sleepOnsetMin, wakeMin]
-  );
+  const renderPhases = useMemo(() => {
+    const normalized = normalizePhases(data.phases, sleepOnsetMin, wakeMin, chartWidth);
+    const totalOverlapShift = Math.max(0, (normalized.length - 1) * CONNECTOR_WIDTH);
+    const stretched = stretchPhasesToChartWidth(normalized, chartWidth + totalOverlapShift);
+    return applyConnectorOverlapShift(stretched);
+  }, [chartWidth, data.phases, sleepOnsetMin, wakeMin]);
   const outerCornerConfigs = useMemo(() => buildOuterCornerConfigs(renderPhases), [renderPhases]);
   const verticalConnectors = useMemo(() => buildVerticalConnectors(renderPhases), [renderPhases]);
   const connectorByFromIndex = useMemo(
@@ -272,7 +269,7 @@ const SleepHypnogram = React.memo(function SleepHypnogram({
 
   return (
     <Svg width={chartWidth} height={SVG_HEIGHT}>
-      {[0, 1, 2, 3].map((i) => (
+      {/*  {[0, 1, 2, 3].map((i) => (
         <Rect
           key={`bg-${i}`}
           x={0}
@@ -281,7 +278,7 @@ const SleepHypnogram = React.memo(function SleepHypnogram({
           height={ROW_HEIGHT}
           fill={i % 2 === 0 ? '#111' : '#222'}
         />
-      ))}
+      ))} */}
 
       {canRenderPhases ? (
         <>

@@ -81,6 +81,7 @@ project_delta/
 - `@gorhom/bottom-sheet` – modals/sheets
 - `victory-native` – charts/graphs
 - `expo-blur`, `expo-image-picker`, `expo-auth-session`, `expo-secure-store` – native APIs
+- `@expo-google-fonts/dm-sans` – sleep dashboard font family (`DMSans-Regular/Medium/SemiBold/Bold`)
 
 **Platform Support:**
 
@@ -281,6 +282,9 @@ docker-compose up   # Start API + Supabase (if configured)
 - **Styling:** NativeWind/Tailwind classes in `className`
 - **Responsive:** Adapt layouts for iOS/Android/Web differences in screenshots
 - **Sleep Intelligence & Manual Entry Flows:** The `SleepScreen` now includes the Sleep Intelligence AI insight card and the `SleepAnalysisScreen` deep-dive, plus the circular clock picker for manual entries (`packages/docs/mobile/screens.md`); reuse the same cards/pickers when surfacing hints or edits so animations and tokens stay consistent.
+- **Sleep Dashboard Redesign:** The sleep dashboard surface is composed from `apps/mobile/components/sleep/redesign/` and all color/spacing/font tokens come from `apps/mobile/constants/theme.ts` via `SLEEP_THEME`, `SLEEP_LAYOUT`, and `SLEEP_FONTS`.
+- **Sleep Dashboard Navigation:** The floating bottom navbar in `apps/mobile/app/(tabs)/_layout.tsx` replaces the older custom tab visuals, but route order and `swipeEnabled: false` stay fixed because horizontal gestures are reserved for day paging inside `SleepScreen`.
+- **Sleep Weekly UI Derivations:** Keep weekly hero/chart/card view-model logic in `apps/mobile/lib/sleepWeeklyInsights.ts`; reuse those helpers for score deltas, Mon→Sun series assembly, bedtime/wake dot rows, and hero gradient blending instead of duplicating logic in components.
 
 ### Sleep Data Conventions
 
