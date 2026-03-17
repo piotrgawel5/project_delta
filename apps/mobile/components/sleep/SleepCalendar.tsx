@@ -32,7 +32,7 @@ const NEON_COLORS = {
   Good: '#A3E635', // Lime 400
   Fair: '#FACC15', // Yellow 400
   Poor: '#FB7185', // Rose 400
-  Bad: '#F87171', // Red 400
+  Bad: '  ', // Red 400
   Terrible: '#EF4444', // Red 500
   NA: '#52525B', // Zinc 600
 };
@@ -48,10 +48,6 @@ const CLOSE_BTN_RADIUS = CLOSE_BTN_INNER_RADIUS + CLOSE_BTN_PADDING;
 const SEGMENT_PADDING = 4;
 const SEGMENT_INNER_RADIUS = 24;
 const SEGMENT_RADIUS = SEGMENT_INNER_RADIUS + SEGMENT_PADDING;
-const DAY_CELL_SIZE = 36;
-const DAY_CELL_RADIUS = DAY_CELL_SIZE / 2;
-const STRIP_DAY_SIZE = 40;
-const STRIP_DAY_RADIUS = STRIP_DAY_SIZE / 2;
 const SELECTED_DAY_SIZE = 36;
 const SELECTED_DAY_RADIUS = 12;
 const DETAIL_CARD_PADDING = 20;
@@ -62,7 +58,6 @@ const INDICATOR_RADIUS = INDICATOR_WIDTH / 2;
 const GRADE_BADGE_PADDING_Y = 4;
 const GRADE_BADGE_INNER_RADIUS = 6;
 const GRADE_BADGE_RADIUS = GRADE_BADGE_INNER_RADIUS + GRADE_BADGE_PADDING_Y;
-const STROKE = 'rgba(255,255,255,0.08)';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type SleepQuality = 'Excellent' | 'Good' | 'Fair' | 'Bad';
@@ -162,7 +157,7 @@ export const SleepCalendar = ({
   };
 
   const toSleepQuality = (grade: string): SleepQuality => {
-    if (grade === 'Excellent') return '';
+    if (grade === 'Excellent') return 'Excellent';
     if (grade === 'Good' || grade === 'Great') return 'Good';
     if (grade === 'Fair') return 'Fair';
     return 'Bad';

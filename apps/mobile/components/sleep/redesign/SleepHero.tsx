@@ -1,39 +1,55 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
-import { getHeroGradientStops } from '@lib/sleepWeeklyInsights';
-import { useSleepGradient } from '@lib/useSleepGradient';
+import { formatDuration } from '@lib/sleepFormatters';
 import { ChartSkeleton, HeroSkeleton } from './SleepSkeletons';
 import WeeklySleepChart from './WeeklySleepChart';
 import type { SleepHeroProps } from '../../../types/sleep-ui';
 
-const BADGE_RADIUS = 20;
-const EMPTY_PRIMARY = SLEEP_THEME.elevatedBg;
-const EMPTY_MID = SLEEP_THEME.cardBg;
-const EMPTY_END = SLEEP_THEME.screenBg;
+type HeroPreset = (typeof SLEEP_THEME.heroGradePresets)[keyof typeof SLEEP_THEME.heroGradePresets];
 
-function HeroGradientLayer({
-  primary,
-  mid,
-  end,
-}: {
-  primary: string;
-  mid: string;
-  end: string;
-}) {
-  const gradientId = `hero-gradient-${primary.replace('#', '')}-${mid.replace('#', '')}-${end.replace('#', '')}`;
+const BADGE_RADIUS = 18;
+const DURATION_PILL_RADIUS = 18;
+
+function getHeroPreset(grade: string, isEmpty: boolean): HeroPreset {
+  if (isEmpty) return SLEEP_THEME.heroGradePresets.Empty;
+  return (
+    SLEEP_THEME.heroGradePresets[
+      grade as keyof typeof SLEEP_THEME.heroGradePresets
+    ] ?? SLEEP_THEME.heroGradePresets.Great
+  );
+}
+
+function samePreset(a: HeroPreset, b: HeroPreset): boolean {
+  return (
+    a.primary === b.primary &&
+    a.mid === b.mid &&
+    a.end === b.end &&
+    a.overlayStart === b.overlayStart &&
+    a.overlayEnd === b.overlayEnd
+  );
+}
+
+function HeroGradientLayer({ preset }: { preset: HeroPreset }) {
+  const gradientId = `hero-gradient-${preset.primary.replace('#', '')}-${preset.mid.replace('#', '')}-${preset.end.replace('#', '')}`;
 
   return (
     <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
       <Defs>
-        <RadialGradient id={gradientId} cx="50%" cy="0%" rx="75%" ry="100%">
-          <Stop offset="0%" stopColor={primary} stopOpacity={1} />
-          <Stop offset="70%" stopColor={mid} stopOpacity={1} />
-          <Stop offset="100%" stopColor={end} stopOpacity={1} />
+        <RadialGradient id={gradientId} cx="18%" cy="9%" rx="112%" ry="118%" fx="18%" fy="9%">
+          <Stop offset="0%" stopColor={preset.primary} stopOpacity={1} />
+          <Stop offset="68%" stopColor={preset.mid} stopOpacity={0.92} />
+          <Stop offset="100%" stopColor="#000000" stopOpacity={0} />
         </RadialGradient>
       </Defs>
       <Rect width="100%" height="100%" fill={`url(#${gradientId})`} />
@@ -54,55 +70,69 @@ function ScoreRow({ score }: { score: number | undefined }) {
 }
 
 function WeeklyDeltaBadge({ weeklyDelta }: { weeklyDelta: number | null }) {
-  if (weeklyDelta === null || weeklyDelta === 0) return null;
+  if (weeklyDelta === null) return null;
 
+  const isNeutral = weeklyDelta === 0;
   const isPositive = weeklyDelta > 0;
   const arrow = isPositive ? '↑' : '↓';
-  const color = isPositive ? SLEEP_THEME.success : SLEEP_THEME.danger;
-  const direction = isPositive ? 'better' : 'worse';
+  const accentColor = isPositive ? '#49FF75' : '#FFC0CC';
+  const bodyText = isNeutral
+    ? 'In line with your weekly average'
+    : `${Math.abs(weeklyDelta)}% ${isPositive ? 'better' : 'worse'} than your weekly average`;
 
   return (
     <View style={styles.badge}>
-      <Text style={[styles.badgeText, { color }]}>
-        {arrow} {Math.abs(weeklyDelta)}% {direction} than your weekly average
-      </Text>
+      {isNeutral ? null : <Text style={[styles.badgeArrow, { color: accentColor }]}>{arrow}</Text>}
+      <Text style={styles.badgeText}>{bodyText}</Text>
+    </View>
+  );
+}
+
+function DurationChip({ durationMinutes }: { durationMinutes: number | null }) {
+  if (!durationMinutes) return null;
+
+  const { h, m } = formatDuration(durationMinutes);
+  const label = m > 0 ? `${h}h ${`${m}`.padStart(2, '0')}m` : `${h}h`;
+
+  return (
+    <View style={styles.durationChip}>
+      <Text style={styles.durationChipText}>{label}</Text>
     </View>
   );
 }
 
 export default function SleepHero(props: SleepHeroProps) {
   const isEmpty = props.score === undefined;
-  const initialKey = isEmpty ? EMPTY_PRIMARY : props.gradeColor;
-  const { gradientBase, overlayAColor, overlayBColor, overlayAOpacity, overlayBOpacity, setGradientKey } =
-    useSleepGradient({
-      initialKey,
-      defaultColor: isEmpty ? EMPTY_PRIMARY : getHeroGradientStops(props.gradeColor).primary,
-      getColorForKey: (key) => {
-        if (key === EMPTY_PRIMARY) return EMPTY_PRIMARY;
-        return getHeroGradientStops(key).primary;
-      },
-    });
+  const targetPreset = useMemo(() => getHeroPreset(props.grade, isEmpty), [props.grade, isEmpty]);
+  const [basePreset, setBasePreset] = useState<HeroPreset>(targetPreset);
+  const [overlayPreset, setOverlayPreset] = useState<HeroPreset>(targetPreset);
+  const overlayOpacity = useSharedValue(0);
 
   useEffect(() => {
-    setGradientKey(isEmpty ? EMPTY_PRIMARY : props.gradeColor, true);
-  }, [isEmpty, props.gradeColor, setGradientKey]);
+    if (samePreset(basePreset, targetPreset)) {
+      return;
+    }
 
-  const overlayAStyle = useAnimatedStyle(() => ({
-    opacity: overlayAOpacity.value,
-  }));
-  const overlayBStyle = useAnimatedStyle(() => ({
-    opacity: overlayBOpacity.value,
+    setOverlayPreset(targetPreset);
+    overlayOpacity.value = 0;
+    overlayOpacity.value = withTiming(
+      1,
+      {
+        duration: 600,
+        easing: Easing.out(Easing.cubic),
+      },
+      (finished) => {
+        if (!finished) return;
+        runOnJS(setBasePreset)(targetPreset);
+        overlayOpacity.value = 0;
+      }
+    );
+  }, [basePreset, overlayOpacity, targetPreset]);
+
+  const overlayStyle = useAnimatedStyle(() => ({
+    opacity: overlayOpacity.value,
   }));
 
-  const baseStops = isEmpty
-    ? { primary: gradientBase, mid: EMPTY_MID, end: EMPTY_END }
-    : { primary: gradientBase, mid: SLEEP_THEME.heroGradientMid, end: SLEEP_THEME.heroGradientEnd };
-  const overlayAStops = isEmpty
-    ? { primary: overlayAColor, mid: EMPTY_MID, end: EMPTY_END }
-    : { primary: overlayAColor, mid: SLEEP_THEME.heroGradientMid, end: SLEEP_THEME.heroGradientEnd };
-  const overlayBStops = isEmpty
-    ? { primary: overlayBColor, mid: EMPTY_MID, end: EMPTY_END }
-    : { primary: overlayBColor, mid: SLEEP_THEME.heroGradientMid, end: SLEEP_THEME.heroGradientEnd };
   const dateLabel = props.selectedDate.toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
@@ -110,22 +140,45 @@ export default function SleepHero(props: SleepHeroProps) {
   });
 
   return (
-    <View style={styles.hero}>
+    <View style={[styles.hero, { backgroundColor: basePreset.mid }]}>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <HeroGradientLayer {...baseStops} />
+        <HeroGradientLayer preset={basePreset} />
       </View>
-      <Animated.View style={[StyleSheet.absoluteFill, overlayAStyle]} pointerEvents="none">
-        <HeroGradientLayer {...overlayAStops} />
-      </Animated.View>
-      <Animated.View style={[StyleSheet.absoluteFill, overlayBStyle]} pointerEvents="none">
-        <HeroGradientLayer {...overlayBStops} />
+      <Animated.View style={[StyleSheet.absoluteFill, overlayStyle]} pointerEvents="none">
+        <HeroGradientLayer preset={overlayPreset} />
       </Animated.View>
       <LinearGradient
         pointerEvents="none"
-        colors={[SLEEP_THEME.heroOverlayStart, SLEEP_THEME.heroOverlayEnd]}
-        locations={[0, 0.61]}
+        colors={[basePreset.overlayStart, 'rgba(255,255,255,0.01)', 'rgba(0,0,0,0)']}
+        locations={[0, 0.5, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={styles.overlay}
       />
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.04)', 'rgba(0,0,0,0.1)']}
+        locations={[0, 0.78, 1]}
+        style={styles.vignette}
+      />
+      <Animated.View style={[StyleSheet.absoluteFill, overlayStyle]} pointerEvents="none">
+        <LinearGradient
+          pointerEvents="none"
+          colors={[overlayPreset.overlayStart, 'rgba(255,255,255,0.01)', 'rgba(0,0,0,0)']}
+          locations={[0, 0.5, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.overlay}
+        />
+      </Animated.View>
+      <Animated.View style={[StyleSheet.absoluteFill, overlayStyle]} pointerEvents="none">
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.04)', 'rgba(0,0,0,0.1)']}
+          locations={[0, 0.78, 1]}
+          style={styles.vignette}
+        />
+      </Animated.View>
 
       <View style={styles.content}>
         {props.isLoading ? (
@@ -137,13 +190,20 @@ export default function SleepHero(props: SleepHeroProps) {
           <>
             <Pressable disabled={!props.onPressDate} onPress={props.onPressDate} style={styles.dateButton}>
               <Text style={styles.dateText}>{dateLabel}</Text>
-              <Ionicons name="chevron-forward" size={16} color={SLEEP_THEME.textSecondary} />
+              <Ionicons name="chevron-forward" size={12} color={SLEEP_THEME.textSecondary} />
             </Pressable>
 
-            <Text style={[styles.grade, isEmpty && styles.emptyMetric]}>{props.grade}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.grade, isEmpty && styles.emptyMetric]}>
+              {props.grade}
+            </Text>
             <ScoreRow score={props.score} />
             <Text style={[styles.description, isEmpty && styles.emptyMetric]}>{props.description}</Text>
             <WeeklyDeltaBadge weeklyDelta={props.weeklyDelta} />
+
+            <View style={styles.chartMetaRow}>
+              <View />
+              <DurationChip durationMinutes={props.durationMinutes} />
+            </View>
 
             <View style={styles.chartArea}>
               <WeeklySleepChart
@@ -166,24 +226,29 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.35,
+    opacity: 0.2,
+  },
+  vignette: {
+    ...StyleSheet.absoluteFillObject,
   },
   content: {
     flex: 1,
     paddingTop: SLEEP_LAYOUT.heroTextPaddingTop,
+    paddingBottom: 8,
   },
   dateButton: {
     marginHorizontal: SLEEP_LAYOUT.heroTextPaddingH,
-    marginBottom: 14,
+    marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    gap: 6,
+    gap: 4,
   },
   dateText: {
-    color: SLEEP_THEME.textSecondary,
+    color: 'rgba(255,255,255,0.72)',
     fontFamily: SLEEP_FONTS.medium,
     fontSize: 14,
+    lineHeight: 18,
   },
   grade: {
     marginHorizontal: SLEEP_LAYOUT.heroTextPaddingH,
@@ -191,11 +256,12 @@ const styles = StyleSheet.create({
     color: SLEEP_THEME.textPrimary,
     fontFamily: SLEEP_FONTS.bold,
     fontSize: 72,
-    lineHeight: 74,
+    lineHeight: 76,
+    letterSpacing: -2.8,
   },
   scoreRow: {
     marginHorizontal: SLEEP_LAYOUT.heroTextPaddingH,
-    marginBottom: 12,
+    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'flex-end',
   },
@@ -203,35 +269,67 @@ const styles = StyleSheet.create({
     color: SLEEP_THEME.textPrimary,
     fontFamily: SLEEP_FONTS.semiBold,
     fontSize: 22,
+    lineHeight: 26,
   },
   scoreSeparator: {
-    color: SLEEP_THEME.textSecondary,
+    color: 'rgba(255,255,255,0.7)',
     fontFamily: SLEEP_FONTS.regular,
     fontSize: 18,
+    lineHeight: 24,
   },
   description: {
     marginHorizontal: SLEEP_LAYOUT.heroTextPaddingH,
-    marginBottom: 14,
-    color: SLEEP_THEME.textSecondary,
+    marginBottom: 18,
+    maxWidth: '82%',
+    color: 'rgba(255,255,255,0.8)',
     fontFamily: SLEEP_FONTS.regular,
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 19,
   },
   badge: {
     alignSelf: 'flex-start',
     marginLeft: SLEEP_LAYOUT.heroTextPaddingH,
-    marginBottom: 18,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     borderRadius: BADGE_RADIUS,
-    backgroundColor: SLEEP_THEME.badgePillBg,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: SLEEP_THEME.badgePillOverlay,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  badgeArrow: {
+    fontFamily: SLEEP_FONTS.bold,
+    fontSize: 16,
+    lineHeight: 18,
   },
   badgeText: {
+    color: SLEEP_THEME.textPrimary,
     fontFamily: SLEEP_FONTS.medium,
     fontSize: 13,
+    lineHeight: 18,
+  },
+  chartMetaRow: {
+    marginHorizontal: SLEEP_LAYOUT.heroTextPaddingH,
+    marginBottom: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  durationChip: {
+    borderRadius: DURATION_PILL_RADIUS,
+    backgroundColor: SLEEP_THEME.heroDurationPillBg,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  durationChipText: {
+    color: SLEEP_THEME.heroDurationPillText,
+    fontFamily: SLEEP_FONTS.semiBold,
+    fontSize: 13,
+    lineHeight: 16,
   },
   chartArea: {
-    marginTop: -SLEEP_LAYOUT.chartOverlap,
+    marginTop: -2,
   },
   emptyMetric: {
     opacity: 0.4,

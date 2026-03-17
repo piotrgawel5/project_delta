@@ -18,7 +18,7 @@ import {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TAB_BAR_WIDTH = SCREEN_WIDTH - SLEEP_LAYOUT.navbarSideMargin * 2;
-const INDICATOR_WIDTH = 80;
+const INDICATOR_WIDTH = 84;
 const INDICATOR_HEIGHT = 56;
 
 const AnimatedG = RNAnimated.createAnimatedComponent(G);
@@ -265,16 +265,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: SLEEP_THEME.screenBg,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.6,
-    shadowRadius: 32,
-    elevation: 20,
+    shadowOpacity: 0.42,
+    shadowRadius: 24,
+    elevation: 16,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: SLEEP_THEME.navbarBorder,
   },
   blurBackground: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: SLEEP_THEME.navbarBg,
+    backgroundColor: 'rgba(10,10,10,0.58)',
   },
   tabsContent: {
     flexDirection: 'row',
@@ -308,12 +308,13 @@ const styles = StyleSheet.create({
     width: INDICATOR_WIDTH,
     height: INDICATOR_HEIGHT,
     borderRadius: INDICATOR_HEIGHT / 2,
-    backgroundColor: SLEEP_THEME.navbarBorder,
+    backgroundColor: 'rgba(255,255,255,0.09)',
   },
   activeLabel: {
     marginTop: 2,
     color: SLEEP_THEME.navbarActiveColor,
     fontFamily: SLEEP_FONTS.semiBold,
-    fontSize: 11,
+    fontSize: 10.5,
+    lineHeight: 13,
   },
 });

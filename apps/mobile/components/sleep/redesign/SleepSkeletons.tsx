@@ -3,8 +3,8 @@ import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import type { SleepSkeletonProps } from '../../../types/sleep-ui';
 
-const CARD_HEIGHT = 164;
-const STAGES_HEIGHT = 220;
+const CARD_HEIGHT = 172;
+const STAGES_HEIGHT = 188;
 
 type SkeletonWidth = number | `${number}%`;
 
@@ -75,10 +75,14 @@ export function HeroSkeleton({ visible = true }: SleepSkeletonProps) {
   return (
     <View style={styles.hero}>
       <SkeletonBlock width="34%" height={18} radius={9} style={styles.heroDate} />
-      <SkeletonBlock width="58%" height={64} radius={18} style={styles.heroGrade} />
-      <SkeletonBlock width="42%" height={24} radius={12} style={styles.heroScore} />
-      <SkeletonBlock width="74%" height={16} radius={8} style={styles.heroDescription} />
-      <SkeletonBlock width="56%" height={16} radius={8} style={styles.heroDescriptionSecondary} />
+      <SkeletonBlock width="62%" height={74} radius={22} style={styles.heroGrade} />
+      <SkeletonBlock width="36%" height={28} radius={12} style={styles.heroScore} />
+      <SkeletonBlock width="78%" height={18} radius={9} style={styles.heroDescription} />
+      <SkeletonBlock width="58%" height={18} radius={9} style={styles.heroDescriptionSecondary} />
+      <View style={styles.heroBadgeRow}>
+        <SkeletonBlock width="54%" height={34} radius={17} />
+        <SkeletonBlock width="18%" height={34} radius={17} />
+      </View>
     </View>
   );
 }
@@ -88,7 +92,7 @@ export function ChartSkeleton({ visible = true }: SleepSkeletonProps) {
 
   return (
     <View style={styles.chartWrap}>
-      <SkeletonBlock width="100%" height={90} radius={28} />
+      <SkeletonBlock width="100%" height={96} radius={30} />
       <View style={styles.chartLabels}>
         {Array.from({ length: 7 }).map((_, index) => (
           <SkeletonBlock key={index} width={12} height={12} radius={6} />
@@ -104,9 +108,10 @@ export function CardSkeleton({ visible = true }: SleepSkeletonProps) {
   return (
     <View style={styles.card}>
       <SkeletonBlock width="28%" height={12} radius={6} style={styles.cardTitle} />
-      <SkeletonBlock width="44%" height={42} radius={18} style={styles.cardMetric} />
+      <SkeletonBlock width="46%" height={50} radius={18} style={styles.cardMetric} />
       <SkeletonBlock width="82%" height={14} radius={7} style={styles.cardLine} />
-      <SkeletonBlock width="66%" height={14} radius={7} />
+      <SkeletonBlock width="66%" height={14} radius={7} style={styles.cardLineTight} />
+      <SkeletonBlock width="100%" height={8} radius={4} />
     </View>
   );
 }
@@ -122,9 +127,7 @@ export function FullScreenSkeleton({ visible = true }: SleepSkeletonProps) {
       <CardSkeleton />
       <View style={styles.stageCard}>
         <SkeletonBlock width="34%" height={12} radius={6} style={styles.cardTitle} />
-        <SkeletonBlock width="100%" height={14} radius={7} style={styles.cardLine} />
-        <SkeletonBlock width="92%" height={14} radius={7} style={styles.cardLine} />
-        <SkeletonBlock width="76%" height={14} radius={7} />
+        <SkeletonBlock width="100%" height={116} radius={14} />
       </View>
     </View>
   );
@@ -143,19 +146,24 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   heroGrade: {
-    marginBottom: 14,
+    marginBottom: 12,
   },
   heroScore: {
-    marginBottom: 18,
+    marginBottom: 16,
   },
   heroDescription: {
     marginBottom: 10,
   },
   heroDescriptionSecondary: {
-    marginBottom: 8,
+    marginBottom: 14,
+  },
+  heroBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   chartWrap: {
-    marginTop: -SLEEP_LAYOUT.chartOverlap,
+    marginTop: -8,
     paddingHorizontal: SLEEP_LAYOUT.screenPaddingH,
     paddingBottom: 8,
   },
@@ -180,9 +188,12 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   cardMetric: {
-    marginBottom: 24,
+    marginBottom: 18,
   },
   cardLine: {
     marginBottom: 12,
+  },
+  cardLineTight: {
+    marginBottom: 16,
   },
 });

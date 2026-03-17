@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import { CardSkeleton } from './SleepSkeletons';
+import SleepStagesCard from './SleepStagesCard';
 import type { SleepEmptyStateProps } from '../../../types/sleep-ui';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -52,12 +53,7 @@ export default function SleepEmptyState({ date, onAddData }: SleepEmptyStateProp
       <View style={styles.cards}>
         <CardSkeleton />
         <CardSkeleton />
-        <View style={styles.stageShell}>
-          <Text style={styles.stageTitle}>SLEEP STAGES</Text>
-          <View style={styles.stagePlaceholder}>
-            <Text style={styles.stageValue}>N/A</Text>
-          </View>
-        </View>
+        <SleepStagesCard />
       </View>
     </View>
   );
@@ -66,18 +62,19 @@ export default function SleepEmptyState({ date, onAddData }: SleepEmptyStateProp
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: 18,
   },
   messageWrap: {
     alignItems: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 12,
+    marginBottom: 28,
+    paddingHorizontal: 18,
   },
   title: {
-    marginBottom: 10,
+    marginBottom: 12,
     color: SLEEP_THEME.textPrimary,
     fontFamily: SLEEP_FONTS.bold,
-    fontSize: 24,
+    fontSize: 28,
+    lineHeight: 32,
   },
   body: {
     color: SLEEP_THEME.textDisabled,
@@ -87,10 +84,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   cta: {
-    width: 220,
-    height: 56,
-    marginBottom: 28,
-    borderRadius: 14,
+    width: '100%',
+    maxWidth: 320,
+    height: 64,
+    marginBottom: 30,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: SLEEP_THEME.textPrimary,
@@ -98,36 +96,11 @@ const styles = StyleSheet.create({
   ctaText: {
     color: SLEEP_THEME.screenBg,
     fontFamily: SLEEP_FONTS.semiBold,
-    fontSize: 16,
+    fontSize: 18,
+    lineHeight: 22,
   },
   cards: {
     width: '100%',
     gap: SLEEP_LAYOUT.cardGap,
-  },
-  stageShell: {
-    backgroundColor: SLEEP_THEME.cardBg,
-    borderRadius: SLEEP_LAYOUT.cardRadiusOuter,
-    padding: SLEEP_LAYOUT.cardPadding,
-    minHeight: 170,
-  },
-  stageTitle: {
-    marginBottom: 18,
-    color: SLEEP_THEME.textMuted1,
-    fontFamily: SLEEP_FONTS.semiBold,
-    fontSize: 11,
-    letterSpacing: 0.5,
-  },
-  stagePlaceholder: {
-    flex: 1,
-    borderRadius: SLEEP_LAYOUT.cardRadiusInner,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: SLEEP_THEME.elevatedBg,
-  },
-  stageValue: {
-    color: SLEEP_THEME.textPrimary,
-    opacity: 0.4,
-    fontFamily: SLEEP_FONTS.bold,
-    fontSize: 32,
   },
 });

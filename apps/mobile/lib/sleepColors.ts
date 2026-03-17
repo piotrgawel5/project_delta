@@ -18,16 +18,15 @@ export const getSleepScoreGrade = (score: number): SleepScoreType => {
     return { score: score, grade: 'N/A', color: '#000000' };
   }
   if (score >= 90) {
-    return { score: score, grade: 'Excellent', color: '#581C87' };
+    return { score: score, grade: 'Excellent', color: '#7937E3' };
   }
-  if (score >= 80) return { score: score, grade: 'Great', color: '#22c55e' };
-  if (score >= 70) return { score: score, grade: 'Good', color: '#84CC16' };
-  if (score >= 60) return { score: score, grade: 'Fair', color: '#eab308' };
-  if (score >= 50) return { score: score, grade: 'Poor', color: '#EF4444' };
-  if (score >= 40) return { score: score, grade: 'Bad', color: '#DC2626' };
-  if (score >= 30) return { score: score, grade: 'Awful', color: '#B91C1C' };
+  if (score >= 80) return { score: score, grade: 'Great', color: '#139645' };
+  if (score >= 70) return { score: score, grade: 'Good', color: '#436111' };
+  if (score >= 60) return { score: score, grade: 'Fair', color: '#F48414' };
+  if (score >= 50) return { score: score, grade: 'Poor', color: '#FF304E' };
+  if (score >= 40) return { score: score, grade: 'Bad', color: '#CD0A24' };
   if (score >= 0) {
-    return { score: score, grade: 'Terrible', color: '#7F1D1D' };
+    return { score: score, grade: 'Terrible', color: '#C01010' };
   }
 
   return { score: score, grade: 'N/A', color: '#000000' };

@@ -13,7 +13,7 @@ import type { DeepSleepZone, SleepCardDeepProps } from '../../../types/sleep-ui'
 
 const DEEP_FAIR_THRESHOLD = 0.13;
 const DEEP_GREAT_THRESHOLD = AGE_NORMS['18-25'].deepPctIdeal / 100;
-const INDICATOR_SIZE = 14;
+const INDICATOR_SIZE = 16;
 
 function getZone(deepPct: number | null): DeepSleepZone {
   if (deepPct === null) return 'nodata';
@@ -27,9 +27,9 @@ function getCopy(zone: DeepSleepZone): string {
     case 'great':
       return 'Your body spent good time in deep recovery tonight.';
     case 'fair':
-      return 'You got some restorative sleep. Aim for more deep sleep.';
+      return 'Your body spent good time in deep recovery tonight.';
     case 'low':
-      return 'Deep sleep was below target tonight. Avoid screens before bed.';
+      return 'Your body spent good time in deep recovery tonight.';
     default:
       return 'No deep sleep data available for this night.';
   }
@@ -40,28 +40,28 @@ function getStatus(zone: DeepSleepZone) {
     case 'great':
       return {
         label: 'On Track',
-        backgroundColor: SLEEP_THEME.onTrackPillBg,
-        textColor: SLEEP_THEME.onTrackPillText,
+        backgroundColor: 'rgba(255,255,255,0.16)',
+        textColor: SLEEP_THEME.textPrimary,
       };
     case 'fair':
       return {
-        label: 'Improving',
-        backgroundColor: SLEEP_THEME.warningPillBg,
-        textColor: SLEEP_THEME.warning,
+        label: 'On Track',
+        backgroundColor: 'rgba(255,255,255,0.16)',
+        textColor: SLEEP_THEME.textPrimary,
       };
     case 'low':
       return {
-        label: 'Low',
-        backgroundColor: SLEEP_THEME.lowPillBg,
-        textColor: SLEEP_THEME.lowPillText,
+        label: 'On Track',
+        backgroundColor: 'rgba(255,255,255,0.16)',
+        textColor: SLEEP_THEME.textPrimary,
       };
     default:
       return {
         label: 'No Data',
-        backgroundColor: SLEEP_THEME.elevatedBg,
-        textColor: SLEEP_THEME.textMuted2,
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        textColor: 'rgba(255,255,255,0.64)',
       };
-  }
+    }
 }
 
 function formatDeepValue(minutes: number | null) {
@@ -71,7 +71,7 @@ function formatDeepValue(minutes: number | null) {
 
   const { h, m } = formatDuration(minutes);
   if (h > 0 && m > 0) {
-    return { main: `${h}h ${m}`, suffix: 'm' };
+    return { main: `${h}h ${`${m}`.padStart(2, '0')}`, suffix: 'm' };
   }
   if (h > 0) {
     return { main: `${h}`, suffix: 'h' };
@@ -161,23 +161,24 @@ const styles = StyleSheet.create({
     color: SLEEP_THEME.textMuted1,
     fontFamily: SLEEP_FONTS.semiBold,
     fontSize: 11,
-    letterSpacing: 0.5,
+    letterSpacing: 0.7,
   },
   metricRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginBottom: 14,
+    marginBottom: 10,
   },
   metricMain: {
     color: SLEEP_THEME.textPrimary,
     fontFamily: SLEEP_FONTS.bold,
     fontSize: 36,
     lineHeight: 40,
+    letterSpacing: -1.1,
   },
   metricSuffix: {
     marginLeft: 4,
     marginBottom: 4,
-    color: SLEEP_THEME.textSecondary,
+    color: 'rgba(255,255,255,0.82)',
     fontFamily: SLEEP_FONTS.semiBold,
     fontSize: 18,
     lineHeight: 20,
@@ -186,53 +187,56 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   copy: {
-    marginBottom: 18,
-    color: SLEEP_THEME.textSecondary,
+    marginBottom: 16,
+    color: 'rgba(255,255,255,0.46)',
     fontFamily: SLEEP_FONTS.regular,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 16,
   },
   barWrap: {
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   bar: {
     height: 8,
-    borderRadius: 4,
+    borderRadius: 999,
   },
   indicator: {
     position: 'absolute',
-    top: -3,
+    top: -4,
     width: INDICATOR_SIZE,
     height: INDICATOR_SIZE,
     borderRadius: INDICATOR_SIZE / 2,
-    backgroundColor: SLEEP_THEME.textPrimary,
+    backgroundColor: '#DADDE2',
     shadowColor: SLEEP_THEME.screenBg,
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
+    shadowOpacity: 0.24,
+    shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 2,
   },
   zoneLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 10,
+    paddingHorizontal: 2,
   },
   zoneText: {
-    color: SLEEP_THEME.textMuted2,
+    color: 'rgba(255,255,255,0.3)',
     fontFamily: SLEEP_FONTS.regular,
     fontSize: 11,
+    lineHeight: 14,
   },
   statusRow: {
     alignItems: 'flex-end',
   },
   statusPill: {
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
   },
   statusText: {
     fontFamily: SLEEP_FONTS.semiBold,
-    fontSize: 12,
+    fontSize: 11,
+    lineHeight: 13,
   },
 });

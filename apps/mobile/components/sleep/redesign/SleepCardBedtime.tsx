@@ -2,6 +2,10 @@ import { StyleSheet, Text, View } from 'react-native';
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import type { SleepCardBedtimeProps } from '../../../types/sleep-ui';
 
+const CARD_DOT_SIZE = 9;
+const CARD_DOT_SIZE_SELECTED = 12;
+const CARD_DOT_GLOW = 20;
+
 function DotRow({
   values,
   todayIndex,
@@ -15,7 +19,7 @@ function DotRow({
     <View style={styles.dotsRow}>
       {values.map((value, index) => {
         const isToday = index === todayIndex;
-        const dotSize = isToday ? SLEEP_LAYOUT.dotSizeToday : SLEEP_LAYOUT.dotSize;
+        const dotSize = isToday ? CARD_DOT_SIZE_SELECTED : CARD_DOT_SIZE;
 
         return (
           <View key={`${index}-${value ?? 'empty'}`} style={styles.dotOuter}>
@@ -25,7 +29,7 @@ function DotRow({
                   styles.dotGlow,
                   {
                     backgroundColor: color,
-                    opacity: value === null ? 0.12 : 0.3,
+                    opacity: value === null ? 0.12 : 0.22,
                   },
                 ]}
               />
@@ -125,11 +129,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   panelTitle: {
-    marginBottom: 14,
+    marginBottom: 12,
     color: SLEEP_THEME.textMuted1,
     fontFamily: SLEEP_FONTS.semiBold,
     fontSize: 11,
-    letterSpacing: 0.5,
+    letterSpacing: 0.7,
   },
   timeRow: {
     flexDirection: 'row',
@@ -141,11 +145,12 @@ const styles = StyleSheet.create({
     fontFamily: SLEEP_FONTS.bold,
     fontSize: 36,
     lineHeight: 40,
+    letterSpacing: -1.3,
   },
   timeMeridiem: {
     marginLeft: 4,
     marginBottom: 4,
-    color: SLEEP_THEME.textSecondary,
+    color: 'rgba(255,255,255,0.86)',
     fontFamily: SLEEP_FONTS.semiBold,
     fontSize: 18,
     lineHeight: 20,
@@ -158,24 +163,25 @@ const styles = StyleSheet.create({
     height: `${SLEEP_LAYOUT.dividerHeightRatio * 100}%`,
     alignSelf: 'center',
     marginHorizontal: 18,
-    backgroundColor: SLEEP_THEME.border,
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   dotsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 2,
   },
   dotOuter: {
-    width: SLEEP_LAYOUT.dotGlowSize,
-    height: SLEEP_LAYOUT.dotGlowSize,
+    width: CARD_DOT_GLOW,
+    height: CARD_DOT_GLOW,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dotGlow: {
     position: 'absolute',
-    width: SLEEP_LAYOUT.dotGlowSize,
-    height: SLEEP_LAYOUT.dotGlowSize,
-    borderRadius: SLEEP_LAYOUT.dotGlowSize / 2,
+    width: CARD_DOT_GLOW,
+    height: CARD_DOT_GLOW,
+    borderRadius: CARD_DOT_GLOW / 2,
   },
   dot: {
     position: 'absolute',
