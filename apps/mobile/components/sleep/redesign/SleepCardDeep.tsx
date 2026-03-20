@@ -13,6 +13,7 @@ import type { DeepSleepZone, SleepCardDeepProps } from '../../../types/sleep-ui'
 
 const DEEP_FAIR_THRESHOLD = 0.13;
 const DEEP_GREAT_THRESHOLD = AGE_NORMS['18-25'].deepPctIdeal / 100;
+const DEEP_VISUAL_CAP = 0.35;
 const INDICATOR_SIZE = 16;
 
 function getZone(deepPct: number | null): DeepSleepZone {
@@ -27,9 +28,9 @@ function getCopy(zone: DeepSleepZone): string {
     case 'great':
       return 'Your body spent good time in deep recovery tonight.';
     case 'fair':
-      return 'Your body spent good time in deep recovery tonight.';
+      return 'You got some restorative sleep. Aim for more deep sleep.';
     case 'low':
-      return 'Your body spent good time in deep recovery tonight.';
+      return 'Deep sleep was below target tonight. Avoid screens before bed.';
     default:
       return 'No deep sleep data available for this night.';
   }
@@ -40,20 +41,20 @@ function getStatus(zone: DeepSleepZone) {
     case 'great':
       return {
         label: 'On Track',
-        backgroundColor: 'rgba(255,255,255,0.16)',
-        textColor: SLEEP_THEME.textPrimary,
+        backgroundColor: SLEEP_THEME.onTrackPillBg,
+        textColor: SLEEP_THEME.onTrackPillText,
       };
     case 'fair':
       return {
-        label: 'On Track',
-        backgroundColor: 'rgba(255,255,255,0.16)',
-        textColor: SLEEP_THEME.textPrimary,
+        label: 'Improving',
+        backgroundColor: 'rgba(255,159,10,0.15)',
+        textColor: SLEEP_THEME.warning,
       };
     case 'low':
       return {
-        label: 'On Track',
-        backgroundColor: 'rgba(255,255,255,0.16)',
-        textColor: SLEEP_THEME.textPrimary,
+        label: 'Low',
+        backgroundColor: SLEEP_THEME.lowPillBg,
+        textColor: SLEEP_THEME.lowPillText,
       };
     default:
       return {
@@ -62,6 +63,19 @@ function getStatus(zone: DeepSleepZone) {
         textColor: 'rgba(255,255,255,0.64)',
       };
     }
+}
+
+function mapDeepPctToBarRatio(deepPct: number): number {
+  const clamped = Math.max(0, Math.min(DEEP_VISUAL_CAP, deepPct));
+  if (clamped < DEEP_FAIR_THRESHOLD) {
+    return (clamped / DEEP_FAIR_THRESHOLD) * (1 / 3);
+  }
+  if (clamped < DEEP_GREAT_THRESHOLD) {
+    const fairSpan = DEEP_GREAT_THRESHOLD - DEEP_FAIR_THRESHOLD || 1;
+    return 1 / 3 + ((clamped - DEEP_FAIR_THRESHOLD) / fairSpan) * (1 / 3);
+  }
+  const greatSpan = DEEP_VISUAL_CAP - DEEP_GREAT_THRESHOLD || 1;
+  return 2 / 3 + ((clamped - DEEP_GREAT_THRESHOLD) / greatSpan) * (1 / 3);
 }
 
 function formatDeepValue(minutes: number | null) {
@@ -91,7 +105,8 @@ export default function SleepCardDeep({ deepMinutes, totalMinutes }: SleepCardDe
 
   const clampedIndicatorX = useMemo(() => {
     if (!barWidth || deepPct === null) return 0;
-    const raw = barWidth * Math.max(0, Math.min(1, deepPct));
+    const barRatio = mapDeepPctToBarRatio(deepPct);
+    const raw = barWidth * barRatio;
     return Math.max(INDICATOR_SIZE / 2, Math.min(barWidth - INDICATOR_SIZE / 2, raw));
   }, [barWidth, deepPct]);
 
@@ -217,7 +232,7 @@ const styles = StyleSheet.create({
   zoneLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 6,
     paddingHorizontal: 2,
   },
   zoneText: {

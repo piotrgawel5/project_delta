@@ -210,6 +210,9 @@ export default function SleepScreen() {
   const scrollHandler = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y;
   });
+  const backdropBlurStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, SLEEP_LAYOUT.heroHeight * 0.9], [0, 1], 'clamp'),
+  }));
 
   const handlePagerEnd = (offsetX: number) => {
     const index = Math.round(offsetX / SCREEN_WIDTH);
@@ -224,7 +227,7 @@ export default function SleepScreen() {
 
   const cardContainerStyle = useMemo(
     () => ({
-      paddingTop: SLEEP_LAYOUT.heroHeight - SLEEP_LAYOUT.chartOverlap,
+      paddingTop: SLEEP_LAYOUT.heroHeight + 24,
       paddingBottom: SLEEP_LAYOUT.scrollBottomPad,
       paddingHorizontal: SLEEP_LAYOUT.screenPaddingH,
       gap: SLEEP_LAYOUT.cardGap,
@@ -278,6 +281,15 @@ export default function SleepScreen() {
         onMomentumScrollEnd={(event) => handlePagerEnd(event.nativeEvent.contentOffset.x)}
       />
 
+      <Animated.View pointerEvents="none" style={[styles.backdropBlur, backdropBlurStyle]}>
+        <BlurView
+          intensity={48}
+          tint="dark"
+          experimentalBlurMethod="dimezisBlurView"
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+
       <AnimatedBlurHeader
         scrollY={scrollY}
         threshold={SLEEP_LAYOUT.heroHeight * 0.6}
@@ -285,6 +297,7 @@ export default function SleepScreen() {
       />
 
       <Animated.ScrollView
+        style={styles.cardsScroll}
         contentContainerStyle={cardContainerStyle}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
@@ -355,7 +368,12 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 1,
+    zIndex: 0,
+    overflow: 'visible',
+  },
+  backdropBlur: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
   },
   heroPager: {
     position: 'absolute',
@@ -376,10 +394,14 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 3,
+    zIndex: 4,
   },
   blurHeaderFill: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: SLEEP_THEME.navbarBg,
+  },
+  cardsScroll: {
+    position: 'relative',
+    zIndex: 5,
   },
 });
