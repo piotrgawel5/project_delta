@@ -23,6 +23,7 @@ import type { SleepHeroProps } from '../../../types/sleep-ui';
 type HeroPreset = (typeof SLEEP_THEME.heroGradePresets)[keyof typeof SLEEP_THEME.heroGradePresets];
 
 const BADGE_RADIUS = 18;
+const OVERLAY_LAYER_OPACITY = 0.35;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 function getHeroPreset(grade: string, isEmpty: boolean): HeroPreset {
@@ -53,18 +54,23 @@ function HeroGradientLayer({ preset }: { preset: HeroPreset }) {
       width="100%"
       height={SCREEN_HEIGHT}>
       <Defs>
-        <RadialGradient id={radialId} cx="18%" cy="9%" rx="88%" ry="92%" fx="18%" fy="9%">
+        <RadialGradient id={radialId} cx="18%" cy="9%" rx="112%" ry="118%" fx="18%" fy="9%">
           <Stop offset="0%" stopColor={preset.primary} stopOpacity={1} />
           <Stop offset="70%" stopColor={preset.mid} stopOpacity={1} />
-          <Stop offset="100%" stopColor="#000000" stopOpacity={1} />
+          <Stop offset="100%" stopColor={preset.end} stopOpacity={1} />
         </RadialGradient>
         <SvgLinearGradient id={overlayId} x1="0%" y1="0%" x2="0%" y2="100%">
           <Stop offset="0%" stopColor={preset.overlayStart} stopOpacity={0.8} />
-          <Stop offset="61%" stopColor="#000000" stopOpacity={0.1} />
+          <Stop offset="61%" stopColor={preset.overlayEnd} stopOpacity={0.1} />
         </SvgLinearGradient>
       </Defs>
       <Rect width="100%" height={SCREEN_HEIGHT} fill={`url(#${radialId})`} />
-      <Rect width="100%" height={SCREEN_HEIGHT} fill={`url(#${overlayId})`} />
+      <Rect
+        width="100%"
+        height={SCREEN_HEIGHT}
+        fill={`url(#${overlayId})`}
+        opacity={OVERLAY_LAYER_OPACITY}
+      />
     </Svg>
   );
 }

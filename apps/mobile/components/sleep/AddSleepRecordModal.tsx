@@ -1,58 +1,56 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Modal, Dimensions, Pressable } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  Dimensions,
+  Pressable,
+} from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle, Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import Animated, {
   useSharedValue,
-  useAnimatedProps,
-  runOnJS,
   useAnimatedStyle,
+  runOnJS,
   withTiming,
+  withSpring,
+  interpolate,
+  Extrapolation,
   Easing,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const { width, height } = Dimensions.get('window');
-const SLIDER_SIZE = width * 0.7;
-const STROKE_WIDTH = 36;
-const CENTER = SLIDER_SIZE / 2;
-const RADIUS = CENTER - STROKE_WIDTH / 2 - 4;
-const KNOB_SIZE = 32;
-const KNOB_HALF = KNOB_SIZE / 2;
+const { height } = Dimensions.get('window');
 
 // Visual Constants
 const SHEET_PADDING = 20;
 const SHEET_INNER_RADIUS = 24;
 const SHEET_RADIUS = SHEET_INNER_RADIUS + SHEET_PADDING;
-const CONTROL_PADDING = 14;
-const CONTROL_INNER_RADIUS = 8;
-const CONTROL_RADIUS = CONTROL_INNER_RADIUS + CONTROL_PADDING;
 const CLOSE_BTN_PADDING = 6;
 const CLOSE_BTN_INNER_RADIUS = 6;
 const CLOSE_BTN_RADIUS = CLOSE_BTN_INNER_RADIUS + CLOSE_BTN_PADDING;
 const HANDLE_HEIGHT = 5;
 const HANDLE_RADIUS = HANDLE_HEIGHT / 2;
-const SAVE_BTN_PADDING_Y = 12;
-const SAVE_BTN_INNER_RADIUS = 10;
-const SAVE_BTN_RADIUS = SAVE_BTN_INNER_RADIUS + SAVE_BTN_PADDING_Y;
 const CARD_BG = '#000000';
 const POPUP_BG = '#0B0B0D';
-const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
-const TEXT_TERTIARY = 'rgba(255,255,255,0.5)';
-const STROKE = 'rgba(255,255,255,0.08)';
-const BTN_SOLID = '#F8FAFC';
-const ARC_GRADIENT = {
-  start: '#5B5B61',
-  end: '#3E3E44',
-} as const;
 const SAVE_BTN_BG = '#FFFFFF';
 const SAVE_BTN_BORDER = 'rgba(15, 17, 23, 0.14)';
 const SAVE_BTN_TEXT = '#111111';
 const SAVE_BTN_DISABLED_BG = '#E5E7EB';
 const SAVE_BTN_DISABLED_TEXT = '#9CA3AF';
+const ROW_HEIGHT = 52;
+const VISIBLE_ROWS = 5;
+const PADDING_ROWS = 2;
+const REPEAT = 3;
+const PICKER_HEIGHT = ROW_HEIGHT * VISIBLE_ROWS;
+const HOUR_DRUM_WIDTH = 90;
+const MINUTE_DRUM_WIDTH = 72;
+const DRUM_PAIR_WIDTH = HOUR_DRUM_WIDTH + MINUTE_DRUM_WIDTH + 16;
+const HOUR_VALUES = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
+const MINUTE_VALUES = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
 
 interface AddSleepRecordModalProps {
   isVisible: boolean;
@@ -61,52 +59,6 @@ interface AddSleepRecordModalProps {
   date?: Date; // Reference date for the sleep record
   userId: string;
 }
-
-// ----------------------------------------------------------------------
-// Math Helpers
-// ----------------------------------------------------------------------
-
-const PI = Math.PI;
-const TAU = 2 * PI;
-
-function normalizeAngle(angle: number): number {
-  'worklet';
-  let a = angle;
-  while (a <= -PI) a += TAU;
-  while (a > PI) a -= TAU;
-  return a;
-}
-
-function timeToRad(h: number, m: number): number {
-  'worklet';
-  const totalMinutes = h * 60 + m;
-  const ratio = totalMinutes / (24 * 60);
-  return normalizeAngle(ratio * TAU - PI / 2);
-}
-
-function radToTime(rad: number): { h: number; m: number } {
-  'worklet';
-  let angle = rad + PI / 2;
-  if (angle < 0) angle += TAU;
-  if (angle >= TAU) angle -= TAU;
-  const mins = Math.round(((angle / TAU) * 24 * 60) / 10) * 10;
-  let h = Math.floor(mins / 60);
-  if (h >= 24) h = 0;
-  const m = mins % 60;
-  return { h, m };
-}
-
-function polarToCartesian(angle: number, r: number, cx: number): { x: number; y: number } {
-  'worklet';
-  return {
-    x: cx + r * Math.cos(angle),
-    y: cx + r * Math.sin(angle),
-  };
-}
-
-const formatTime = (h: number, m: number) => {
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-};
 
 const getSmartDateLabel = (date: Date) => {
   const now = new Date();
@@ -125,12 +77,140 @@ const getSmartDateLabel = (date: Date) => {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
 
-// ----------------------------------------------------------------------
-// Component
-// ----------------------------------------------------------------------
+type DrumPickerProps = {
+  values: string[];
+  selectedIndex: number;
+  onIndexChange: (index: number) => void;
+  width: number;
+};
 
-Animated.addWhitelistedNativeProps({ d: true });
-const AnimatedPath = Animated.createAnimatedComponent(Path);
+const DrumPicker = ({ values, selectedIndex, onIndexChange, width }: DrumPickerProps) => {
+  type DrumRowProps = {
+    index: number;
+    value: string;
+    valuesLength: number;
+    offset: number;
+    centerOffsetY: number;
+    translateY: Readonly<{ value: number }>;
+  };
+
+  const offset = values.length;
+  const centerOffsetY = ROW_HEIGHT * PADDING_ROWS;
+  const tripled = useMemo(() => [...values, ...values, ...values], [values]);
+  const maxIndex = values.length * REPEAT - 1;
+  const maxTranslateY = centerOffsetY;
+  const minTranslateY = centerOffsetY - maxIndex * ROW_HEIGHT;
+  const initialTranslateY = centerOffsetY - (selectedIndex + offset) * ROW_HEIGHT;
+  const translateY = useSharedValue(initialTranslateY);
+  const prevTranslateY = useSharedValue(initialTranslateY);
+  const DrumRow = useMemo(
+    () =>
+      React.memo(function DrumRow({
+        index,
+        value,
+        valuesLength,
+        offset,
+        centerOffsetY,
+        translateY,
+      }: DrumRowProps) {
+        const animStyle = useAnimatedStyle(() => {
+          const centeredIndex = (centerOffsetY - translateY.value) / ROW_HEIGHT;
+          const trueCenter = ((centeredIndex % valuesLength) + valuesLength) % valuesLength;
+          const trueThis = (((index - offset) % valuesLength) + valuesLength) % valuesLength;
+          let dist = Math.abs(trueThis - trueCenter);
+          dist = Math.min(dist, valuesLength - dist);
+
+          const opacity = interpolate(dist, [0, 1, 2], [1, 0.6, 0.25], Extrapolation.CLAMP);
+          const scale = interpolate(dist, [0, 1, 2], [1, 0.72, 0.52], Extrapolation.CLAMP);
+
+          return { opacity, transform: [{ scale }] };
+        });
+
+        return (
+          <Animated.Text style={[styles.drumRow, { top: index * ROW_HEIGHT }, animStyle]}>
+            {value}
+          </Animated.Text>
+        );
+      }),
+    []
+  );
+
+  const triggerLightHaptic = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  useEffect(() => {
+    const targetY = centerOffsetY - (selectedIndex + offset) * ROW_HEIGHT;
+    translateY.value = targetY;
+    prevTranslateY.value = targetY;
+  }, [centerOffsetY, offset, selectedIndex, prevTranslateY, translateY]);
+
+  const trackStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const panGesture = Gesture.Pan()
+    .onBegin(() => {
+      'worklet';
+      prevTranslateY.value = translateY.value;
+    })
+    .onUpdate((event) => {
+      'worklet';
+      const nextY = prevTranslateY.value + event.translationY;
+      translateY.value = Math.max(minTranslateY, Math.min(maxTranslateY, nextY));
+    })
+    .onEnd((event) => {
+      'worklet';
+      const VELOCITY_FACTOR = 0.3;
+      const projected = translateY.value + event.velocityY * VELOCITY_FACTOR;
+      const raw = (centerOffsetY - projected) / ROW_HEIGHT;
+      const snapped = Math.round(raw);
+      const normalizedIndex = ((snapped % values.length) + values.length) % values.length;
+      const middleSnapped = normalizedIndex + offset;
+      const targetY = centerOffsetY - middleSnapped * ROW_HEIGHT;
+
+      runOnJS(onIndexChange)(normalizedIndex);
+      runOnJS(triggerLightHaptic)();
+
+      translateY.value = withSpring(targetY, {
+        damping: 28,
+        stiffness: 320,
+        mass: 0.5,
+        velocity: event.velocityY,
+      });
+      prevTranslateY.value = targetY;
+    });
+
+  return (
+    <View style={[styles.drumFrame, { width }]}>
+      <GestureDetector gesture={panGesture}>
+        <View style={styles.drumViewport}>
+          <Animated.View
+            style={[
+              styles.drumTrack,
+              trackStyle,
+              { height: tripled.length * ROW_HEIGHT },
+            ]}>
+            {tripled.map((value, index) => (
+              <DrumRow
+                key={`${value}-${index}`}
+                index={index}
+                value={value}
+                valuesLength={values.length}
+                offset={offset}
+                centerOffsetY={centerOffsetY}
+                translateY={translateY}
+              />
+            ))}
+          </Animated.View>
+        </View>
+      </GestureDetector>
+
+      <View pointerEvents="none" style={styles.selectionLineTop} />
+      <View pointerEvents="none" style={styles.selectionLineBottom} />
+    </View>
+  );
+};
 
 export const AddSleepRecordModal = ({
   isVisible,
@@ -141,135 +221,79 @@ export const AddSleepRecordModal = ({
 }: AddSleepRecordModalProps) => {
   const insets = useSafeAreaInsets();
 
-  const startAngle = useSharedValue(timeToRad(23, 0));
-  const endAngle = useSharedValue(timeToRad(7, 0));
-  const activeKnob = useSharedValue<'start' | 'end' | null>(null);
-  const lastKnob = useSharedValue<'start' | 'end'>('end');
   const translateY = useSharedValue(height);
+  const backdropOpacity = useSharedValue(0);
 
-  const [bedtime, setBedtime] = useState({ h: 23, m: 0 });
-  const [waketime, setWaketime] = useState({ h: 7, m: 0 });
-  const [durationStr, setDurationStr] = useState('8h 00m');
+  const [bedHour, setBedHour] = useState(23);
+  const [bedMinute, setBedMinute] = useState(0);
+  const [wakeHour, setWakeHour] = useState(7);
+  const [wakeMinute, setWakeMinute] = useState(0);
   const [headerDate, setHeaderDate] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Stabilize date to prevent infinite re-renders when parent passes new Date()
+  const stableDateKey = date?.getTime();
   const stableDate = useMemo(() => {
-    const d = date || new Date();
-    return d;
-  }, [date?.getTime()]);
+    return stableDateKey !== undefined ? new Date(stableDateKey) : new Date();
+  }, [stableDateKey]);
 
-  const updateTimes = useCallback((sRad: number, eRad: number) => {
-    const sTime = radToTime(sRad);
-    const eTime = radToTime(eRad);
-    setBedtime(sTime);
-    setWaketime(eTime);
-
-    let diff = eRad - sRad;
-    if (diff <= 0) diff += TAU;
-    const durMins = Math.round(((diff / TAU) * 24 * 60) / 10) * 10;
-    const dh = Math.floor(durMins / 60);
-    const dm = durMins % 60;
-    setDurationStr(`${dh}h ${dm.toString().padStart(2, '0')}m`);
-  }, []);
+  const durationStr = useMemo(() => {
+    let startMins = bedHour * 60 + bedMinute;
+    let endMins = wakeHour * 60 + wakeMinute;
+    let diff = endMins - startMins;
+    if (diff <= 0) diff += 24 * 60;
+    const dh = Math.floor(diff / 60);
+    const dm = diff % 60;
+    return `${dh}h ${dm.toString().padStart(2, '0')}m`;
+  }, [bedHour, bedMinute, wakeHour, wakeMinute]);
 
   useEffect(() => {
     if (isVisible) {
       setHeaderDate(getSmartDateLabel(stableDate));
       setIsSaving(false);
       setValidationError(null);
-      startAngle.value = timeToRad(23, 0);
-      endAngle.value = timeToRad(7, 0);
-      updateTimes(startAngle.value, endAngle.value);
+      setBedHour(23);
+      setBedMinute(0);
+      setWakeHour(7);
+      setWakeMinute(0);
+      backdropOpacity.value = withTiming(1, { duration: 280 });
       translateY.value = withTiming(0, { duration: 350, easing: Easing.out(Easing.cubic) });
     } else {
+      backdropOpacity.value = 0;
       translateY.value = height;
     }
-  }, [isVisible, stableDate]);
+  }, [backdropOpacity, isVisible, stableDate, translateY]);
 
-  const closeWithAnimation = useCallback(() => {
-    translateY.value = withTiming(height, { duration: 250, easing: Easing.in(Easing.cubic) });
+  const finishClose = useCallback(() => {
     setTimeout(onClose, 260);
   }, [onClose]);
 
-  const triggerHaptic = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  // ------------------------------------------------------------------
-  // Circular Slider Gesture w/ Manual Activation
-  // ------------------------------------------------------------------
-  const sliderGesture = Gesture.Pan()
-    .manualActivation(true)
-    .onTouchesDown((e, state) => {
-      'worklet';
-      const touch = e.changedTouches[0];
-      if (!touch) return;
-
-      const sPos = polarToCartesian(startAngle.value, RADIUS, CENTER);
-      const ePos = polarToCartesian(endAngle.value, RADIUS, CENTER);
-
-      const dS = Math.hypot(touch.x - sPos.x, touch.y - sPos.y);
-      const dE = Math.hypot(touch.x - ePos.x, touch.y - ePos.y);
-
-      const threshold = STROKE_WIDTH + 30;
-
-      if (dS <= threshold && dE <= threshold) {
-        activeKnob.value = lastKnob.value === 'start' ? 'end' : 'start';
-        state.activate();
-      } else if (dS <= threshold) {
-        activeKnob.value = 'start';
-        state.activate();
-      } else if (dE <= threshold) {
-        activeKnob.value = 'end';
-        state.activate();
-      } else {
-        activeKnob.value = null;
-        state.fail();
-      }
-    })
-    .onUpdate((e) => {
-      'worklet';
-      if (!activeKnob.value) return;
-
-      const rawAngle = Math.atan2(e.y - CENTER, e.x - CENTER);
-
-      const STEP = TAU / 144;
-      const offset = -PI / 2;
-      let relative = rawAngle - offset;
-      if (relative < 0) relative += TAU;
-      if (relative >= TAU) relative -= TAU;
-
-      const snapped = Math.round(relative / STEP) * STEP;
-      const finalAngle = normalizeAngle(snapped + offset);
-
-      const current = activeKnob.value === 'start' ? startAngle.value : endAngle.value;
-      let angleDiff = Math.abs(finalAngle - current);
-      if (angleDiff > PI) angleDiff = TAU - angleDiff;
-
-      if (angleDiff > 0.01) {
-        if (activeKnob.value === 'start') {
-          startAngle.value = finalAngle;
-        } else {
-          endAngle.value = finalAngle;
-        }
-        runOnJS(triggerHaptic)();
-        runOnJS(updateTimes)(startAngle.value, endAngle.value);
-      }
-    })
-    .onFinalize(() => {
-      'worklet';
-      if (activeKnob.value !== null) {
-        lastKnob.value = activeKnob.value;
-      }
-      activeKnob.value = null;
-    });
+  const closeWithAnimation = useCallback(() => {
+    backdropOpacity.value = withTiming(0, { duration: 220 });
+    translateY.value = withTiming(height, { duration: 250, easing: Easing.in(Easing.cubic) });
+    finishClose();
+  }, [backdropOpacity, finishClose, translateY]);
 
   // ------------------------------------------------------------------
   // Sheet Dismiss Gesture
   // ------------------------------------------------------------------
   const sheetGesture = Gesture.Pan()
+    .manualActivation(true)
+    .onTouchesDown((e, state) => {
+      'worklet';
+      const touch = e.changedTouches[0];
+      if (!touch) {
+        state.fail();
+        return;
+      }
+
+      if (touch.y <= 80) {
+        state.activate();
+      } else {
+        state.fail();
+      }
+    })
     .onUpdate((e) => {
       'worklet';
       if (e.translationY > 0) {
@@ -279,39 +303,17 @@ export const AddSleepRecordModal = ({
     .onEnd((e) => {
       'worklet';
       if (translateY.value > 120 || e.velocityY > 600) {
+        backdropOpacity.value = withTiming(0, { duration: 220 });
         translateY.value = withTiming(height, { duration: 250 });
-        runOnJS(onClose)();
+        runOnJS(finishClose)();
       } else {
         translateY.value = withTiming(0, { duration: 200 });
       }
     });
 
-  // ------------------------------------------------------------------
-  // Animated Styles
-  // ------------------------------------------------------------------
-  const animatedPathProps = useAnimatedProps(() => {
-    const start = startAngle.value;
-    const end = endAngle.value;
-    let diff = end - start;
-    if (diff <= 0) diff += TAU;
-    const largeArc = diff > PI ? 1 : 0;
-    const startPos = polarToCartesian(start, RADIUS, CENTER);
-    const endPos = polarToCartesian(end, RADIUS, CENTER);
-    if (isNaN(startPos.x) || isNaN(endPos.x)) return { d: '' };
-    return {
-      d: `M ${startPos.x} ${startPos.y} A ${RADIUS} ${RADIUS} 0 ${largeArc} 1 ${endPos.x} ${endPos.y}`,
-    };
-  });
-
-  const startKnobStyle = useAnimatedStyle(() => {
-    const pos = polarToCartesian(startAngle.value, RADIUS, CENTER);
-    return { transform: [{ translateX: pos.x - KNOB_HALF }, { translateY: pos.y - KNOB_HALF }] };
-  });
-
-  const endKnobStyle = useAnimatedStyle(() => {
-    const pos = polarToCartesian(endAngle.value, RADIUS, CENTER);
-    return { transform: [{ translateX: pos.x - KNOB_HALF }, { translateY: pos.y - KNOB_HALF }] };
-  });
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -320,10 +322,9 @@ export const AddSleepRecordModal = ({
   const handleSave = async () => {
     if (isSaving || !userId) return;
 
-    let diff = endAngle.value - startAngle.value;
-    if (diff <= 0) diff += TAU;
-    const durMins = Math.round(((diff / TAU) * 24 * 60) / 10) * 10;
-    if (durMins < 30) {
+    let diff = wakeHour * 60 + wakeMinute - (bedHour * 60 + bedMinute);
+    if (diff <= 0) diff += 24 * 60;
+    if (diff < 30) {
       setValidationError('Sleep duration must be at least 30 minutes.');
       return;
     }
@@ -333,9 +334,9 @@ export const AddSleepRecordModal = ({
 
     const n = new Date(stableDate); // Use the stabilized date
     const s = new Date(n);
-    s.setHours(bedtime.h, bedtime.m, 0, 0);
+    s.setHours(bedHour, bedMinute, 0, 0);
     const e = new Date(n);
-    e.setHours(waketime.h, waketime.m, 0, 0);
+    e.setHours(wakeHour, wakeMinute, 0, 0);
 
     // Logic: Bedtime allows going back 1 day. Wake up defaults to reference day.
     if (s > e) {
@@ -362,8 +363,10 @@ export const AddSleepRecordModal = ({
   return (
     <Modal animationType="none" transparent visible={isVisible} onRequestClose={closeWithAnimation}>
       <Pressable style={styles.backdrop} onPress={closeWithAnimation}>
-        <BlurView intensity={25} style={StyleSheet.absoluteFill} tint="dark" />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
+        <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+          <BlurView intensity={25} style={StyleSheet.absoluteFill} tint="dark" />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
+        </Animated.View>
       </Pressable>
 
       <GestureHandlerRootView style={styles.gestureRoot} pointerEvents="box-none">
@@ -376,94 +379,66 @@ export const AddSleepRecordModal = ({
               </View>
 
               <View style={styles.header}>
-                <Text style={styles.title}>{headerDate}</Text>
+                <View style={styles.headerText}>
+                  <Text style={styles.title}>{headerDate}</Text>
+                  <Text style={styles.subtitle}>
+                    {stableDate.toLocaleDateString('en-GB', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                    })}
+                  </Text>
+                </View>
                 <Pressable onPress={closeWithAnimation} style={styles.closeBtn}>
                   <Ionicons name="close" size={18} color="#8E8E93" />
                 </Pressable>
               </View>
             </View>
 
-            {/* Slider */}
             <View style={styles.content}>
-              <GestureDetector gesture={sliderGesture}>
-                <View style={styles.sliderContainer}>
-                  <Svg width={SLIDER_SIZE} height={SLIDER_SIZE}>
-                    <Defs>
-                      <LinearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <Stop offset="0" stopColor={ARC_GRADIENT.start} />
-                        <Stop offset="1" stopColor={ARC_GRADIENT.end} />
-                      </LinearGradient>
-                    </Defs>
-                    <Circle
-                      cx={CENTER}
-                      cy={CENTER}
-                      r={RADIUS}
-                      stroke="#2C2C2E"
-                      strokeWidth={STROKE_WIDTH}
-                      fill="none"
-                    />
-                    <AnimatedPath
-                      animatedProps={animatedPathProps}
-                      stroke="url(#arcGrad)"
-                      strokeWidth={STROKE_WIDTH}
-                      fill="none"
-                      strokeLinecap="round"
-                    />
-                    {Array.from({ length: 48 }).map((_, i) => {
-                      const ang = (i / 48) * TAU - PI / 2;
-                      const inner = RADIUS - 24;
-                      const outer = inner + 3;
-                      const isMajor = i % 4 === 0;
-                      return (
-                        <Path
-                          key={i}
-                          d={`M ${CENTER + inner * Math.cos(ang)} ${CENTER + inner * Math.sin(ang)} L ${CENTER + outer * Math.cos(ang)} ${CENTER + outer * Math.sin(ang)}`}
-                          stroke={isMajor ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'}
-                          strokeWidth={isMajor ? 1.5 : 1}
-                        />
-                      );
-                    })}
-                  </Svg>
-                  <Text style={[styles.clockLabel, { top: 16 }]}>00</Text>
-                  <Text style={[styles.clockLabel, { right: 16, top: CENTER - 7 }]}>06</Text>
-                  <Text style={[styles.clockLabel, { bottom: 16 }]}>12</Text>
-                  <Text style={[styles.clockLabel, { left: 16, top: CENTER - 7 }]}>18</Text>
-
-                  <Animated.View style={[styles.knobWrap, startKnobStyle]}>
-                    <View style={[styles.knob, { borderColor: ARC_GRADIENT.start }]}>
-                      <Ionicons name="bed" size={13} color="#FFFFFF" />
+              <View style={styles.pickerSection}>
+                <View style={styles.pickerColumns}>
+                  <View style={styles.drumPairColumn}>
+                    <Text style={styles.drumLabel}>BEDTIME</Text>
+                    <View style={styles.drumPairRow}>
+                      <DrumPicker
+                        values={HOUR_VALUES}
+                        selectedIndex={bedHour}
+                        onIndexChange={setBedHour}
+                        width={HOUR_DRUM_WIDTH}
+                      />
+                      <Text style={styles.colon}>:</Text>
+                      <DrumPicker
+                        values={MINUTE_VALUES}
+                        selectedIndex={bedMinute / 5}
+                        onIndexChange={(index) => setBedMinute(index * 5)}
+                        width={MINUTE_DRUM_WIDTH}
+                      />
                     </View>
-                  </Animated.View>
-                  <Animated.View style={[styles.knobWrap, endKnobStyle]}>
-                    <View style={[styles.knob, { borderColor: ARC_GRADIENT.end }]}>
-                      <Ionicons name="alarm" size={13} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.drumPairColumn}>
+                    <Text style={styles.drumLabel}>WAKE UP</Text>
+                    <View style={styles.drumPairRow}>
+                      <DrumPicker
+                        values={HOUR_VALUES}
+                        selectedIndex={wakeHour}
+                        onIndexChange={setWakeHour}
+                        width={HOUR_DRUM_WIDTH}
+                      />
+                      <Text style={styles.colon}>:</Text>
+                      <DrumPicker
+                        values={MINUTE_VALUES}
+                        selectedIndex={wakeMinute / 5}
+                        onIndexChange={(index) => setWakeMinute(index * 5)}
+                        width={MINUTE_DRUM_WIDTH}
+                      />
                     </View>
-                  </Animated.View>
+                  </View>
+                </View>
+              </View>
 
-                  <View style={styles.centerInfo} pointerEvents="none">
-                    <Text style={styles.durationLabel}>Duration</Text>
-                    <Text style={styles.durationValue}>{durationStr}</Text>
-                  </View>
-                </View>
-              </GestureDetector>
-
-              {/* Time display */}
-              <View style={styles.timeRow}>
-                <View style={styles.timeItem}>
-                  <View style={styles.timeLabelRow}>
-                    <Ionicons name="bed" size={13} color="#8E86FF" />
-                    <Text style={styles.timeLabelText}>Bedtime</Text>
-                  </View>
-                  <Text style={styles.timeValue}>{formatTime(bedtime.h, bedtime.m)}</Text>
-                </View>
-                <View style={styles.divider} />
-                <View style={styles.timeItem}>
-                  <View style={styles.timeLabelRow}>
-                    <Ionicons name="alarm" size={13} color="#A855F7" />
-                    <Text style={styles.timeLabelText}>Wake Up</Text>
-                  </View>
-                  <Text style={styles.timeValue}>{formatTime(waketime.h, waketime.m)}</Text>
-                </View>
+              <View style={styles.durationRow}>
+                <Text style={styles.durationText}>{durationStr}</Text>
               </View>
 
               {validationError && <Text style={styles.validationError}>{validationError}</Text>}
@@ -518,59 +493,102 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
+  headerText: {
+    flexDirection: 'column',
+    gap: 2,
+  },
   title: { color: 'white', fontSize: 19, fontWeight: '700' },
+  subtitle: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 13,
+    fontWeight: '400',
+  },
   closeBtn: { padding: 6, backgroundColor: POPUP_BG, borderRadius: CLOSE_BTN_RADIUS },
   content: { alignItems: 'center', paddingHorizontal: 20 },
-  sliderContainer: {
-    width: SLIDER_SIZE,
-    height: SLIDER_SIZE,
-    marginBottom: 16,
-    borderRadius: SHEET_RADIUS,
-  },
-  clockLabel: {
-    position: 'absolute',
-    color: TEXT_SECONDARY,
-    fontSize: 11,
-    fontWeight: '600',
-    alignSelf: 'center',
-  },
-  knobWrap: { position: 'absolute', width: KNOB_SIZE, height: KNOB_SIZE },
-  knob: {
-    width: KNOB_SIZE,
-    height: KNOB_SIZE,
-    borderRadius: KNOB_SIZE / 2,
-    backgroundColor: '#1C1C1E',
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  centerInfo: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  durationLabel: { color: TEXT_SECONDARY, fontSize: 12, fontWeight: '500', marginBottom: 2 },
-  durationValue: { color: 'white', fontSize: 26, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  timeRow: {
-    flexDirection: 'row',
-    backgroundColor: POPUP_BG,
-    borderRadius: CONTROL_RADIUS,
-    padding: 14,
+  pickerSection: {
     width: '100%',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
-  timeItem: { flex: 1, alignItems: 'center' },
-  timeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
-  timeLabelText: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '500' },
-  timeValue: { color: 'white', fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  divider: { width: 1, height: 36, backgroundColor: STROKE, marginHorizontal: 12 },
+  pickerColumns: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  drumPairColumn: {
+    alignItems: 'center',
+  },
+  drumLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#6B7280',
+    letterSpacing: 1.4,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  drumPairRow: {
+    width: DRUM_PAIR_WIDTH,
+    position: 'relative',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  drumFrame: {
+    height: PICKER_HEIGHT,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  drumViewport: {
+    height: PICKER_HEIGHT,
+    overflow: 'hidden',
+  },
+  drumTrack: {
+    position: 'relative',
+  },
+  drumRow: {
+    position: 'absolute',
+    width: '100%',
+    height: ROW_HEIGHT,
+    textAlignVertical: 'center',
+    textAlign: 'center',
+    color: '#F9FAFB',
+    fontSize: 38,
+    fontWeight: '500',
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
+  },
+  selectionLineTop: {
+    position: 'absolute',
+    top: ROW_HEIGHT * 2,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  selectionLineBottom: {
+    position: 'absolute',
+    top: ROW_HEIGHT * 3,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  colon: {
+    position: 'absolute',
+    left: HOUR_DRUM_WIDTH + 4,
+    top: ROW_HEIGHT * 2 + ROW_HEIGHT / 2 - 12,
+    color: '#4B5563',
+    fontSize: 24,
+    fontWeight: '300',
+  },
+  durationRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  durationText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#6B7280',
+    letterSpacing: 1.2,
+  },
   validationError: {
     color: '#FF6B6B',
     fontSize: 13,

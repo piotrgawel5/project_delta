@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mobile Quality Standard"
+  short_description: "Project Delta mobile quality guardrails"
+  default_prompt: "Use $mobile-quality-standard to enforce Project Delta mobile performance, design, and fetch standards on an apps/mobile task."
