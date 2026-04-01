@@ -6,19 +6,21 @@ import {
   Modal,
   Dimensions,
   Pressable,
+  FlatList,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  useAnimatedReaction,
   runOnJS,
   withTiming,
-  withSpring,
   interpolate,
   Extrapolation,
   Easing,
+  useAnimatedScrollHandler,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
@@ -45,15 +47,13 @@ const SAVE_BTN_DISABLED_TEXT = '#9CA3AF';
 const ROW_HEIGHT = 52;
 const VISIBLE_ROWS = 5;
 const PADDING_ROWS = 2;
-const REPEAT = 3;
-const WINDOW_SIZE = 7;
+const REPEAT = 60;
 const PICKER_HEIGHT = ROW_HEIGHT * VISIBLE_ROWS;
 const HOUR_DRUM_WIDTH = 90;
 const MINUTE_DRUM_WIDTH = 72;
 const DRUM_PAIR_WIDTH = HOUR_DRUM_WIDTH + MINUTE_DRUM_WIDTH + 16;
 const HOUR_VALUES = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 const MINUTE_VALUES = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
-const WINDOW_OFFSETS = Array.from({ length: WINDOW_SIZE }, (_, i) => i - Math.floor(WINDOW_SIZE / 2));
 
 interface AddSleepRecordModalProps {
   isVisible: boolean;
@@ -94,38 +94,37 @@ const DrumPicker = React.memo(function DrumPicker({
   width,
 }: DrumPickerProps) {
   type DrumRowProps = {
-    index: number;
+    absoluteIndex: number;
     value: string;
     valuesLength: number;
-    offset: number;
-    centerOffsetY: number;
-    translateY: Readonly<{ value: number }>;
+    scrollY: Readonly<{ value: number }>;
   };
 
-  const offset = values.length;
-  const centerOffsetY = ROW_HEIGHT * PADDING_ROWS;
-  const tripled = useMemo(() => [...values, ...values, ...values], [values]);
-  const maxIndex = values.length * REPEAT - 1;
-  const maxTranslateY = centerOffsetY;
-  const minTranslateY = centerOffsetY - maxIndex * ROW_HEIGHT;
-  const initialTranslateY = centerOffsetY - (selectedIndex + offset) * ROW_HEIGHT;
-  const translateY = useSharedValue(initialTranslateY);
-  const prevTranslateY = useSharedValue(initialTranslateY);
-  const [windowCenterIndex, setWindowCenterIndex] = useState(selectedIndex + offset);
+  const repeatedValues = useMemo(
+    () => Array.from({ length: values.length * REPEAT }, (_, index) => values[index % values.length]),
+    [values]
+  );
+  const middleBaseIndex = useMemo(
+    () => Math.floor(REPEAT / 2) * values.length,
+    [values.length]
+  );
+  const initialAbsoluteIndex = middleBaseIndex + selectedIndex;
+  const scrollY = useSharedValue(initialAbsoluteIndex * ROW_HEIGHT);
+  const listRef = React.useRef<FlatList<string>>(null);
+  const currentAbsoluteIndexRef = React.useRef(initialAbsoluteIndex);
+  const lastReportedIndexRef = React.useRef(selectedIndex);
   const DrumRow = useMemo(
     () =>
       React.memo(function DrumRow({
-        index,
+        absoluteIndex,
         value,
         valuesLength,
-        offset,
-        centerOffsetY,
-        translateY,
+        scrollY,
       }: DrumRowProps) {
         const animStyle = useAnimatedStyle(() => {
-          const centeredIndex = (centerOffsetY - translateY.value) / ROW_HEIGHT;
+          const centeredIndex = scrollY.value / ROW_HEIGHT;
           const trueCenter = ((centeredIndex % valuesLength) + valuesLength) % valuesLength;
-          const trueThis = (((index - offset) % valuesLength) + valuesLength) % valuesLength;
+          const trueThis = ((absoluteIndex % valuesLength) + valuesLength) % valuesLength;
           let dist = Math.abs(trueThis - trueCenter);
           dist = Math.min(dist, valuesLength - dist);
 
@@ -136,7 +135,7 @@ const DrumPicker = React.memo(function DrumPicker({
         });
 
         return (
-          <Animated.Text style={[styles.drumRow, { top: index * ROW_HEIGHT }, animStyle]}>
+          <Animated.Text style={[styles.drumRow, animStyle]}>
             {value}
           </Animated.Text>
         );
@@ -148,96 +147,98 @@ const DrumPicker = React.memo(function DrumPicker({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  const updateWindowCenterIndex = useCallback((nextIndex: number) => {
-    setWindowCenterIndex((current) => (current === nextIndex ? current : nextIndex));
-  }, []);
-
   useEffect(() => {
-    const targetY = centerOffsetY - (selectedIndex + offset) * ROW_HEIGHT;
-    translateY.value = targetY;
-    prevTranslateY.value = targetY;
-    setWindowCenterIndex(selectedIndex + offset);
-  }, [centerOffsetY, offset, selectedIndex, prevTranslateY, translateY]);
+    const targetAbsoluteIndex = middleBaseIndex + selectedIndex;
+    lastReportedIndexRef.current = selectedIndex;
+    if (currentAbsoluteIndexRef.current === targetAbsoluteIndex) return;
 
-  useAnimatedReaction(
-    () => Math.round((centerOffsetY - translateY.value) / ROW_HEIGHT),
-    (nextIndex, previousIndex) => {
-      if (nextIndex !== previousIndex) {
-        const boundedIndex = Math.max(0, Math.min(maxIndex, nextIndex));
-        runOnJS(updateWindowCenterIndex)(boundedIndex);
+    currentAbsoluteIndexRef.current = targetAbsoluteIndex;
+    scrollY.value = targetAbsoluteIndex * ROW_HEIGHT;
+    listRef.current?.scrollToOffset({
+      offset: targetAbsoluteIndex * ROW_HEIGHT,
+      animated: false,
+    });
+  }, [middleBaseIndex, scrollY, selectedIndex]);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  const handleSnapEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const rawIndex = Math.round(event.nativeEvent.contentOffset.y / ROW_HEIGHT);
+      const normalizedIndex = ((rawIndex % values.length) + values.length) % values.length;
+      const middleAbsoluteIndex = middleBaseIndex + normalizedIndex;
+
+      if (rawIndex !== middleAbsoluteIndex) {
+        listRef.current?.scrollToOffset({
+          offset: middleAbsoluteIndex * ROW_HEIGHT,
+          animated: false,
+        });
+      }
+
+      currentAbsoluteIndexRef.current = middleAbsoluteIndex;
+      scrollY.value = middleAbsoluteIndex * ROW_HEIGHT;
+
+      if (lastReportedIndexRef.current !== normalizedIndex) {
+        lastReportedIndexRef.current = normalizedIndex;
+        triggerLightHaptic();
+        onIndexChange(normalizedIndex);
       }
     },
-    [centerOffsetY, maxIndex, translateY, updateWindowCenterIndex]
+    [middleBaseIndex, onIndexChange, scrollY, triggerLightHaptic, values.length]
   );
 
-  const trackStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  const visibleRowIndexes = useMemo(
-    () =>
-      WINDOW_OFFSETS.map((offsetValue) => windowCenterIndex + offsetValue).filter(
-        (index) => index >= 0 && index <= maxIndex
-      ),
-    [maxIndex, windowCenterIndex]
+  const getItemLayout = useCallback(
+    (_: ArrayLike<string> | null | undefined, index: number) => ({
+      length: ROW_HEIGHT,
+      offset: ROW_HEIGHT * index,
+      index,
+    }),
+    []
   );
 
-  const panGesture = Gesture.Pan()
-    .onBegin(() => {
-      'worklet';
-      prevTranslateY.value = translateY.value;
-    })
-    .onUpdate((event) => {
-      'worklet';
-      const nextY = prevTranslateY.value + event.translationY;
-      translateY.value = Math.max(minTranslateY, Math.min(maxTranslateY, nextY));
-    })
-    .onEnd((event) => {
-      'worklet';
-      const VELOCITY_FACTOR = 0.3;
-      const projected = translateY.value + event.velocityY * VELOCITY_FACTOR;
-      const raw = (centerOffsetY - projected) / ROW_HEIGHT;
-      const snapped = Math.round(raw);
-      const normalizedIndex = ((snapped % values.length) + values.length) % values.length;
-      const middleSnapped = normalizedIndex + offset;
-      const targetY = centerOffsetY - middleSnapped * ROW_HEIGHT;
+  const renderItem = useCallback(
+    ({ item, index }: { item: string; index: number }) => (
+      <DrumRow
+        absoluteIndex={index}
+        value={item}
+        valuesLength={values.length}
+        scrollY={scrollY}
+      />
+    ),
+    [DrumRow, scrollY, values.length]
+  );
 
-      runOnJS(onIndexChange)(normalizedIndex);
-      runOnJS(triggerLightHaptic)();
-
-      translateY.value = withSpring(targetY, {
-        damping: 28,
-        stiffness: 320,
-        mass: 0.5,
-        velocity: event.velocityY,
-      });
-      prevTranslateY.value = targetY;
-    });
+  const keyExtractor = useCallback((_: string, index: number) => index.toString(), []);
 
   return (
     <View style={[styles.drumFrame, { width }]}>
-      <GestureDetector gesture={panGesture}>
-        <View style={styles.drumViewport}>
-          <Animated.View
-            style={[
-              styles.drumTrack,
-              trackStyle,
-              { height: tripled.length * ROW_HEIGHT },
-            ]}>
-            {visibleRowIndexes.map((index) => (
-              <DrumRow
-                key={`${tripled[index]}-${index}`}
-                index={index}
-                value={tripled[index]}
-                valuesLength={values.length}
-                offset={offset}
-                centerOffsetY={centerOffsetY}
-                translateY={translateY}
-              />
-            ))}
-          </Animated.View>
-        </View>
-      </GestureDetector>
+      <Animated.FlatList
+        ref={listRef}
+        data={repeatedValues}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        initialScrollIndex={initialAbsoluteIndex}
+        getItemLayout={getItemLayout}
+        snapToInterval={ROW_HEIGHT}
+        decelerationRate="fast"
+        disableIntervalMomentum={false}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
+        removeClippedSubviews
+        scrollEventThrottle={16}
+        windowSize={5}
+        initialNumToRender={VISIBLE_ROWS + 2}
+        maxToRenderPerBatch={VISIBLE_ROWS + 2}
+        contentContainerStyle={styles.drumContent}
+        style={styles.drumViewport}
+        onScroll={scrollHandler}
+        onMomentumScrollEnd={handleSnapEnd}
+      />
 
       <View pointerEvents="none" style={styles.selectionLineTop} />
       <View pointerEvents="none" style={styles.selectionLineBottom} />
@@ -584,13 +585,12 @@ const styles = StyleSheet.create({
   },
   drumViewport: {
     height: PICKER_HEIGHT,
-    overflow: 'hidden',
   },
-  drumTrack: {
-    position: 'relative',
+  drumContent: {
+    paddingTop: ROW_HEIGHT * PADDING_ROWS,
+    paddingBottom: ROW_HEIGHT * PADDING_ROWS,
   },
   drumRow: {
-    position: 'absolute',
     width: '100%',
     height: ROW_HEIGHT,
     textAlignVertical: 'center',
