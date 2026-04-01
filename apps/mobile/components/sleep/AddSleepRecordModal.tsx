@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedReaction,
   runOnJS,
   withTiming,
   withSpring,
@@ -45,12 +46,14 @@ const ROW_HEIGHT = 52;
 const VISIBLE_ROWS = 5;
 const PADDING_ROWS = 2;
 const REPEAT = 3;
+const WINDOW_SIZE = 7;
 const PICKER_HEIGHT = ROW_HEIGHT * VISIBLE_ROWS;
 const HOUR_DRUM_WIDTH = 90;
 const MINUTE_DRUM_WIDTH = 72;
 const DRUM_PAIR_WIDTH = HOUR_DRUM_WIDTH + MINUTE_DRUM_WIDTH + 16;
 const HOUR_VALUES = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 const MINUTE_VALUES = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
+const WINDOW_OFFSETS = Array.from({ length: WINDOW_SIZE }, (_, i) => i - Math.floor(WINDOW_SIZE / 2));
 
 interface AddSleepRecordModalProps {
   isVisible: boolean;
@@ -84,7 +87,12 @@ type DrumPickerProps = {
   width: number;
 };
 
-const DrumPicker = ({ values, selectedIndex, onIndexChange, width }: DrumPickerProps) => {
+const DrumPicker = React.memo(function DrumPicker({
+  values,
+  selectedIndex,
+  onIndexChange,
+  width,
+}: DrumPickerProps) {
   type DrumRowProps = {
     index: number;
     value: string;
@@ -103,6 +111,7 @@ const DrumPicker = ({ values, selectedIndex, onIndexChange, width }: DrumPickerP
   const initialTranslateY = centerOffsetY - (selectedIndex + offset) * ROW_HEIGHT;
   const translateY = useSharedValue(initialTranslateY);
   const prevTranslateY = useSharedValue(initialTranslateY);
+  const [windowCenterIndex, setWindowCenterIndex] = useState(selectedIndex + offset);
   const DrumRow = useMemo(
     () =>
       React.memo(function DrumRow({
@@ -139,15 +148,39 @@ const DrumPicker = ({ values, selectedIndex, onIndexChange, width }: DrumPickerP
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
+  const updateWindowCenterIndex = useCallback((nextIndex: number) => {
+    setWindowCenterIndex((current) => (current === nextIndex ? current : nextIndex));
+  }, []);
+
   useEffect(() => {
     const targetY = centerOffsetY - (selectedIndex + offset) * ROW_HEIGHT;
     translateY.value = targetY;
     prevTranslateY.value = targetY;
+    setWindowCenterIndex(selectedIndex + offset);
   }, [centerOffsetY, offset, selectedIndex, prevTranslateY, translateY]);
+
+  useAnimatedReaction(
+    () => Math.round((centerOffsetY - translateY.value) / ROW_HEIGHT),
+    (nextIndex, previousIndex) => {
+      if (nextIndex !== previousIndex) {
+        const boundedIndex = Math.max(0, Math.min(maxIndex, nextIndex));
+        runOnJS(updateWindowCenterIndex)(boundedIndex);
+      }
+    },
+    [centerOffsetY, maxIndex, translateY, updateWindowCenterIndex]
+  );
 
   const trackStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
+
+  const visibleRowIndexes = useMemo(
+    () =>
+      WINDOW_OFFSETS.map((offsetValue) => windowCenterIndex + offsetValue).filter(
+        (index) => index >= 0 && index <= maxIndex
+      ),
+    [maxIndex, windowCenterIndex]
+  );
 
   const panGesture = Gesture.Pan()
     .onBegin(() => {
@@ -191,11 +224,11 @@ const DrumPicker = ({ values, selectedIndex, onIndexChange, width }: DrumPickerP
               trackStyle,
               { height: tripled.length * ROW_HEIGHT },
             ]}>
-            {tripled.map((value, index) => (
+            {visibleRowIndexes.map((index) => (
               <DrumRow
-                key={`${value}-${index}`}
+                key={`${tripled[index]}-${index}`}
                 index={index}
-                value={value}
+                value={tripled[index]}
                 valuesLength={values.length}
                 offset={offset}
                 centerOffsetY={centerOffsetY}
@@ -210,7 +243,7 @@ const DrumPicker = ({ values, selectedIndex, onIndexChange, width }: DrumPickerP
       <View pointerEvents="none" style={styles.selectionLineBottom} />
     </View>
   );
-};
+});
 
 export const AddSleepRecordModal = ({
   isVisible,
@@ -247,6 +280,14 @@ export const AddSleepRecordModal = ({
     const dm = diff % 60;
     return `${dh}h ${dm.toString().padStart(2, '0')}m`;
   }, [bedHour, bedMinute, wakeHour, wakeMinute]);
+
+  const handleBedMinuteIndexChange = useCallback((index: number) => {
+    setBedMinute(index * 5);
+  }, []);
+
+  const handleWakeMinuteIndexChange = useCallback((index: number) => {
+    setWakeMinute(index * 5);
+  }, []);
 
   useEffect(() => {
     if (isVisible) {
@@ -363,7 +404,10 @@ export const AddSleepRecordModal = ({
   return (
     <Modal animationType="none" transparent visible={isVisible} onRequestClose={closeWithAnimation}>
       <Pressable style={styles.backdrop} onPress={closeWithAnimation}>
-        <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+        <Animated.View
+          renderToHardwareTextureAndroid
+          shouldRasterizeIOS
+          style={[StyleSheet.absoluteFill, backdropStyle]}>
           <BlurView intensity={25} style={StyleSheet.absoluteFill} tint="dark" />
           <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
         </Animated.View>
@@ -371,7 +415,10 @@ export const AddSleepRecordModal = ({
 
       <GestureHandlerRootView style={styles.gestureRoot} pointerEvents="box-none">
         <GestureDetector gesture={sheetGesture}>
-          <Animated.View style={[styles.sheet, { paddingBottom: insets.bottom + 20 }, sheetStyle]}>
+          <Animated.View
+            renderToHardwareTextureAndroid
+            shouldRasterizeIOS
+            style={[styles.sheet, { paddingBottom: insets.bottom + 20 }, sheetStyle]}>
             {/* Expanded Header Zone for Gestures */}
             <View style={styles.headerZone}>
               <View style={styles.handleContainer}>
@@ -411,7 +458,7 @@ export const AddSleepRecordModal = ({
                       <DrumPicker
                         values={MINUTE_VALUES}
                         selectedIndex={bedMinute / 5}
-                        onIndexChange={(index) => setBedMinute(index * 5)}
+                        onIndexChange={handleBedMinuteIndexChange}
                         width={MINUTE_DRUM_WIDTH}
                       />
                     </View>
@@ -429,7 +476,7 @@ export const AddSleepRecordModal = ({
                       <DrumPicker
                         values={MINUTE_VALUES}
                         selectedIndex={wakeMinute / 5}
-                        onIndexChange={(index) => setWakeMinute(index * 5)}
+                        onIndexChange={handleWakeMinuteIndexChange}
                         width={MINUTE_DRUM_WIDTH}
                       />
                     </View>
