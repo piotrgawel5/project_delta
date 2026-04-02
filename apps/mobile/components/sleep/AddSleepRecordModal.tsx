@@ -6,27 +6,27 @@ import {
   Modal,
   Dimensions,
   Pressable,
-  FlatList,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
+  type SharedValue,
   useSharedValue,
   useAnimatedStyle,
   runOnJS,
   withTiming,
+  withSpring,
+  withDecay,
   interpolate,
   Extrapolation,
   Easing,
-  useAnimatedScrollHandler,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SLEEP_THEME, SLEEP_FONTS } from '../../constants/theme';
 
-const { height } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height } = Dimensions.get('window');
 
 // Visual Constants
 const SHEET_PADDING = 20;
@@ -37,20 +37,13 @@ const CLOSE_BTN_INNER_RADIUS = 6;
 const CLOSE_BTN_RADIUS = CLOSE_BTN_INNER_RADIUS + CLOSE_BTN_PADDING;
 const HANDLE_HEIGHT = 5;
 const HANDLE_RADIUS = HANDLE_HEIGHT / 2;
-const CARD_BG = '#000000';
-const POPUP_BG = '#0B0B0D';
-const SAVE_BTN_BG = '#FFFFFF';
-const SAVE_BTN_BORDER = 'rgba(15, 17, 23, 0.14)';
-const SAVE_BTN_TEXT = '#111111';
-const SAVE_BTN_DISABLED_BG = '#E5E7EB';
-const SAVE_BTN_DISABLED_TEXT = '#9CA3AF';
 const ROW_HEIGHT = 52;
 const VISIBLE_ROWS = 5;
 const PADDING_ROWS = 2;
-const REPEAT = 60;
+const REPEAT = 3;
 const PICKER_HEIGHT = ROW_HEIGHT * VISIBLE_ROWS;
-const HOUR_DRUM_WIDTH = 90;
-const MINUTE_DRUM_WIDTH = 72;
+const HOUR_DRUM_WIDTH = 120;
+const MINUTE_DRUM_WIDTH = 96;
 const DRUM_PAIR_WIDTH = HOUR_DRUM_WIDTH + MINUTE_DRUM_WIDTH + 16;
 const HOUR_VALUES = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 const MINUTE_VALUES = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
@@ -59,24 +52,19 @@ interface AddSleepRecordModalProps {
   isVisible: boolean;
   onClose: () => void;
   onSave: (startTime: Date, endTime: Date) => Promise<boolean>;
-  date?: Date; // Reference date for the sleep record
+  date?: Date;
   userId: string;
 }
 
 const getSmartDateLabel = (date: Date) => {
   const now = new Date();
-  // Reset times to compare dates only
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   const n = new Date(now);
   n.setHours(0, 0, 0, 0);
-
-  const diffTime = n.getTime() - d.getTime();
-  const diffDays = diffTime / (1000 * 3600 * 24);
-
+  const diffDays = (n.getTime() - d.getTime()) / (1000 * 3600 * 24);
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
-
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
 
@@ -87,159 +75,125 @@ type DrumPickerProps = {
   width: number;
 };
 
+type DrumRowProps = {
+  absoluteIndex: number;
+  value: string;
+  valuesLength: number;
+  translateY: SharedValue<number>;
+  centerOffsetY: number;
+};
+
+const DrumRow = React.memo(function DrumRow({
+  absoluteIndex,
+  value,
+  valuesLength,
+  translateY,
+  centerOffsetY,
+}: DrumRowProps) {
+  const animStyle = useAnimatedStyle(() => {
+    const centeredRaw = (centerOffsetY - translateY.value) / ROW_HEIGHT;
+    const trueCenter = ((centeredRaw % valuesLength) + valuesLength) % valuesLength;
+    const trueThis = ((absoluteIndex % valuesLength) + valuesLength) % valuesLength;
+    let dist = Math.abs(trueThis - trueCenter);
+    dist = Math.min(dist, valuesLength - dist);
+    const opacity = interpolate(dist, [0, 1, 2], [1.0, 0.6, 0.25], Extrapolation.CLAMP);
+    const scale = interpolate(dist, [0, 1, 2], [1.0, 0.72, 0.52], Extrapolation.CLAMP);
+    return { opacity, transform: [{ scale }] };
+  });
+
+  return (
+    <Animated.Text style={[styles.drumRow, { top: absoluteIndex * ROW_HEIGHT }, animStyle]}>
+      {value}
+    </Animated.Text>
+  );
+});
+
 const DrumPicker = React.memo(function DrumPicker({
   values,
   selectedIndex,
   onIndexChange,
   width,
 }: DrumPickerProps) {
-  type DrumRowProps = {
-    absoluteIndex: number;
-    value: string;
-    valuesLength: number;
-    scrollY: Readonly<{ value: number }>;
-  };
+  const offset = values.length;
+  const centerOffsetY = ROW_HEIGHT * PADDING_ROWS;
+  const totalItems = values.length * REPEAT;
 
-  const repeatedValues = useMemo(
-    () => Array.from({ length: values.length * REPEAT }, (_, index) => values[index % values.length]),
-    [values]
-  );
-  const middleBaseIndex = useMemo(
-    () => Math.floor(REPEAT / 2) * values.length,
-    [values.length]
-  );
-  const initialAbsoluteIndex = middleBaseIndex + selectedIndex;
-  const scrollY = useSharedValue(initialAbsoluteIndex * ROW_HEIGHT);
-  const listRef = React.useRef<FlatList<string>>(null);
-  const currentAbsoluteIndexRef = React.useRef(initialAbsoluteIndex);
-  const lastReportedIndexRef = React.useRef(selectedIndex);
-  const DrumRow = useMemo(
-    () =>
-      React.memo(function DrumRow({
-        absoluteIndex,
-        value,
-        valuesLength,
-        scrollY,
-      }: DrumRowProps) {
-        const animStyle = useAnimatedStyle(() => {
-          const centeredIndex = scrollY.value / ROW_HEIGHT;
-          const trueCenter = ((centeredIndex % valuesLength) + valuesLength) % valuesLength;
-          const trueThis = ((absoluteIndex % valuesLength) + valuesLength) % valuesLength;
-          let dist = Math.abs(trueThis - trueCenter);
-          dist = Math.min(dist, valuesLength - dist);
+  void withDecay;
 
-          const opacity = interpolate(dist, [0, 1, 2], [1, 0.6, 0.25], Extrapolation.CLAMP);
-          const scale = interpolate(dist, [0, 1, 2], [1, 0.72, 0.52], Extrapolation.CLAMP);
-
-          return { opacity, transform: [{ scale }] };
-        });
-
-        return (
-          <Animated.Text style={[styles.drumRow, animStyle]}>
-            {value}
-          </Animated.Text>
-        );
-      }),
-    []
+  const tripled = useMemo(
+    () => Array.from({ length: totalItems }, (_, i) => values[i % values.length]),
+    [values, totalItems]
   );
 
-  const triggerLightHaptic = useCallback(() => {
+  const minY = centerOffsetY - (totalItems - 1) * ROW_HEIGHT;
+  const maxY = centerOffsetY;
+  const initialY = centerOffsetY - (selectedIndex + offset) * ROW_HEIGHT;
+  const translateY = useSharedValue(initialY);
+  const prevY = useSharedValue(initialY);
+
+  useEffect(() => {
+    const target = centerOffsetY - (selectedIndex + offset) * ROW_HEIGHT;
+    translateY.value = target;
+    prevY.value = target;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIndex]);
+
+  const triggerHaptic = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  useEffect(() => {
-    const targetAbsoluteIndex = middleBaseIndex + selectedIndex;
-    lastReportedIndexRef.current = selectedIndex;
-    if (currentAbsoluteIndexRef.current === targetAbsoluteIndex) return;
-
-    currentAbsoluteIndexRef.current = targetAbsoluteIndex;
-    scrollY.value = targetAbsoluteIndex * ROW_HEIGHT;
-    listRef.current?.scrollToOffset({
-      offset: targetAbsoluteIndex * ROW_HEIGHT,
-      animated: false,
+  const panGesture = Gesture.Pan()
+    .onBegin(() => {
+      'worklet';
+      prevY.value = translateY.value;
+    })
+    .onUpdate((e) => {
+      'worklet';
+      const next = prevY.value + e.translationY;
+      translateY.value = Math.max(minY, Math.min(maxY, next));
+    })
+    .onEnd((e) => {
+      'worklet';
+      const projected = translateY.value + e.velocityY * 0.18;
+      const rawIndex = (centerOffsetY - projected) / ROW_HEIGHT;
+      const snapped = Math.round(rawIndex);
+      const normalizedIndex = ((snapped % values.length) + values.length) % values.length;
+      const middleIndex = normalizedIndex + offset;
+      const targetY = centerOffsetY - middleIndex * ROW_HEIGHT;
+      runOnJS(onIndexChange)(normalizedIndex);
+      runOnJS(triggerHaptic)();
+      translateY.value = withSpring(targetY, {
+        damping: 26,
+        stiffness: 280,
+        mass: 0.5,
+        velocity: e.velocityY,
+      });
+      prevY.value = targetY;
     });
-  }, [middleBaseIndex, scrollY, selectedIndex]);
 
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
-    },
-  });
-
-  const handleSnapEnd = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const rawIndex = Math.round(event.nativeEvent.contentOffset.y / ROW_HEIGHT);
-      const normalizedIndex = ((rawIndex % values.length) + values.length) % values.length;
-      const middleAbsoluteIndex = middleBaseIndex + normalizedIndex;
-
-      if (rawIndex !== middleAbsoluteIndex) {
-        listRef.current?.scrollToOffset({
-          offset: middleAbsoluteIndex * ROW_HEIGHT,
-          animated: false,
-        });
-      }
-
-      currentAbsoluteIndexRef.current = middleAbsoluteIndex;
-      scrollY.value = middleAbsoluteIndex * ROW_HEIGHT;
-
-      if (lastReportedIndexRef.current !== normalizedIndex) {
-        lastReportedIndexRef.current = normalizedIndex;
-        triggerLightHaptic();
-        onIndexChange(normalizedIndex);
-      }
-    },
-    [middleBaseIndex, onIndexChange, scrollY, triggerLightHaptic, values.length]
-  );
-
-  const getItemLayout = useCallback(
-    (_: ArrayLike<string> | null | undefined, index: number) => ({
-      length: ROW_HEIGHT,
-      offset: ROW_HEIGHT * index,
-      index,
-    }),
-    []
-  );
-
-  const renderItem = useCallback(
-    ({ item, index }: { item: string; index: number }) => (
-      <DrumRow
-        absoluteIndex={index}
-        value={item}
-        valuesLength={values.length}
-        scrollY={scrollY}
-      />
-    ),
-    [DrumRow, scrollY, values.length]
-  );
-
-  const keyExtractor = useCallback((_: string, index: number) => index.toString(), []);
+  const trackStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
 
   return (
     <View style={[styles.drumFrame, { width }]}>
-      <Animated.FlatList
-        ref={listRef}
-        data={repeatedValues}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        initialScrollIndex={initialAbsoluteIndex}
-        getItemLayout={getItemLayout}
-        snapToInterval={ROW_HEIGHT}
-        decelerationRate="fast"
-        disableIntervalMomentum={false}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        overScrollMode="never"
-        removeClippedSubviews
-        scrollEventThrottle={16}
-        windowSize={5}
-        initialNumToRender={VISIBLE_ROWS + 2}
-        maxToRenderPerBatch={VISIBLE_ROWS + 2}
-        contentContainerStyle={styles.drumContent}
-        style={styles.drumViewport}
-        onScroll={scrollHandler}
-        onMomentumScrollEnd={handleSnapEnd}
-      />
-
+      <GestureDetector gesture={panGesture}>
+        <View style={styles.drumViewport}>
+          <Animated.View
+            style={[styles.drumTrack, { height: totalItems * ROW_HEIGHT }, trackStyle]}>
+            {tripled.map((value, index) => (
+              <DrumRow
+                key={index}
+                absoluteIndex={index}
+                value={value}
+                valuesLength={values.length}
+                translateY={translateY}
+                centerOffsetY={centerOffsetY}
+              />
+            ))}
+          </Animated.View>
+        </View>
+      </GestureDetector>
       <View pointerEvents="none" style={styles.selectionLineTop} />
       <View pointerEvents="none" style={styles.selectionLineBottom} />
     </View>
@@ -255,9 +209,14 @@ export const AddSleepRecordModal = ({
 }: AddSleepRecordModalProps) => {
   const insets = useSafeAreaInsets();
 
+  // Sheet entrance/dismiss
   const translateY = useSharedValue(height);
   const backdropOpacity = useSharedValue(0);
 
+  // Horizontal page slide: 0 = bedtime, 1 = wake up
+  const slideAnim = useSharedValue(0);
+
+  const [page, setPage] = useState<0 | 1>(0);
   const [bedHour, setBedHour] = useState(23);
   const [bedMinute, setBedMinute] = useState(0);
   const [wakeHour, setWakeHour] = useState(7);
@@ -266,29 +225,21 @@ export const AddSleepRecordModal = ({
   const [isSaving, setIsSaving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Stabilize date to prevent infinite re-renders when parent passes new Date()
   const stableDateKey = date?.getTime();
   const stableDate = useMemo(() => {
     return stableDateKey !== undefined ? new Date(stableDateKey) : new Date();
   }, [stableDateKey]);
 
   const durationStr = useMemo(() => {
-    let startMins = bedHour * 60 + bedMinute;
-    let endMins = wakeHour * 60 + wakeMinute;
-    let diff = endMins - startMins;
+    let diff = wakeHour * 60 + wakeMinute - (bedHour * 60 + bedMinute);
     if (diff <= 0) diff += 24 * 60;
     const dh = Math.floor(diff / 60);
     const dm = diff % 60;
     return `${dh}h ${dm.toString().padStart(2, '0')}m`;
   }, [bedHour, bedMinute, wakeHour, wakeMinute]);
 
-  const handleBedMinuteIndexChange = useCallback((index: number) => {
-    setBedMinute(index * 5);
-  }, []);
-
-  const handleWakeMinuteIndexChange = useCallback((index: number) => {
-    setWakeMinute(index * 5);
-  }, []);
+  const handleBedMinuteIndexChange = useCallback((index: number) => setBedMinute(index * 5), []);
+  const handleWakeMinuteIndexChange = useCallback((index: number) => setWakeMinute(index * 5), []);
 
   useEffect(() => {
     if (isVisible) {
@@ -299,13 +250,15 @@ export const AddSleepRecordModal = ({
       setBedMinute(0);
       setWakeHour(7);
       setWakeMinute(0);
+      setPage(0);
+      slideAnim.value = 0;
       backdropOpacity.value = withTiming(1, { duration: 280 });
       translateY.value = withTiming(0, { duration: 350, easing: Easing.out(Easing.cubic) });
     } else {
       backdropOpacity.value = 0;
       translateY.value = height;
     }
-  }, [backdropOpacity, isVisible, stableDate, translateY]);
+  }, [backdropOpacity, isVisible, slideAnim, stableDate, translateY]);
 
   const finishClose = useCallback(() => {
     setTimeout(onClose, 260);
@@ -317,30 +270,32 @@ export const AddSleepRecordModal = ({
     finishClose();
   }, [backdropOpacity, finishClose, translateY]);
 
+  const goToPage2 = useCallback(() => {
+    setPage(1);
+    slideAnim.value = withSpring(1, { damping: 28, stiffness: 280, mass: 0.6 });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [slideAnim]);
+
+  const goToPage1 = useCallback(() => {
+    setPage(0);
+    slideAnim.value = withSpring(0, { damping: 28, stiffness: 280, mass: 0.6 });
+  }, [slideAnim]);
+
   // ------------------------------------------------------------------
-  // Sheet Dismiss Gesture
+  // Sheet dismiss gesture (top 80px swipe-down)
   // ------------------------------------------------------------------
   const sheetGesture = Gesture.Pan()
     .manualActivation(true)
     .onTouchesDown((e, state) => {
       'worklet';
       const touch = e.changedTouches[0];
-      if (!touch) {
-        state.fail();
-        return;
-      }
-
-      if (touch.y <= 80) {
-        state.activate();
-      } else {
-        state.fail();
-      }
+      if (!touch) { state.fail(); return; }
+      if (touch.y <= 80) state.activate();
+      else state.fail();
     })
     .onUpdate((e) => {
       'worklet';
-      if (e.translationY > 0) {
-        translateY.value = e.translationY;
-      }
+      if (e.translationY > 0) translateY.value = e.translationY;
     })
     .onEnd((e) => {
       'worklet';
@@ -353,47 +308,61 @@ export const AddSleepRecordModal = ({
       }
     });
 
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: backdropOpacity.value,
+  // ------------------------------------------------------------------
+  // Animated styles
+  // ------------------------------------------------------------------
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: backdropOpacity.value }));
+  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
+
+  const slidingTrackStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: interpolate(slideAnim.value, [0, 1], [0, -SCREEN_WIDTH]) }],
   }));
 
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
+  const page1TitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(slideAnim.value, [0, 0.35], [1, 0], Extrapolation.CLAMP),
+    transform: [{ translateX: interpolate(slideAnim.value, [0, 1], [0, -14]) }],
+  }));
+
+  const page2TitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(slideAnim.value, [0.5, 1], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateX: interpolate(slideAnim.value, [0, 1], [14, 0]) }],
+  }));
+
+  const backBtnStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(slideAnim.value, [0.3, 1], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateX: interpolate(slideAnim.value, [0, 1], [-8, 0]) }],
+  }));
+
+  const dot1Style = useAnimatedStyle(() => ({
+    width: interpolate(slideAnim.value, [0, 1], [20, 8], Extrapolation.CLAMP),
+    opacity: interpolate(slideAnim.value, [0, 1], [1, 0.35], Extrapolation.CLAMP),
+  }));
+
+  const dot2Style = useAnimatedStyle(() => ({
+    width: interpolate(slideAnim.value, [0, 1], [8, 20], Extrapolation.CLAMP),
+    opacity: interpolate(slideAnim.value, [0, 1], [0.35, 1], Extrapolation.CLAMP),
   }));
 
   const handleSave = async () => {
     if (isSaving || !userId) return;
-
     let diff = wakeHour * 60 + wakeMinute - (bedHour * 60 + bedMinute);
     if (diff <= 0) diff += 24 * 60;
     if (diff < 30) {
       setValidationError('Sleep duration must be at least 30 minutes.');
       return;
     }
-
     setValidationError(null);
     setIsSaving(true);
-
-    const n = new Date(stableDate); // Use the stabilized date
+    const n = new Date(stableDate);
     const s = new Date(n);
     s.setHours(bedHour, bedMinute, 0, 0);
     const e = new Date(n);
     e.setHours(wakeHour, wakeMinute, 0, 0);
-
-    // Logic: Bedtime allows going back 1 day. Wake up defaults to reference day.
-    if (s > e) {
-      // e.g. Sleep 23:00 -> Wake 07:00
-      // s is day before
-      s.setDate(s.getDate() - 1);
-    }
-
+    if (s > e) s.setDate(s.getDate() - 1);
     try {
       const success = await onSave(s, e);
-      if (success) {
-        closeWithAnimation();
-      } else {
-        setIsSaving(false);
-      }
+      if (success) closeWithAnimation();
+      else setIsSaving(false);
     } catch (error) {
       console.error('[AddSleepRecordModal] Save failed:', error);
       setIsSaving(false);
@@ -401,6 +370,12 @@ export const AddSleepRecordModal = ({
   };
 
   if (!isVisible) return null;
+
+  const dateSubtitle = stableDate.toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
 
   return (
     <Modal animationType="none" transparent visible={isVisible} onRequestClose={closeWithAnimation}>
@@ -420,34 +395,87 @@ export const AddSleepRecordModal = ({
             renderToHardwareTextureAndroid
             shouldRasterizeIOS
             style={[styles.sheet, { paddingBottom: insets.bottom + 20 }, sheetStyle]}>
-            {/* Expanded Header Zone for Gestures */}
-            <View style={styles.headerZone}>
-              <View style={styles.handleContainer}>
-                <View style={styles.handle} />
-              </View>
 
-              <View style={styles.header}>
-                <View style={styles.headerText}>
-                  <Text style={styles.title}>{headerDate}</Text>
-                  <Text style={styles.subtitle}>
-                    {stableDate.toLocaleDateString('en-GB', {
-                      weekday: 'long',
-                      day: 'numeric',
-                      month: 'long',
-                    })}
-                  </Text>
-                </View>
-                <Pressable onPress={closeWithAnimation} style={styles.closeBtn}>
-                  <Ionicons name="close" size={18} color="#8E8E93" />
-                </Pressable>
-              </View>
+            {/* Drag handle */}
+            <View style={styles.handleContainer}>
+              <View style={styles.handle} />
             </View>
 
-            <View style={styles.content}>
-              <View style={styles.pickerSection}>
-                <View style={styles.pickerColumns}>
-                  <View style={styles.drumPairColumn}>
-                    <Text style={styles.drumLabel}>BEDTIME</Text>
+            {/* Header: [back] [crossfading title] [close] */}
+            <View style={styles.header}>
+              <Animated.View style={backBtnStyle}>
+                <Pressable
+                  onPress={goToPage1}
+                  style={styles.iconBtn}
+                  pointerEvents={page === 1 ? 'auto' : 'none'}>
+                  <Ionicons name="chevron-back" size={20} color={SLEEP_THEME.textPrimary} />
+                </Pressable>
+              </Animated.View>
+
+              <View style={styles.headerCenter}>
+                {/* Invisible spacer — gives the center its natural height */}
+                <View style={styles.titleSpacer} pointerEvents="none">
+                  <View style={styles.titleRow}>
+                    <Text style={styles.title}> </Text>
+                  </View>
+                  <Text style={styles.subtitle}> </Text>
+                </View>
+
+                {/* Page 1 title */}
+                <Animated.View
+                  style={[styles.headerTitleAbs, page1TitleStyle]}
+                  pointerEvents="none">
+                  <View style={styles.titleRow}>
+                    <Ionicons
+                      name="moon"
+                      size={15}
+                      color={SLEEP_THEME.colorBedtime}
+                      style={styles.titleIcon}
+                    />
+                    <Text style={styles.title}>Bedtime</Text>
+                  </View>
+                  <Text style={styles.subtitle}>
+                    {headerDate} · {dateSubtitle}
+                  </Text>
+                </Animated.View>
+
+                {/* Page 2 title */}
+                <Animated.View
+                  style={[styles.headerTitleAbs, page2TitleStyle]}
+                  pointerEvents="none">
+                  <View style={styles.titleRow}>
+                    <Ionicons
+                      name="sunny"
+                      size={15}
+                      color={SLEEP_THEME.colorAwake}
+                      style={styles.titleIcon}
+                    />
+                    <Text style={styles.title}>Wake Up</Text>
+                  </View>
+                  <Text style={styles.subtitle}>
+                    {headerDate} · {dateSubtitle}
+                  </Text>
+                </Animated.View>
+              </View>
+
+              <Pressable onPress={closeWithAnimation} style={styles.iconBtn}>
+                <Ionicons name="close" size={18} color={SLEEP_THEME.textMuted1} />
+              </Pressable>
+            </View>
+
+            {/* Step dots */}
+            <View style={styles.dotsRow}>
+              <Animated.View style={[styles.dot, dot1Style]} />
+              <Animated.View style={[styles.dot, dot2Style]} />
+            </View>
+
+            {/* Sliding page content */}
+            <View style={styles.contentClip}>
+              <Animated.View style={[styles.slidingTrack, slidingTrackStyle]}>
+
+                {/* ── Page 1: Bedtime ── */}
+                <View style={styles.pageSlot}>
+                  <View style={styles.pickerCentered}>
                     <View style={styles.drumPairRow}>
                       <DrumPicker
                         values={HOUR_VALUES}
@@ -464,8 +492,31 @@ export const AddSleepRecordModal = ({
                       />
                     </View>
                   </View>
-                  <View style={styles.drumPairColumn}>
-                    <Text style={styles.drumLabel}>WAKE UP</Text>
+
+                  {/* Spacer matches page 2 duration badge + validation row height */}
+                  <View style={styles.page1Spacer} />
+
+                  <Pressable
+                    onPress={goToPage2}
+                    style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]}>
+                    <Text style={styles.actionBtnText}>Next</Text>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={17}
+                      color="#111111"
+                      style={styles.actionBtnIcon}
+                    />
+                  </Pressable>
+                </View>
+
+                {/* ── Page 2: Wake Up ── */}
+                <View style={styles.pageSlot}>
+                  {/* Duration badge */}
+                  <View style={styles.durationBadge}>
+                    <Text style={styles.durationText}>{durationStr}</Text>
+                  </View>
+
+                  <View style={styles.pickerCentered}>
                     <View style={styles.drumPairRow}>
                       <DrumPicker
                         values={HOUR_VALUES}
@@ -482,30 +533,35 @@ export const AddSleepRecordModal = ({
                       />
                     </View>
                   </View>
+
+                  {/* Fixed-height validation row so button never jumps */}
+                  <View style={styles.validationRow}>
+                    {validationError ? (
+                      <Text style={styles.validationError}>{validationError}</Text>
+                    ) : null}
+                  </View>
+
+                  <Pressable
+                    onPress={handleSave}
+                    disabled={isSaving || !userId}
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      (isSaving || !userId) && styles.actionBtnDisabled,
+                      pressed && !(isSaving || !userId) && { opacity: 0.85 },
+                    ]}>
+                    <Text
+                      style={[
+                        styles.actionBtnText,
+                        (isSaving || !userId) && styles.actionBtnTextDisabled,
+                      ]}>
+                      {isSaving ? 'Saving...' : 'Save Sleep'}
+                    </Text>
+                  </Pressable>
                 </View>
-              </View>
 
-              <View style={styles.durationRow}>
-                <Text style={styles.durationText}>{durationStr}</Text>
-              </View>
-
-              {validationError && <Text style={styles.validationError}>{validationError}</Text>}
-
-              {/* Save button */}
-              <Pressable
-                onPress={handleSave}
-                disabled={isSaving || !userId}
-                style={({ pressed }) => [
-                  styles.saveBtn,
-                  (isSaving || !userId) && styles.saveBtnDisabled,
-                  pressed && !(isSaving || !userId) && { opacity: 0.85 },
-                ]}>
-                <Text
-                  style={[styles.saveBtnText, (isSaving || !userId) && styles.saveBtnTextDisabled]}>
-                  {isSaving ? 'Saving...' : 'Save Sleep'}
-                </Text>
-              </Pressable>
+              </Animated.View>
             </View>
+
           </Animated.View>
         </GestureDetector>
       </GestureHandlerRootView>
@@ -516,8 +572,9 @@ export const AddSleepRecordModal = ({
 const styles = StyleSheet.create({
   backdrop: { flex: 1 },
   gestureRoot: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
+
   sheet: {
-    backgroundColor: CARD_BG,
+    backgroundColor: SLEEP_THEME.screenBg,
     borderTopLeftRadius: SHEET_RADIUS,
     borderTopRightRadius: SHEET_RADIUS,
     shadowColor: '#000',
@@ -526,57 +583,101 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 10,
   },
-  headerZone: {
-    width: '100%',
-    paddingBottom: 10,
-    backgroundColor: 'transparent',
-    // Increase top padding to add "some space at the top" for gestures
-    paddingTop: 16,
+
+  handleContainer: { alignItems: 'center', paddingTop: 16, paddingBottom: 10 },
+  handle: {
+    width: 36,
+    height: HANDLE_HEIGHT,
+    backgroundColor: SLEEP_THEME.border,
+    borderRadius: HANDLE_RADIUS,
   },
-  handleContainer: { alignItems: 'center', marginBottom: 8 },
-  handle: { width: 36, height: 5, backgroundColor: '#48484A', borderRadius: HANDLE_RADIUS },
+
+  // Header
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: SHEET_PADDING,
+    paddingBottom: 14,
   },
-  headerText: {
-    flexDirection: 'column',
-    gap: 2,
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: CLOSE_BTN_RADIUS,
+    backgroundColor: SLEEP_THEME.cardBg,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  title: { color: 'white', fontSize: 19, fontWeight: '700' },
-  subtitle: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 13,
-    fontWeight: '400',
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    position: 'relative',
   },
-  closeBtn: { padding: 6, backgroundColor: POPUP_BG, borderRadius: CLOSE_BTN_RADIUS },
-  content: { alignItems: 'center', paddingHorizontal: 20 },
-  pickerSection: {
+  headerTitleAbs: {
+    position: 'absolute',
+    alignItems: 'center',
     width: '100%',
   },
-  pickerColumns: {
-    width: '100%',
+  titleSpacer: {
+    alignItems: 'center',
+    opacity: 0,
+  },
+  titleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 3,
   },
-  drumPairColumn: {
+  titleIcon: { marginRight: 6 },
+  title: {
+    color: SLEEP_THEME.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+    fontFamily: SLEEP_FONTS.bold,
+  },
+  subtitle: {
+    color: SLEEP_THEME.textDisabled,
+    fontSize: 12,
+    fontFamily: SLEEP_FONTS.regular,
+  },
+
+  // Step dots
+  dotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 5,
+    paddingBottom: 18,
+  },
+  dot: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: SLEEP_THEME.textPrimary,
+  },
+
+  // Sliding pages
+  contentClip: {
+    overflow: 'hidden',
+    width: SCREEN_WIDTH,
+  },
+  slidingTrack: {
+    flexDirection: 'row',
+    width: SCREEN_WIDTH * 2,
+  },
+  pageSlot: {
+    width: SCREEN_WIDTH,
+    paddingHorizontal: SHEET_PADDING,
     alignItems: 'center',
   },
-  drumLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#6B7280',
-    letterSpacing: 1.4,
-    marginBottom: 12,
-    textAlign: 'center',
+
+  // Picker
+  pickerCentered: {
+    alignItems: 'center',
+    paddingVertical: 4,
   },
   drumPairRow: {
     width: DRUM_PAIR_WIDTH,
-    position: 'relative',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    position: 'relative',
   },
   drumFrame: {
     height: PICKER_HEIGHT,
@@ -585,21 +686,21 @@ const styles = StyleSheet.create({
   },
   drumViewport: {
     height: PICKER_HEIGHT,
+    overflow: 'hidden',
   },
-  drumContent: {
-    paddingTop: ROW_HEIGHT * PADDING_ROWS,
-    paddingBottom: ROW_HEIGHT * PADDING_ROWS,
-  },
+  drumTrack: { position: 'relative' },
   drumRow: {
+    position: 'absolute',
     width: '100%',
     height: ROW_HEIGHT,
-    textAlignVertical: 'center',
     textAlign: 'center',
-    color: '#F9FAFB',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
+    color: SLEEP_THEME.textPrimary,
     fontSize: 38,
     fontWeight: '500',
+    fontFamily: SLEEP_FONTS.medium,
     fontVariant: ['tabular-nums'],
-    includeFontPadding: false,
   },
   selectionLineTop: {
     position: 'absolute',
@@ -607,7 +708,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   selectionLineBottom: {
     position: 'absolute',
@@ -615,52 +716,76 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   colon: {
     position: 'absolute',
     left: HOUR_DRUM_WIDTH + 4,
     top: ROW_HEIGHT * 2 + ROW_HEIGHT / 2 - 12,
-    color: '#4B5563',
+    color: SLEEP_THEME.textMuted2,
     fontSize: 24,
     fontWeight: '300',
   },
-  durationRow: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
+
+  // Duration badge (page 2)
+  durationBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: SLEEP_THEME.cardBg,
+    marginBottom: 10,
   },
   durationText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '500',
-    color: '#6B7280',
-    letterSpacing: 1.2,
+    fontFamily: SLEEP_FONTS.medium,
+    color: SLEEP_THEME.textMuted1,
+    letterSpacing: 0.8,
+  },
+
+  // Spacer on page 1 matching page 2's badge + validation height
+  page1Spacer: { height: 52 },
+
+  // Validation (fixed height so Save button never jumps)
+  validationRow: {
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   validationError: {
-    color: '#FF6B6B',
+    color: SLEEP_THEME.danger,
     fontSize: 13,
     textAlign: 'center',
-    marginBottom: 8,
   },
-  saveBtn: {
+
+  // Action button (Next / Save)
+  actionBtn: {
     width: '100%',
     height: 56,
     borderRadius: 28,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
-    backgroundColor: SAVE_BTN_BG,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: SAVE_BTN_BORDER,
+    borderColor: 'rgba(15,17,23,0.14)',
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
+    marginTop: 8,
+    marginBottom: 4,
   },
-  saveBtnDisabled: {
-    backgroundColor: SAVE_BTN_DISABLED_BG,
+  actionBtnDisabled: { backgroundColor: '#E5E7EB' },
+  actionBtnText: {
+    color: '#111111',
+    fontSize: 17,
+    fontWeight: '600',
+    fontFamily: SLEEP_FONTS.semiBold,
+    letterSpacing: 0.2,
   },
-  saveBtnText: { color: SAVE_BTN_TEXT, fontSize: 17, fontWeight: '600', letterSpacing: 0.2 },
-  saveBtnTextDisabled: { color: SAVE_BTN_DISABLED_TEXT },
+  actionBtnTextDisabled: { color: '#9CA3AF' },
+  actionBtnIcon: { marginLeft: 7 },
 });
