@@ -16,7 +16,6 @@ import Animated, {
   runOnJS,
   withTiming,
   withSpring,
-  withDecay,
   interpolate,
   Extrapolation,
   Easing,
@@ -47,6 +46,17 @@ const MINUTE_DRUM_WIDTH = 96;
 const DRUM_PAIR_WIDTH = HOUR_DRUM_WIDTH + MINUTE_DRUM_WIDTH + 16;
 const HOUR_VALUES = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 const MINUTE_VALUES = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
+
+// Primary action button — intentionally white-on-dark CTA (Apple HIG: filled primary)
+const CTA_BG = '#FFFFFF';
+const CTA_TEXT_COLOR = '#111111';
+const CTA_BG_DISABLED = SLEEP_THEME.elevatedBg;
+const CTA_TEXT_DISABLED = SLEEP_THEME.textMuted2;
+
+// Spring config for sheet entrance / snap-back — tuned for 60/120fps feel
+const SHEET_SPRING = { damping: 28, stiffness: 300, mass: 0.8 };
+// Spring config for page slide transitions
+const SLIDE_SPRING = { damping: 28, stiffness: 280, mass: 0.6 };
 
 interface AddSleepRecordModalProps {
   isVisible: boolean;
@@ -118,8 +128,6 @@ const DrumPicker = React.memo(function DrumPicker({
   const centerOffsetY = ROW_HEIGHT * PADDING_ROWS;
   const totalItems = values.length * REPEAT;
 
-  void withDecay;
-
   const tripled = useMemo(
     () => Array.from({ length: totalItems }, (_, i) => values[i % values.length]),
     [values, totalItems]
@@ -177,6 +185,8 @@ const DrumPicker = React.memo(function DrumPicker({
 
   return (
     <View style={[styles.drumFrame, { width }]}>
+      {/* Selection capsule — sits behind the drum track, highlights selected row */}
+      <View pointerEvents="none" style={styles.selectionCapsule} />
       <GestureDetector gesture={panGesture}>
         <View style={styles.drumViewport}>
           <Animated.View
@@ -194,8 +204,6 @@ const DrumPicker = React.memo(function DrumPicker({
           </Animated.View>
         </View>
       </GestureDetector>
-      <View pointerEvents="none" style={styles.selectionLineTop} />
-      <View pointerEvents="none" style={styles.selectionLineBottom} />
     </View>
   );
 });
@@ -253,32 +261,36 @@ export const AddSleepRecordModal = ({
       setPage(0);
       slideAnim.value = 0;
       backdropOpacity.value = withTiming(1, { duration: 280 });
-      translateY.value = withTiming(0, { duration: 350, easing: Easing.out(Easing.cubic) });
+      // Spring entrance — more natural than cubic easing for sheet lift
+      translateY.value = withSpring(0, SHEET_SPRING);
     } else {
       backdropOpacity.value = 0;
       translateY.value = height;
     }
   }, [backdropOpacity, isVisible, slideAnim, stableDate, translateY]);
 
-  const finishClose = useCallback(() => {
-    setTimeout(onClose, 260);
-  }, [onClose]);
-
+  // Close fires onClose exactly when the dismiss animation finishes — no setTimeout needed
   const closeWithAnimation = useCallback(() => {
     backdropOpacity.value = withTiming(0, { duration: 220 });
-    translateY.value = withTiming(height, { duration: 250, easing: Easing.in(Easing.cubic) });
-    finishClose();
-  }, [backdropOpacity, finishClose, translateY]);
+    translateY.value = withTiming(
+      height,
+      { duration: 250, easing: Easing.in(Easing.cubic) },
+      (finished) => {
+        'worklet';
+        if (finished) runOnJS(onClose)();
+      }
+    );
+  }, [backdropOpacity, onClose, translateY]);
 
   const goToPage2 = useCallback(() => {
     setPage(1);
-    slideAnim.value = withSpring(1, { damping: 28, stiffness: 280, mass: 0.6 });
+    slideAnim.value = withSpring(1, SLIDE_SPRING);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [slideAnim]);
 
   const goToPage1 = useCallback(() => {
     setPage(0);
-    slideAnim.value = withSpring(0, { damping: 28, stiffness: 280, mass: 0.6 });
+    slideAnim.value = withSpring(0, SLIDE_SPRING);
   }, [slideAnim]);
 
   // ------------------------------------------------------------------
@@ -301,10 +313,17 @@ export const AddSleepRecordModal = ({
       'worklet';
       if (translateY.value > 120 || e.velocityY > 600) {
         backdropOpacity.value = withTiming(0, { duration: 220 });
-        translateY.value = withTiming(height, { duration: 250 });
-        runOnJS(finishClose)();
+        translateY.value = withTiming(
+          height,
+          { duration: 250, easing: Easing.in(Easing.cubic) },
+          (finished) => {
+            'worklet';
+            if (finished) runOnJS(onClose)();
+          }
+        );
       } else {
-        translateY.value = withTiming(0, { duration: 200 });
+        // Spring snap-back feels more physical than a timing curve
+        translateY.value = withSpring(0, { damping: 32, stiffness: 320, mass: 0.6 });
       }
     });
 
@@ -503,7 +522,7 @@ export const AddSleepRecordModal = ({
                     <Ionicons
                       name="arrow-forward"
                       size={17}
-                      color="#111111"
+                      color={CTA_TEXT_COLOR}
                       style={styles.actionBtnIcon}
                     />
                   </Pressable>
@@ -702,21 +721,15 @@ const styles = StyleSheet.create({
     fontFamily: SLEEP_FONTS.medium,
     fontVariant: ['tabular-nums'],
   },
-  selectionLineTop: {
+  // Capsule behind the selected row — iOS 15+ picker selection style
+  selectionCapsule: {
     position: 'absolute',
-    top: ROW_HEIGHT * 2,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  selectionLineBottom: {
-    position: 'absolute',
-    top: ROW_HEIGHT * 3,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    top: ROW_HEIGHT * PADDING_ROWS,
+    left: 4,
+    right: 4,
+    height: ROW_HEIGHT,
+    borderRadius: 12,
+    backgroundColor: SLEEP_THEME.elevatedBg,
   },
   colon: {
     position: 'absolute',
@@ -767,7 +780,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: CTA_BG,
     borderWidth: 1,
     borderColor: 'rgba(15,17,23,0.14)',
     shadowColor: '#000',
@@ -778,14 +791,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 4,
   },
-  actionBtnDisabled: { backgroundColor: '#E5E7EB' },
+  actionBtnDisabled: { backgroundColor: CTA_BG_DISABLED, borderColor: 'transparent' },
   actionBtnText: {
-    color: '#111111',
+    color: CTA_TEXT_COLOR,
     fontSize: 17,
     fontWeight: '600',
     fontFamily: SLEEP_FONTS.semiBold,
     letterSpacing: 0.2,
   },
-  actionBtnTextDisabled: { color: '#9CA3AF' },
+  actionBtnTextDisabled: { color: CTA_TEXT_DISABLED },
   actionBtnIcon: { marginLeft: 7 },
 });
