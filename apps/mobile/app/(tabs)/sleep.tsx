@@ -71,8 +71,14 @@ function AnimatedBlurHeader({
   }));
 
   return (
-    <Animated.View pointerEvents="none" style={[styles.blurHeader, { height: insetTop + 56 }, animatedStyle]}>
-      <BlurView intensity={SLEEP_THEME.navbarBlurIntensity} tint="dark" style={StyleSheet.absoluteFill} />
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.blurHeader, { height: insetTop + 56 }, animatedStyle]}>
+      <BlurView
+        intensity={SLEEP_THEME.navbarBlurIntensity}
+        tint="dark"
+        style={StyleSheet.absoluteFill}
+      />
       <View style={styles.blurHeaderFill} />
     </Animated.View>
   );
@@ -83,13 +89,8 @@ export default function SleepScreen() {
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
   const { user } = useAuthStore();
-  const {
-    recentHistory,
-    monthlyData,
-    fetchSleepDataRange,
-    forceSaveManualSleep,
-    loading,
-  } = useSleepStore();
+  const { recentHistory, monthlyData, fetchSleepDataRange, forceSaveManualSleep, loading } =
+    useSleepStore();
 
   const [selectedDate, setSelectedDate] = useState(() => normalizeDate(new Date()));
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
@@ -141,9 +142,7 @@ export default function SleepScreen() {
     if (!user?.id) return;
     if (currentData.historyItem) {
       setDateFetchStatus((current) =>
-        current[selectedDateKey] === 'done'
-          ? current
-          : { ...current, [selectedDateKey]: 'done' }
+        current[selectedDateKey] === 'done' ? current : { ...current, [selectedDateKey]: 'done' }
       );
       return;
     }
@@ -180,7 +179,12 @@ export default function SleepScreen() {
   }, [activeIndex, fetchSleepDataRange, monthDates.length, selectedDate, user?.id]);
 
   const weekData = useMemo(
-    () => deriveWeekSeries(recentHistory as SleepRecordLike[], monthlyData as Record<string, SleepRecordLike[]>, selectedDate),
+    () =>
+      deriveWeekSeries(
+        recentHistory as SleepRecordLike[],
+        monthlyData as Record<string, SleepRecordLike[]>,
+        selectedDate
+      ),
     [monthlyData, recentHistory, selectedDate]
   );
   const score = resolveSleepScore(currentData.historyItem);

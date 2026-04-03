@@ -153,7 +153,7 @@ Do not use `Line stroke="url(#gradient)"` for vertical gradient lines in `react-
 Forbidden:
 
 ```tsx
-<Line x1={x} y1={y1} x2={x} y2={y2} stroke="url(#linearGrad)" strokeWidth={4} />
+<Line x1={x} y1={y1} x2={x} y2={y2} stroke='url(#linearGrad)' strokeWidth={4} />
 ```
 
 Required:
@@ -164,7 +164,7 @@ Required:
   y={Math.min(y1, y2)}
   width={strokeWidth}
   height={Math.abs(y2 - y1)}
-  fill="url(#linearGrad)"
+  fill='url(#linearGrad)'
 />
 ```
 
@@ -175,10 +175,18 @@ Do not create waterfall fetches on mount.
 Forbidden:
 
 ```tsx
-useEffect(() => { fetchUser(); }, []);
-useEffect(() => { fetchSleepData(); }, [userId]);
-useEffect(() => { fetchTimeline(); }, [sleepDataId]);
-useEffect(() => { fetchInsights(); }, [sleepDataId]);
+useEffect(() => {
+  fetchUser();
+}, []);
+useEffect(() => {
+  fetchSleepData();
+}, [userId]);
+useEffect(() => {
+  fetchTimeline();
+}, [sleepDataId]);
+useEffect(() => {
+  fetchInsights();
+}, [sleepDataId]);
 ```
 
 Use one coordinated store action with parallel requests and cache guards:
@@ -193,17 +201,7 @@ const useSleepStore = create<SleepState>((set, get) => ({
 
     const [sleepData, timeline, insights] = await Promise.all([
       api.getSleepData(userId, date),
-      api.getSleepTimeline(userId, date),
-      api.getInsights(userId, date),
-    ]);
 
-    set({ data: { sleepData, timeline, insights }, isLoaded: true });
-  },
-}));
-
-useEffect(() => {
-  store.fetchAll(userId, date);
-}, [userId, date]);
 ```
 
 Invalidate cached state only on:
@@ -272,18 +270,18 @@ Before calling a UI task done, verify all of the following:
 
 Treat each item below as an immediate failure:
 
-| Anti-pattern | Why it fails |
-|---|---|
-| `slate-*` Tailwind classes | Breaks the design system color temperature |
-| `useNativeDriver: false` | Forces JS-thread animation |
-| SVG filter blur/glow on animated elements | Causes severe FPS drops |
-| `Line stroke="url(#gradient)"` on vertical lines | Makes gradients disappear |
-| Multiple mount-time `useEffect` fetches | Creates a visible request cascade |
-| Full-store Zustand subscriptions | Re-renders on unrelated state changes |
-| Same `borderRadius` on nested components | Creates optical misalignment |
-| Hardcoded hex values outside `theme.ts` | Breaks consistency and theming |
-| Animating `width`, `height`, or padding | Triggers layout work |
-| `setInterval` as an animation driver | Produces unstable JS-thread timing |
+| Anti-pattern                                     | Why it fails                               |
+| ------------------------------------------------ | ------------------------------------------ |
+| `slate-*` Tailwind classes                       | Breaks the design system color temperature |
+| `useNativeDriver: false`                         | Forces JS-thread animation                 |
+| SVG filter blur/glow on animated elements        | Causes severe FPS drops                    |
+| `Line stroke="url(#gradient)"` on vertical lines | Makes gradients disappear                  |
+| Multiple mount-time `useEffect` fetches          | Creates a visible request cascade          |
+| Full-store Zustand subscriptions                 | Re-renders on unrelated state changes      |
+| Same `borderRadius` on nested components         | Creates optical misalignment               |
+| Hardcoded hex values outside `theme.ts`          | Breaks consistency and theming             |
+| Animating `width`, `height`, or padding          | Triggers layout work                       |
+| `setInterval` as an animation driver             | Produces unstable JS-thread timing         |
 
 ## Validation Before Completion
 

@@ -1,5 +1,8 @@
 export const SLEEP_THEME = {
   screenBg: '#000000',
+  // OLED-optimized surface for all standard bottom sheets — pure black maximises contrast
+  // and eliminates the grey bloom that cardBg produces on OLED panels.
+  bottomSheetBg: '#000000',
   cardBg: '#1C1C1E',
   elevatedBg: '#2C2C2E',
   cardInset: '#232326',

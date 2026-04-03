@@ -12,7 +12,10 @@
       "Bash(mv \"S:/DEV/project_delta/.claude/skills/staged-delivery-workflow.md\" \"S:/DEV/project_delta/.claude/skills/staged-delivery-workflow/SKILL.md\")",
       "Bash(mkdir -p \"C:/Users/Piotr/.claude/skills/mobile-quality-standard\")",
       "Skill(mobile-quality-standard)",
-      "Skill(staged-delivery-workflow)"
+      "Skill(staged-delivery-workflow)",
+      "Bash(npm run:*)",
+      "Bash(npx jest:*)"
     ]
-  }
+  },
+  "outputStyle": "default"
 }

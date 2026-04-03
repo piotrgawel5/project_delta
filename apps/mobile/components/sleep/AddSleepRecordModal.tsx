@@ -28,7 +28,6 @@ import { SLEEP_THEME, SLEEP_FONTS, SLEEP_LAYOUT } from '../../constants/theme';
 
 const { width: SCREEN_WIDTH, height } = Dimensions.get('window');
 
-// Visual Constants
 const SHEET_PADDING = 20;
 const SHEET_INNER_RADIUS = 24;
 const SHEET_RADIUS = SHEET_INNER_RADIUS + SHEET_PADDING;
@@ -46,24 +45,21 @@ const HOUR_DRUM_WIDTH = 120;
 const MINUTE_DRUM_WIDTH = 96;
 const DRUM_PAIR_WIDTH = HOUR_DRUM_WIDTH + MINUTE_DRUM_WIDTH + 16;
 const HOUR_VALUES = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
-const MINUTE_VALUES = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
+const MINUTE_VALUES = Array.from({ length: 6 }, (_, i) => (i * 10).toString().padStart(2, '0'));
 
-// Sheet surface — one step above screenBg so the selection capsule reads clearly
-const SHEET_BG = SLEEP_THEME.cardBg;
-
-// Selection capsule — optical corner rule: outer = inner + inset
+const SHEET_BG = SLEEP_THEME.bottomSheetBg;
 const CAPSULE_INSET = 4;
-const CAPSULE_RADIUS = SLEEP_LAYOUT.cardRadiusInner - CAPSULE_INSET; // 12
+const CAPSULE_RADIUS = SLEEP_LAYOUT.cardRadiusInner - CAPSULE_INSET;
 
-// Primary action button — system accent (Apple HIG: filled primary on dark surface)
-const CTA_BG = SLEEP_THEME.colorBedtime;
-const CTA_TEXT_COLOR = SLEEP_THEME.textPrimary;
+const CTA_BG = '#FFFFFF';
+const CTA_TEXT_COLOR = '#111111';
+const CTA_BORDER = 'rgba(15,17,23,0.14)';
 const CTA_BG_DISABLED = SLEEP_THEME.elevatedBg;
 const CTA_TEXT_DISABLED = SLEEP_THEME.textMuted2;
 
-// Spring configs
-const SHEET_SPRING = { damping: 28, stiffness: 300, mass: 0.8 };
-const SLIDE_SPRING = { damping: 28, stiffness: 280, mass: 0.6 };
+const SHEET_SPRING = { damping: 32, stiffness: 200, mass: 1.2 };
+const SLIDE_SPRING = { damping: 32, stiffness: 190, mass: 0.9 };
+const TAP_MAX_MOVEMENT = 6;
 
 interface AddSleepRecordModalProps {
   isVisible: boolean;
@@ -113,7 +109,6 @@ const DrumRow = React.memo(function DrumRow({
     const trueThis = ((absoluteIndex % valuesLength) + valuesLength) % valuesLength;
     let dist = Math.abs(trueThis - trueCenter);
     dist = Math.min(dist, valuesLength - dist);
-    // P4: unselected items at 0.45 opacity (was 0.6/0.25) — legible on mid-range Android
     const opacity = interpolate(dist, [0, 1, 2], [1.0, 0.45, 0.12], Extrapolation.CLAMP);
     const scale = interpolate(dist, [0, 1, 2], [1.0, 0.72, 0.52], Extrapolation.CLAMP);
     return { opacity, transform: [{ scale }] };
@@ -171,21 +166,33 @@ const DrumPicker = React.memo(function DrumPicker({
     .onEnd((e) => {
       'worklet';
       const projected = translateY.value + e.velocityY * 0.18;
-      const rawIndex = (centerOffsetY - projected) / ROW_HEIGHT;
-      const snapped = Math.round(rawIndex);
+      const snapped = Math.round((centerOffsetY - projected) / ROW_HEIGHT);
       const normalizedIndex = ((snapped % values.length) + values.length) % values.length;
       const middleIndex = normalizedIndex + offset;
       const targetY = centerOffsetY - middleIndex * ROW_HEIGHT;
       runOnJS(onIndexChange)(normalizedIndex);
       runOnJS(triggerHaptic)();
-      translateY.value = withSpring(targetY, {
-        damping: 26,
-        stiffness: 280,
-        mass: 0.5,
-        velocity: e.velocityY,
-      });
+      translateY.value = withSpring(targetY, { damping: 30, stiffness: 190, mass: 0.75, velocity: e.velocityY });
       prevY.value = targetY;
     });
+
+  const tapGesture = Gesture.Tap()
+    .maxDistance(TAP_MAX_MOVEMENT)
+    .onEnd((e) => {
+      'worklet';
+      const relStep = Math.round((e.y - centerOffsetY) / ROW_HEIGHT);
+      if (relStep !== 1 && relStep !== -1) return;
+      const centeredRaw = (centerOffsetY - translateY.value) / ROW_HEIGHT;
+      const centerAbsIdx = Math.round(centeredRaw);
+      const normTarget = (((centerAbsIdx + relStep) % values.length) + values.length) % values.length;
+      const targetY = centerOffsetY - (normTarget + offset) * ROW_HEIGHT;
+      translateY.value = withSpring(targetY, { damping: 30, stiffness: 190, mass: 0.75 });
+      prevY.value = targetY;
+      runOnJS(onIndexChange)(normTarget);
+      runOnJS(triggerHaptic)();
+    });
+
+  const composed = Gesture.Race(tapGesture, panGesture);
 
   const trackStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -193,9 +200,8 @@ const DrumPicker = React.memo(function DrumPicker({
 
   return (
     <View style={[styles.drumFrame, { width }]}>
-      {/* P3: selection capsule — corner radius derived (SLEEP_LAYOUT token - inset) */}
       <View pointerEvents="none" style={styles.selectionCapsule} />
-      <GestureDetector gesture={panGesture}>
+      <GestureDetector gesture={composed}>
         <View style={styles.drumViewport}>
           <Animated.View
             style={[styles.drumTrack, { height: totalItems * ROW_HEIGHT }, trackStyle]}>
@@ -212,7 +218,6 @@ const DrumPicker = React.memo(function DrumPicker({
           </Animated.View>
         </View>
       </GestureDetector>
-      {/* P0: edge fade gradients — pure CSS overlay, UI thread, no animation overhead */}
       <LinearGradient
         colors={[SHEET_BG, 'transparent']}
         pointerEvents="none"
@@ -262,8 +267,8 @@ export const AddSleepRecordModal = ({
     return `${dh}h ${dm.toString().padStart(2, '0')}m`;
   }, [bedHour, bedMinute, wakeHour, wakeMinute]);
 
-  const handleBedMinuteIndexChange = useCallback((index: number) => setBedMinute(index * 5), []);
-  const handleWakeMinuteIndexChange = useCallback((index: number) => setWakeMinute(index * 5), []);
+  const handleBedMinuteIndexChange = useCallback((index: number) => setBedMinute(index * 10), []);
+  const handleWakeMinuteIndexChange = useCallback((index: number) => setWakeMinute(index * 10), []);
 
   useEffect(() => {
     if (isVisible) {
@@ -276,7 +281,7 @@ export const AddSleepRecordModal = ({
       setWakeMinute(0);
       setPage(0);
       slideAnim.value = 0;
-      backdropOpacity.value = withTiming(1, { duration: 280 });
+      backdropOpacity.value = withTiming(1, { duration: 420 });
       translateY.value = withSpring(0, SHEET_SPRING);
     } else {
       backdropOpacity.value = 0;
@@ -285,10 +290,10 @@ export const AddSleepRecordModal = ({
   }, [backdropOpacity, isVisible, slideAnim, stableDate, translateY]);
 
   const closeWithAnimation = useCallback(() => {
-    backdropOpacity.value = withTiming(0, { duration: 220 });
+    backdropOpacity.value = withTiming(0, { duration: 330 });
     translateY.value = withTiming(
       height,
-      { duration: 250, easing: Easing.in(Easing.cubic) },
+      { duration: 375, easing: Easing.in(Easing.cubic) },
       (finished) => {
         'worklet';
         if (finished) runOnJS(onClose)();
@@ -307,35 +312,30 @@ export const AddSleepRecordModal = ({
     slideAnim.value = withSpring(0, SLIDE_SPRING);
   }, [slideAnim]);
 
-  const sheetGesture = Gesture.Pan()
-    .manualActivation(true)
-    .onTouchesDown((e, state) => {
-      'worklet';
-      const touch = e.changedTouches[0];
-      if (!touch) { state.fail(); return; }
-      if (touch.y <= 80) state.activate();
-      else state.fail();
-    })
+  const handleGesture = useMemo(() => Gesture.Pan()
     .onUpdate((e) => {
       'worklet';
-      if (e.translationY > 0) translateY.value = e.translationY;
+      translateY.value = Math.max(0, e.translationY);
+      backdropOpacity.value = interpolate(
+        translateY.value, [0, 300], [1, 0], Extrapolation.CLAMP
+      );
     })
     .onEnd((e) => {
       'worklet';
       if (translateY.value > 120 || e.velocityY > 600) {
-        backdropOpacity.value = withTiming(0, { duration: 220 });
+        backdropOpacity.value = withTiming(0, { duration: 330 });
         translateY.value = withTiming(
           height,
-          { duration: 250, easing: Easing.in(Easing.cubic) },
-          (finished) => {
-            'worklet';
-            if (finished) runOnJS(onClose)();
-          }
+          { duration: 375, easing: Easing.in(Easing.cubic) },
+          (finished) => { 'worklet'; if (finished) runOnJS(onClose)(); }
         );
       } else {
-        translateY.value = withSpring(0, { damping: 32, stiffness: 320, mass: 0.6 });
+        translateY.value = withSpring(0, { damping: 36, stiffness: 220, mass: 0.9 });
+        backdropOpacity.value = withTiming(1, { duration: 300 });
       }
-    });
+    }),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [onClose]);
 
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdropOpacity.value }));
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
@@ -359,7 +359,6 @@ export const AddSleepRecordModal = ({
     transform: [{ translateX: interpolate(slideAnim.value, [0, 1], [-8, 0]) }],
   }));
 
-  // P5: active dot = full white, inactive = rgba(255,255,255,0.3) — clearer step contrast
   const dot1Style = useAnimatedStyle(() => ({
     width: interpolate(slideAnim.value, [0, 1], [20, 8], Extrapolation.CLAMP),
     opacity: interpolate(slideAnim.value, [0, 1], [1, 0.3], Extrapolation.CLAMP),
@@ -406,179 +405,187 @@ export const AddSleepRecordModal = ({
 
   return (
     <Modal animationType="none" transparent visible={isVisible} onRequestClose={closeWithAnimation}>
-      <Pressable style={styles.backdrop} onPress={closeWithAnimation}>
-        <Animated.View
-          renderToHardwareTextureAndroid
-          shouldRasterizeIOS
-          style={[StyleSheet.absoluteFill, backdropStyle]}>
-          <BlurView intensity={25} style={StyleSheet.absoluteFill} tint="dark" />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
-        </Animated.View>
-      </Pressable>
-
-      <GestureHandlerRootView style={styles.gestureRoot} pointerEvents="box-none">
-        <GestureDetector gesture={sheetGesture}>
+      <GestureHandlerRootView style={StyleSheet.absoluteFill}>
+        <Pressable style={styles.backdrop} onPress={closeWithAnimation}>
           <Animated.View
             renderToHardwareTextureAndroid
             shouldRasterizeIOS
-            style={[styles.sheet, { paddingBottom: insets.bottom + 20 }, sheetStyle]}>
+            style={[StyleSheet.absoluteFill, backdropStyle]}>
+            <BlurView intensity={25} style={StyleSheet.absoluteFill} tint="dark" />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
+          </Animated.View>
+        </Pressable>
 
-            <View style={styles.handleContainer}>
-              <View style={styles.handle} />
-            </View>
+        <View style={styles.gestureRoot} pointerEvents="box-none">
+        <Animated.View
+          style={[styles.sheet, { paddingBottom: insets.bottom + 20 }, sheetStyle]}>
 
-            <View style={styles.header}>
-              <Animated.View style={backBtnStyle}>
-                <Pressable
-                  onPress={goToPage1}
-                  style={styles.iconBtn}
-                  pointerEvents={page === 1 ? 'auto' : 'none'}>
-                  <Ionicons name="chevron-back" size={20} color={SLEEP_THEME.textPrimary} />
-                </Pressable>
-              </Animated.View>
-
-              <View style={styles.headerCenter}>
-                <View style={styles.titleSpacer} pointerEvents="none">
-                  <View style={styles.titleRow}>
-                    <Text style={styles.title}> </Text>
-                  </View>
-                  <Text style={styles.subtitle}> </Text>
-                </View>
-
-                <Animated.View
-                  style={[styles.headerTitleAbs, page1TitleStyle]}
-                  pointerEvents="none">
-                  <View style={styles.titleRow}>
-                    <Ionicons
-                      name="moon"
-                      size={15}
-                      color={SLEEP_THEME.colorBedtime}
-                      style={styles.titleIcon}
-                    />
-                    <Text style={styles.title}>Bedtime</Text>
-                  </View>
-                  <Text style={styles.subtitle}>
-                    {headerDate} · {dateSubtitle}
-                  </Text>
-                </Animated.View>
-
-                <Animated.View
-                  style={[styles.headerTitleAbs, page2TitleStyle]}
-                  pointerEvents="none">
-                  <View style={styles.titleRow}>
-                    <Ionicons
-                      name="sunny"
-                      size={15}
-                      color={SLEEP_THEME.colorAwake}
-                      style={styles.titleIcon}
-                    />
-                    <Text style={styles.title}>Wake Up</Text>
-                  </View>
-                  <Text style={styles.subtitle}>
-                    {headerDate} · {dateSubtitle}
-                  </Text>
-                </Animated.View>
+          <GestureDetector gesture={handleGesture}>
+            <View>
+              <View style={styles.handleContainer}>
+                <View style={styles.handle} />
               </View>
 
-              <Pressable onPress={closeWithAnimation} style={styles.iconBtn}>
-                <Ionicons name="close" size={18} color={SLEEP_THEME.textMuted1} />
-              </Pressable>
-            </View>
+              <View style={styles.header}>
+                <Animated.View style={backBtnStyle}>
+                  <Pressable
+                    onPress={goToPage1}
+                    style={styles.iconBtn}
+                    pointerEvents={page === 1 ? 'auto' : 'none'}>
+                    <Ionicons name="chevron-back" size={20} color={SLEEP_THEME.textMuted1} />
+                  </Pressable>
+                </Animated.View>
 
-            <View style={styles.dotsRow}>
-              <Animated.View style={[styles.dot, dot1Style]} />
-              <Animated.View style={[styles.dot, dot2Style]} />
-            </View>
-
-            <View style={styles.contentClip}>
-              <Animated.View style={[styles.slidingTrack, slidingTrackStyle]}>
-
-                <View style={styles.pageSlot}>
-                  <View style={styles.pickerCentered}>
-                    <View style={styles.drumPairRow}>
-                      <DrumPicker
-                        values={HOUR_VALUES}
-                        selectedIndex={bedHour}
-                        onIndexChange={setBedHour}
-                        width={HOUR_DRUM_WIDTH}
-                      />
-                      <Text style={styles.colon}>:</Text>
-                      <DrumPicker
-                        values={MINUTE_VALUES}
-                        selectedIndex={bedMinute / 5}
-                        onIndexChange={handleBedMinuteIndexChange}
-                        width={MINUTE_DRUM_WIDTH}
-                      />
+                <View style={styles.headerCenter}>
+                  {/* invisible spacer — reserves full height of title + subtitle */}
+                  <View style={styles.titleSpacer} pointerEvents="none">
+                    <View style={styles.titleRow}>
+                      <Text style={styles.title}> </Text>
                     </View>
+                    <Text style={styles.subtitle}> </Text>
                   </View>
 
-                  <View style={styles.page1Spacer} />
+                  {/* static subtitle — never animates */}
+                  <Text style={styles.headerSubtitleStatic} pointerEvents="none">
+                    {headerDate} · {dateSubtitle}
+                  </Text>
 
-                  <Pressable
-                    onPress={goToPage2}
-                    style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]}>
-                    <Text style={styles.actionBtnText}>Next</Text>
-                    <Ionicons
-                      name="arrow-forward"
-                      size={17}
-                      color={CTA_TEXT_COLOR}
-                      style={styles.actionBtnIcon}
+                  {/* only the icon + word animates */}
+                  <Animated.View
+                    style={[styles.headerTitleAbs, page1TitleStyle]}
+                    pointerEvents="none">
+                    <View style={styles.titleRow}>
+                      <Ionicons
+                        name="moon"
+                        size={15}
+                        color={SLEEP_THEME.colorBedtime}
+                        style={styles.titleIcon}
+                      />
+                      <Text style={styles.title}>Bedtime</Text>
+                    </View>
+                  </Animated.View>
+
+                  <Animated.View
+                    style={[styles.headerTitleAbs, page2TitleStyle]}
+                    pointerEvents="none">
+                    <View style={styles.titleRow}>
+                      <Ionicons
+                        name="sunny"
+                        size={15}
+                        color={SLEEP_THEME.colorAwake}
+                        style={styles.titleIcon}
+                      />
+                      <Text style={styles.title}>Wake Up</Text>
+                    </View>
+                  </Animated.View>
+                </View>
+
+                <Pressable onPress={closeWithAnimation} style={styles.iconBtn}>
+                  <Ionicons name="close" size={18} color={SLEEP_THEME.textMuted1} />
+                </Pressable>
+              </View>
+
+              <View style={styles.dotsRow}>
+                <Animated.View style={[styles.dot, dot1Style]} />
+                <Animated.View style={[styles.dot, dot2Style]} />
+              </View>
+            </View>
+          </GestureDetector>
+
+          <View style={styles.contentClip}>
+            <Animated.View style={[styles.slidingTrack, slidingTrackStyle]}>
+
+              {/* ── Page 1: Bedtime ── */}
+              <View style={styles.pageSlot}>
+                {/* FIX 2: transparent placeholder mirrors durationBadge height+margin */}
+                <View style={styles.durationPlaceholder} />
+
+                <View style={styles.pickerCentered}>
+                  <View style={styles.drumPairRow}>
+                    <DrumPicker
+                      values={HOUR_VALUES}
+                      selectedIndex={bedHour}
+                      onIndexChange={setBedHour}
+                      width={HOUR_DRUM_WIDTH}
                     />
-                  </Pressable>
+                    <Text style={styles.colon}>:</Text>
+                    <DrumPicker
+                      values={MINUTE_VALUES}
+                      selectedIndex={bedMinute / 10}
+                      onIndexChange={handleBedMinuteIndexChange}
+                      width={MINUTE_DRUM_WIDTH}
+                    />
+                  </View>
                 </View>
 
-                <View style={styles.pageSlot}>
-                  <View style={styles.durationBadge}>
-                    <Text style={styles.durationText}>{durationStr}</Text>
-                  </View>
+                <View style={styles.validationRow} />
 
-                  <View style={styles.pickerCentered}>
-                    <View style={styles.drumPairRow}>
-                      <DrumPicker
-                        values={HOUR_VALUES}
-                        selectedIndex={wakeHour}
-                        onIndexChange={setWakeHour}
-                        width={HOUR_DRUM_WIDTH}
-                      />
-                      <Text style={styles.colon}>:</Text>
-                      <DrumPicker
-                        values={MINUTE_VALUES}
-                        selectedIndex={wakeMinute / 5}
-                        onIndexChange={handleWakeMinuteIndexChange}
-                        width={MINUTE_DRUM_WIDTH}
-                      />
-                    </View>
-                  </View>
+                <Pressable
+                  onPress={goToPage2}
+                  style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]}>
+                  <Text style={styles.actionBtnText}>Next</Text>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={17}
+                    color={CTA_TEXT_COLOR}
+                    style={styles.actionBtnIcon}
+                  />
+                </Pressable>
+              </View>
 
-                  <View style={styles.validationRow}>
-                    {validationError ? (
-                      <Text style={styles.validationError}>{validationError}</Text>
-                    ) : null}
-                  </View>
+              {/* ── Page 2: Wake Up ── */}
+              <View style={styles.pageSlot}>
+                <View style={styles.durationBadge}>
+                  <Text style={styles.durationText}>{durationStr}</Text>
+                </View>
 
-                  <Pressable
-                    onPress={handleSave}
-                    disabled={isSaving || !userId}
-                    style={({ pressed }) => [
-                      styles.actionBtn,
-                      (isSaving || !userId) && styles.actionBtnDisabled,
-                      pressed && !(isSaving || !userId) && { opacity: 0.85 },
+                <View style={styles.pickerCentered}>
+                  <View style={styles.drumPairRow}>
+                    <DrumPicker
+                      values={HOUR_VALUES}
+                      selectedIndex={wakeHour}
+                      onIndexChange={setWakeHour}
+                      width={HOUR_DRUM_WIDTH}
+                    />
+                    <Text style={styles.colon}>:</Text>
+                    <DrumPicker
+                      values={MINUTE_VALUES}
+                      selectedIndex={wakeMinute / 10}
+                      onIndexChange={handleWakeMinuteIndexChange}
+                      width={MINUTE_DRUM_WIDTH}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.validationRow}>
+                  {validationError ? (
+                    <Text style={styles.validationError}>{validationError}</Text>
+                  ) : null}
+                </View>
+
+                <Pressable
+                  onPress={handleSave}
+                  disabled={isSaving || !userId}
+                  style={({ pressed }) => [
+                    styles.actionBtn,
+                    (isSaving || !userId) && styles.actionBtnDisabled,
+                    pressed && !(isSaving || !userId) && { opacity: 0.85 },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.actionBtnText,
+                      (isSaving || !userId) && styles.actionBtnTextDisabled,
                     ]}>
-                    <Text
-                      style={[
-                        styles.actionBtnText,
-                        (isSaving || !userId) && styles.actionBtnTextDisabled,
-                      ]}>
-                      {isSaving ? 'Saving...' : 'Save Sleep'}
-                    </Text>
-                  </Pressable>
-                </View>
+                    {isSaving ? 'Saving...' : 'Save Sleep'}
+                  </Text>
+                </Pressable>
+              </View>
 
-              </Animated.View>
-            </View>
+            </Animated.View>
+          </View>
 
-          </Animated.View>
-        </GestureDetector>
+        </Animated.View>
+        </View>
       </GestureHandlerRootView>
     </Modal>
   );
@@ -586,9 +593,8 @@ export const AddSleepRecordModal = ({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1 },
-  gestureRoot: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
+  gestureRoot: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end' },
 
-  // P1: sheet background — cardBg (#1C1C1E) so elevatedBg capsule reads clearly
   sheet: {
     backgroundColor: SHEET_BG,
     borderTopLeftRadius: SHEET_RADIUS,
@@ -600,7 +606,7 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
 
-  handleContainer: { alignItems: 'center', paddingTop: 16, paddingBottom: 10 },
+  handleContainer: { alignItems: 'center', paddingTop: 16, paddingBottom: 20 },
   handle: {
     width: 36,
     height: HANDLE_HEIGHT,
@@ -653,8 +659,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: SLEEP_FONTS.regular,
   },
+  headerSubtitleStatic: {
+    position: 'absolute',
+    bottom: 0,
+    color: SLEEP_THEME.textDisabled,
+    fontSize: 12,
+    fontFamily: SLEEP_FONTS.regular,
+  },
 
-  // P5: dots — active at full opacity, inactive at 0.3 (animated via dot1Style/dot2Style)
   dotsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -715,7 +727,6 @@ const styles = StyleSheet.create({
     fontFamily: SLEEP_FONTS.medium,
     fontVariant: ['tabular-nums'],
   },
-  // P3: capsule radius derived — SLEEP_LAYOUT.cardRadiusInner minus CAPSULE_INSET offset
   selectionCapsule: {
     position: 'absolute',
     top: ROW_HEIGHT * PADDING_ROWS,
@@ -725,7 +736,6 @@ const styles = StyleSheet.create({
     borderRadius: CAPSULE_RADIUS,
     backgroundColor: SLEEP_THEME.elevatedBg,
   },
-  // P0: edge-fade gradient overlays — rendered above drum rows, transparent at center
   drumFadeTop: {
     position: 'absolute',
     top: 0,
@@ -752,13 +762,15 @@ const styles = StyleSheet.create({
   },
 
   durationBadge: {
+    height: 34,
     paddingHorizontal: 16,
-    paddingVertical: 6,
     borderRadius: 20,
     backgroundColor: SLEEP_THEME.cardBg,
     marginBottom: 10,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: SLEEP_THEME.border,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   durationText: {
     fontSize: 14,
@@ -768,10 +780,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
 
-  page1Spacer: { height: 52 },
+  // FIX 2: placeholder matches durationBadge rendered height + marginBottom exactly
+  durationPlaceholder: {
+    height: 34,
+    marginBottom: 10,
+  },
 
+  // FIX 2: minHeight collapses when no error; fixed height was pushing page 2 button down
   validationRow: {
-    height: 28,
+    minHeight: 28,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -781,7 +798,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // P2: CTA uses system accent (colorBedtime) — matches sleep context, no hardcoded hex
   actionBtn: {
     width: '100%',
     height: 56,
@@ -791,15 +807,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
     backgroundColor: CTA_BG,
+    borderWidth: 1,
+    borderColor: CTA_BORDER,
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    elevation: 2,
     marginTop: 8,
     marginBottom: 4,
   },
-  actionBtnDisabled: { backgroundColor: CTA_BG_DISABLED },
+  actionBtnDisabled: { backgroundColor: CTA_BG_DISABLED, borderColor: 'transparent' },
   actionBtnText: {
     color: CTA_TEXT_COLOR,
     fontSize: 17,
