@@ -8,6 +8,7 @@ import {
   Pressable,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   type SharedValue,
@@ -23,7 +24,7 @@ import Animated, {
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SLEEP_THEME, SLEEP_FONTS } from '../../constants/theme';
+import { SLEEP_THEME, SLEEP_FONTS, SLEEP_LAYOUT } from '../../constants/theme';
 
 const { width: SCREEN_WIDTH, height } = Dimensions.get('window');
 
@@ -47,15 +48,21 @@ const DRUM_PAIR_WIDTH = HOUR_DRUM_WIDTH + MINUTE_DRUM_WIDTH + 16;
 const HOUR_VALUES = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 const MINUTE_VALUES = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
 
-// Primary action button — intentionally white-on-dark CTA (Apple HIG: filled primary)
-const CTA_BG = '#FFFFFF';
-const CTA_TEXT_COLOR = '#111111';
+// Sheet surface — one step above screenBg so the selection capsule reads clearly
+const SHEET_BG = SLEEP_THEME.cardBg;
+
+// Selection capsule — optical corner rule: outer = inner + inset
+const CAPSULE_INSET = 4;
+const CAPSULE_RADIUS = SLEEP_LAYOUT.cardRadiusInner - CAPSULE_INSET; // 12
+
+// Primary action button — system accent (Apple HIG: filled primary on dark surface)
+const CTA_BG = SLEEP_THEME.colorBedtime;
+const CTA_TEXT_COLOR = SLEEP_THEME.textPrimary;
 const CTA_BG_DISABLED = SLEEP_THEME.elevatedBg;
 const CTA_TEXT_DISABLED = SLEEP_THEME.textMuted2;
 
-// Spring config for sheet entrance / snap-back — tuned for 60/120fps feel
+// Spring configs
 const SHEET_SPRING = { damping: 28, stiffness: 300, mass: 0.8 };
-// Spring config for page slide transitions
 const SLIDE_SPRING = { damping: 28, stiffness: 280, mass: 0.6 };
 
 interface AddSleepRecordModalProps {
@@ -106,7 +113,8 @@ const DrumRow = React.memo(function DrumRow({
     const trueThis = ((absoluteIndex % valuesLength) + valuesLength) % valuesLength;
     let dist = Math.abs(trueThis - trueCenter);
     dist = Math.min(dist, valuesLength - dist);
-    const opacity = interpolate(dist, [0, 1, 2], [1.0, 0.6, 0.25], Extrapolation.CLAMP);
+    // P4: unselected items at 0.45 opacity (was 0.6/0.25) — legible on mid-range Android
+    const opacity = interpolate(dist, [0, 1, 2], [1.0, 0.45, 0.12], Extrapolation.CLAMP);
     const scale = interpolate(dist, [0, 1, 2], [1.0, 0.72, 0.52], Extrapolation.CLAMP);
     return { opacity, transform: [{ scale }] };
   });
@@ -185,7 +193,7 @@ const DrumPicker = React.memo(function DrumPicker({
 
   return (
     <View style={[styles.drumFrame, { width }]}>
-      {/* Selection capsule — sits behind the drum track, highlights selected row */}
+      {/* P3: selection capsule — corner radius derived (SLEEP_LAYOUT token - inset) */}
       <View pointerEvents="none" style={styles.selectionCapsule} />
       <GestureDetector gesture={panGesture}>
         <View style={styles.drumViewport}>
@@ -204,6 +212,17 @@ const DrumPicker = React.memo(function DrumPicker({
           </Animated.View>
         </View>
       </GestureDetector>
+      {/* P0: edge fade gradients — pure CSS overlay, UI thread, no animation overhead */}
+      <LinearGradient
+        colors={[SHEET_BG, 'transparent']}
+        pointerEvents="none"
+        style={styles.drumFadeTop}
+      />
+      <LinearGradient
+        colors={['transparent', SHEET_BG]}
+        pointerEvents="none"
+        style={styles.drumFadeBottom}
+      />
     </View>
   );
 });
@@ -217,11 +236,8 @@ export const AddSleepRecordModal = ({
 }: AddSleepRecordModalProps) => {
   const insets = useSafeAreaInsets();
 
-  // Sheet entrance/dismiss
   const translateY = useSharedValue(height);
   const backdropOpacity = useSharedValue(0);
-
-  // Horizontal page slide: 0 = bedtime, 1 = wake up
   const slideAnim = useSharedValue(0);
 
   const [page, setPage] = useState<0 | 1>(0);
@@ -261,7 +277,6 @@ export const AddSleepRecordModal = ({
       setPage(0);
       slideAnim.value = 0;
       backdropOpacity.value = withTiming(1, { duration: 280 });
-      // Spring entrance — more natural than cubic easing for sheet lift
       translateY.value = withSpring(0, SHEET_SPRING);
     } else {
       backdropOpacity.value = 0;
@@ -269,7 +284,6 @@ export const AddSleepRecordModal = ({
     }
   }, [backdropOpacity, isVisible, slideAnim, stableDate, translateY]);
 
-  // Close fires onClose exactly when the dismiss animation finishes — no setTimeout needed
   const closeWithAnimation = useCallback(() => {
     backdropOpacity.value = withTiming(0, { duration: 220 });
     translateY.value = withTiming(
@@ -293,9 +307,6 @@ export const AddSleepRecordModal = ({
     slideAnim.value = withSpring(0, SLIDE_SPRING);
   }, [slideAnim]);
 
-  // ------------------------------------------------------------------
-  // Sheet dismiss gesture (top 80px swipe-down)
-  // ------------------------------------------------------------------
   const sheetGesture = Gesture.Pan()
     .manualActivation(true)
     .onTouchesDown((e, state) => {
@@ -322,14 +333,10 @@ export const AddSleepRecordModal = ({
           }
         );
       } else {
-        // Spring snap-back feels more physical than a timing curve
         translateY.value = withSpring(0, { damping: 32, stiffness: 320, mass: 0.6 });
       }
     });
 
-  // ------------------------------------------------------------------
-  // Animated styles
-  // ------------------------------------------------------------------
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdropOpacity.value }));
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
 
@@ -352,14 +359,15 @@ export const AddSleepRecordModal = ({
     transform: [{ translateX: interpolate(slideAnim.value, [0, 1], [-8, 0]) }],
   }));
 
+  // P5: active dot = full white, inactive = rgba(255,255,255,0.3) — clearer step contrast
   const dot1Style = useAnimatedStyle(() => ({
     width: interpolate(slideAnim.value, [0, 1], [20, 8], Extrapolation.CLAMP),
-    opacity: interpolate(slideAnim.value, [0, 1], [1, 0.35], Extrapolation.CLAMP),
+    opacity: interpolate(slideAnim.value, [0, 1], [1, 0.3], Extrapolation.CLAMP),
   }));
 
   const dot2Style = useAnimatedStyle(() => ({
     width: interpolate(slideAnim.value, [0, 1], [8, 20], Extrapolation.CLAMP),
-    opacity: interpolate(slideAnim.value, [0, 1], [0.35, 1], Extrapolation.CLAMP),
+    opacity: interpolate(slideAnim.value, [0, 1], [0.3, 1], Extrapolation.CLAMP),
   }));
 
   const handleSave = async () => {
@@ -415,12 +423,10 @@ export const AddSleepRecordModal = ({
             shouldRasterizeIOS
             style={[styles.sheet, { paddingBottom: insets.bottom + 20 }, sheetStyle]}>
 
-            {/* Drag handle */}
             <View style={styles.handleContainer}>
               <View style={styles.handle} />
             </View>
 
-            {/* Header: [back] [crossfading title] [close] */}
             <View style={styles.header}>
               <Animated.View style={backBtnStyle}>
                 <Pressable
@@ -432,7 +438,6 @@ export const AddSleepRecordModal = ({
               </Animated.View>
 
               <View style={styles.headerCenter}>
-                {/* Invisible spacer — gives the center its natural height */}
                 <View style={styles.titleSpacer} pointerEvents="none">
                   <View style={styles.titleRow}>
                     <Text style={styles.title}> </Text>
@@ -440,7 +445,6 @@ export const AddSleepRecordModal = ({
                   <Text style={styles.subtitle}> </Text>
                 </View>
 
-                {/* Page 1 title */}
                 <Animated.View
                   style={[styles.headerTitleAbs, page1TitleStyle]}
                   pointerEvents="none">
@@ -458,7 +462,6 @@ export const AddSleepRecordModal = ({
                   </Text>
                 </Animated.View>
 
-                {/* Page 2 title */}
                 <Animated.View
                   style={[styles.headerTitleAbs, page2TitleStyle]}
                   pointerEvents="none">
@@ -482,17 +485,14 @@ export const AddSleepRecordModal = ({
               </Pressable>
             </View>
 
-            {/* Step dots */}
             <View style={styles.dotsRow}>
               <Animated.View style={[styles.dot, dot1Style]} />
               <Animated.View style={[styles.dot, dot2Style]} />
             </View>
 
-            {/* Sliding page content */}
             <View style={styles.contentClip}>
               <Animated.View style={[styles.slidingTrack, slidingTrackStyle]}>
 
-                {/* ── Page 1: Bedtime ── */}
                 <View style={styles.pageSlot}>
                   <View style={styles.pickerCentered}>
                     <View style={styles.drumPairRow}>
@@ -512,7 +512,6 @@ export const AddSleepRecordModal = ({
                     </View>
                   </View>
 
-                  {/* Spacer matches page 2 duration badge + validation row height */}
                   <View style={styles.page1Spacer} />
 
                   <Pressable
@@ -528,9 +527,7 @@ export const AddSleepRecordModal = ({
                   </Pressable>
                 </View>
 
-                {/* ── Page 2: Wake Up ── */}
                 <View style={styles.pageSlot}>
-                  {/* Duration badge */}
                   <View style={styles.durationBadge}>
                     <Text style={styles.durationText}>{durationStr}</Text>
                   </View>
@@ -553,7 +550,6 @@ export const AddSleepRecordModal = ({
                     </View>
                   </View>
 
-                  {/* Fixed-height validation row so button never jumps */}
                   <View style={styles.validationRow}>
                     {validationError ? (
                       <Text style={styles.validationError}>{validationError}</Text>
@@ -592,8 +588,9 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1 },
   gestureRoot: { flex: 1, justifyContent: 'flex-end', pointerEvents: 'box-none' },
 
+  // P1: sheet background — cardBg (#1C1C1E) so elevatedBg capsule reads clearly
   sheet: {
-    backgroundColor: SLEEP_THEME.screenBg,
+    backgroundColor: SHEET_BG,
     borderTopLeftRadius: SHEET_RADIUS,
     borderTopRightRadius: SHEET_RADIUS,
     shadowColor: '#000',
@@ -611,7 +608,6 @@ const styles = StyleSheet.create({
     borderRadius: HANDLE_RADIUS,
   },
 
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -658,7 +654,7 @@ const styles = StyleSheet.create({
     fontFamily: SLEEP_FONTS.regular,
   },
 
-  // Step dots
+  // P5: dots — active at full opacity, inactive at 0.3 (animated via dot1Style/dot2Style)
   dotsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -672,7 +668,6 @@ const styles = StyleSheet.create({
     backgroundColor: SLEEP_THEME.textPrimary,
   },
 
-  // Sliding pages
   contentClip: {
     overflow: 'hidden',
     width: SCREEN_WIDTH,
@@ -687,7 +682,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // Picker
   pickerCentered: {
     alignItems: 'center',
     paddingVertical: 4,
@@ -721,15 +715,32 @@ const styles = StyleSheet.create({
     fontFamily: SLEEP_FONTS.medium,
     fontVariant: ['tabular-nums'],
   },
-  // Capsule behind the selected row — iOS 15+ picker selection style
+  // P3: capsule radius derived — SLEEP_LAYOUT.cardRadiusInner minus CAPSULE_INSET offset
   selectionCapsule: {
     position: 'absolute',
     top: ROW_HEIGHT * PADDING_ROWS,
-    left: 4,
-    right: 4,
+    left: CAPSULE_INSET,
+    right: CAPSULE_INSET,
     height: ROW_HEIGHT,
-    borderRadius: 12,
+    borderRadius: CAPSULE_RADIUS,
     backgroundColor: SLEEP_THEME.elevatedBg,
+  },
+  // P0: edge-fade gradient overlays — rendered above drum rows, transparent at center
+  drumFadeTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: ROW_HEIGHT * PADDING_ROWS,
+    pointerEvents: 'none',
+  },
+  drumFadeBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: ROW_HEIGHT * PADDING_ROWS,
+    pointerEvents: 'none',
   },
   colon: {
     position: 'absolute',
@@ -740,13 +751,14 @@ const styles = StyleSheet.create({
     fontWeight: '300',
   },
 
-  // Duration badge (page 2)
   durationBadge: {
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
     backgroundColor: SLEEP_THEME.cardBg,
     marginBottom: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: SLEEP_THEME.border,
   },
   durationText: {
     fontSize: 14,
@@ -756,10 +768,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
 
-  // Spacer on page 1 matching page 2's badge + validation height
   page1Spacer: { height: 52 },
 
-  // Validation (fixed height so Save button never jumps)
   validationRow: {
     height: 28,
     justifyContent: 'center',
@@ -771,7 +781,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Action button (Next / Save)
+  // P2: CTA uses system accent (colorBedtime) — matches sleep context, no hardcoded hex
   actionBtn: {
     width: '100%',
     height: 56,
@@ -781,17 +791,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
     backgroundColor: CTA_BG,
-    borderWidth: 1,
-    borderColor: 'rgba(15,17,23,0.14)',
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    elevation: 3,
     marginTop: 8,
     marginBottom: 4,
   },
-  actionBtnDisabled: { backgroundColor: CTA_BG_DISABLED, borderColor: 'transparent' },
+  actionBtnDisabled: { backgroundColor: CTA_BG_DISABLED },
   actionBtnText: {
     color: CTA_TEXT_COLOR,
     fontSize: 17,
