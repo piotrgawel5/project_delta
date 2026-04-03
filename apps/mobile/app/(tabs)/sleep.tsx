@@ -98,6 +98,8 @@ export default function SleepScreen() {
   const [dateFetchStatus, setDateFetchStatus] = useState<Record<string, 'pending' | 'done'>>({});
   const [activeIndex, setActiveIndex] = useState(0);
   const pagerRef = useRef<FlatList<Date>>(null);
+  const pagerScrollX = useSharedValue(0);
+  const instantTransitionRef = useRef(false);
 
   const selectedDateKey = useMemo(() => dateKey(selectedDate), [selectedDate]);
   const selectedYear = selectedDate.getFullYear();
@@ -187,6 +189,27 @@ export default function SleepScreen() {
       ),
     [monthlyData, recentHistory, selectedDate]
   );
+
+  const prevNextGrades = useMemo(() => {
+    const hist = recentHistory as SleepRecordLike[];
+    const gradeForIndex = (idx: number): string => {
+      const date = monthDates[idx];
+      if (!date) return '--';
+      const key = dateKey(date);
+      const monthKey = key.substring(0, 7);
+      const item =
+        hist.find((r) => r.date === key) ??
+        (monthlyData[monthKey] as SleepRecordLike[] | undefined)?.find((r) => r.date === key) ??
+        null;
+      const s = resolveSleepScore(item);
+      return s === undefined ? '--' : getSleepScoreGrade(s).grade;
+    };
+    return {
+      prevGrade: gradeForIndex(activeIndex - 1),
+      nextGrade: gradeForIndex(activeIndex + 1),
+    };
+  }, [activeIndex, monthDates, recentHistory, monthlyData]);
+
   const score = resolveSleepScore(currentData.historyItem);
   const gradeInfo = getSleepScoreGrade(score ?? 0);
   const heroGrade = score === undefined ? '--' : gradeInfo.grade;
@@ -223,6 +246,7 @@ export default function SleepScreen() {
     const next = monthDates[index];
     if (!next || isSameDay(next, selectedDate)) return;
 
+    instantTransitionRef.current = true;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedDate(next);
     setActiveIndex(index);
@@ -255,6 +279,11 @@ export default function SleepScreen() {
           todayIndex={weekData.todayIndex}
           targetMinutes={480}
           onPressDate={() => setIsCalendarVisible(true)}
+          pagerScrollX={pagerScrollX}
+          pageIndex={activeIndex}
+          prevGrade={prevNextGrades.prevGrade}
+          nextGrade={prevNextGrades.nextGrade}
+          instantTransitionRef={instantTransitionRef}
         />
       </View>
 
@@ -276,6 +305,10 @@ export default function SleepScreen() {
           index,
         })}
         initialScrollIndex={activeIndex}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          pagerScrollX.value = event.nativeEvent.contentOffset.x;
+        }}
         onScrollBeginDrag={() => {
           navigation.getParent()?.setOptions({ swipeEnabled: false });
         }}

@@ -24,7 +24,7 @@ type HeroPreset = (typeof SLEEP_THEME.heroGradePresets)[keyof typeof SLEEP_THEME
 
 const BADGE_RADIUS = 18;
 const OVERLAY_LAYER_OPACITY = 0.35;
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 function getHeroPreset(grade: string, isEmpty: boolean): HeroPreset {
   if (isEmpty) return SLEEP_THEME.heroGradePresets.Empty;
@@ -109,36 +109,77 @@ function WeeklyDeltaBadge({ weeklyDelta }: { weeklyDelta: number | null }) {
 }
 
 export default function SleepHero(props: SleepHeroProps) {
+  const { instantTransitionRef, pagerScrollX, pageIndex } = props;
   const isEmpty = props.score === undefined;
   const targetPreset = useMemo(() => getHeroPreset(props.grade, isEmpty), [props.grade, isEmpty]);
-  const [basePreset, setBasePreset] = useState<HeroPreset>(targetPreset);
+
+  // Settled preset — only updates after animation completes or on instant snap.
+  const [settledPreset, setSettledPreset] = useState<HeroPreset>(targetPreset);
   const [overlayPreset, setOverlayPreset] = useState<HeroPreset>(targetPreset);
   const overlayOpacity = useSharedValue(0);
 
+  // Adjacent presets for real-time drag blending.
+  const prevPreset = useMemo(
+    () => getHeroPreset(props.prevGrade, props.prevGrade === '--'),
+    [props.prevGrade]
+  );
+  const nextPreset = useMemo(
+    () => getHeroPreset(props.nextGrade, props.nextGrade === '--'),
+    [props.nextGrade]
+  );
+
+  // renderedBase: normally the settled preset; snaps instantly to target on drag transitions
+  // so the base updates on the same render cycle without waiting for useEffect.
+  const renderedBase = useMemo(() => {
+    if (instantTransitionRef.current) return targetPreset;
+    return settledPreset;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settledPreset, targetPreset]);
+
   useEffect(() => {
-    if (samePreset(basePreset, targetPreset)) {
+    // Always consume the instant-transition flag so it doesn't persist to calendar selects.
+    const isInstant = instantTransitionRef.current;
+    if (isInstant) instantTransitionRef.current = false;
+
+    if (samePreset(settledPreset, targetPreset)) return;
+
+    if (isInstant) {
+      // Drag-driven transition: base already shows the target (via renderedBase).
+      // Just sync the settled state and cancel any in-flight withTiming.
+      overlayOpacity.value = 0;
+      setSettledPreset(targetPreset);
       return;
     }
 
+    // Calendar-driven transition: smooth cross-fade.
     setOverlayPreset(targetPreset);
     overlayOpacity.value = 0;
     overlayOpacity.value = withTiming(
       1,
-      {
-        duration: 600,
-        easing: Easing.out(Easing.cubic),
-      },
+      { duration: 600, easing: Easing.out(Easing.cubic) },
       (finished) => {
         if (!finished) return;
-        runOnJS(setBasePreset)(targetPreset);
+        runOnJS(setSettledPreset)(targetPreset);
         overlayOpacity.value = 0;
       }
     );
-  }, [basePreset, overlayOpacity, targetPreset]);
+  }, [settledPreset, overlayOpacity, targetPreset, instantTransitionRef]);
 
   const overlayStyle = useAnimatedStyle(() => ({
     opacity: overlayOpacity.value,
   }));
+
+  // Real-time blend layers driven by the pager scroll position.
+  // prevBlend fades in as the user drags right (going to yesterday).
+  // nextBlend fades in as the user drags left (going to tomorrow).
+  const prevBlendStyle = useAnimatedStyle(() => {
+    const norm = pagerScrollX.value / SCREEN_WIDTH;
+    return { opacity: Math.max(0, Math.min(1, pageIndex - norm)) };
+  });
+  const nextBlendStyle = useAnimatedStyle(() => {
+    const norm = pagerScrollX.value / SCREEN_WIDTH;
+    return { opacity: Math.max(0, Math.min(1, norm - pageIndex)) };
+  });
 
   const dateLabel = props.selectedDate.toLocaleDateString('en-GB', {
     day: 'numeric',
@@ -148,18 +189,21 @@ export default function SleepHero(props: SleepHeroProps) {
 
   return (
     <View style={styles.hero}>
-      <View
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: SCREEN_HEIGHT }}
-        pointerEvents="none">
-        <HeroGradientLayer preset={basePreset} />
+      {/* Layer 1 — settled / instant-snap base */}
+      <View style={styles.gradientLayer} pointerEvents="none">
+        <HeroGradientLayer preset={renderedBase} />
       </View>
-      <Animated.View
-        style={[
-          { position: 'absolute', top: 0, left: 0, right: 0, height: SCREEN_HEIGHT },
-          overlayStyle,
-        ]}
-        pointerEvents="none">
+      {/* Layer 2 — calendar cross-fade overlay (withTiming) */}
+      <Animated.View style={[styles.gradientLayer, overlayStyle]} pointerEvents="none">
         <HeroGradientLayer preset={overlayPreset} />
+      </Animated.View>
+      {/* Layer 3 — previous day blend (drag-right gesture) */}
+      <Animated.View style={[styles.gradientLayer, prevBlendStyle]} pointerEvents="none">
+        <HeroGradientLayer preset={prevPreset} />
+      </Animated.View>
+      {/* Layer 4 — next day blend (drag-left gesture) */}
+      <Animated.View style={[styles.gradientLayer, nextBlendStyle]} pointerEvents="none">
+        <HeroGradientLayer preset={nextPreset} />
       </Animated.View>
 
       <View style={styles.content}>
@@ -209,6 +253,13 @@ const styles = StyleSheet.create({
     height: SLEEP_LAYOUT.heroHeight,
     overflow: 'visible',
     backgroundColor: 'transparent',
+  },
+  gradientLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: SCREEN_HEIGHT,
   },
   content: {
     flex: 1,

@@ -1,3 +1,6 @@
+import type { MutableRefObject } from 'react';
+import type { SharedValue } from 'react-native-reanimated';
+
 export interface SleepHeroProps {
   selectedDate: Date;
   score: number | undefined;
@@ -11,6 +14,16 @@ export interface SleepHeroProps {
   todayIndex: number;
   targetMinutes?: number;
   onPressDate?: () => void;
+  /** Real-time horizontal scroll offset of the day pager (updated on JS thread). */
+  pagerScrollX: SharedValue<number>;
+  /** Index of the currently settled page — updated only after snap. */
+  pageIndex: number;
+  /** Grade string ('--' = no data) for the previous day, used for live blend. */
+  prevGrade: string;
+  /** Grade string ('--' = no data) for the next day, used for live blend. */
+  nextGrade: string;
+  /** Set to true by the pager before a drag-triggered date change; consumed by SleepHero to skip gradient animation. */
+  instantTransitionRef: MutableRefObject<boolean>;
 }
 
 export interface HeroGradientStops {
