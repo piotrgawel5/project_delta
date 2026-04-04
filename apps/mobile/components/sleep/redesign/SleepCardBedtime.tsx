@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { memo, useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -14,7 +14,7 @@ const CARD_DOT_SIZE = 9;
 const CARD_DOT_SIZE_SELECTED = 12;
 const CARD_DOT_GLOW = 20;
 
-function AnimatedDot({
+const AnimatedDot = memo(function AnimatedDot({
   index,
   value,
   color,
@@ -50,9 +50,9 @@ function AnimatedDot({
       <Animated.View style={[styles.dot, dotStyle]} />
     </View>
   );
-}
+});
 
-function DotRow({
+const DotRow = memo(function DotRow({
   values,
   todayIndex,
   color,
@@ -84,7 +84,7 @@ function DotRow({
       ))}
     </View>
   );
-}
+});
 
 function TimeDisplay({
   value,

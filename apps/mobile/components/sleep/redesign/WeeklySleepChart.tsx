@@ -29,6 +29,13 @@ function cubicBezierPoint(t: number, p0: number, cp1v: number, cp2v: number, p1:
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const CHART_PADDING_H = SLEEP_LAYOUT.screenPaddingH - 2;
+const CHART_WIDTH = SCREEN_WIDTH;
+const DAY_START_X = CHART_PADDING_H;
+const DAY_END_X = CHART_WIDTH - CHART_PADDING_H;
+const DAY_STEP_X = (DAY_END_X - DAY_START_X) / Math.max(1, DAY_LABELS.length - 1);
+const PLOT_HEIGHT = SVG_HEIGHT - PLOT_TOP - PLOT_BOTTOM;
+const BOTTOM_Y = PLOT_TOP + PLOT_HEIGHT;
 const MAX_MINUTES = 10 * 60;
 const LABEL_WIDTH = 14;
 const LABEL_ROW_HEIGHT = 12;
@@ -153,14 +160,6 @@ function formatMinutesLabel(minutes: number): string {
 }
 
 export default function WeeklySleepChart({ data, todayIndex }: WeeklySleepChartProps) {
-  const paddingHorizontal = SLEEP_LAYOUT.screenPaddingH - 2;
-  const chartWidth = SCREEN_WIDTH;
-  const dayStartX = paddingHorizontal;
-  const dayEndX = chartWidth - paddingHorizontal;
-  const dayStepX = (dayEndX - dayStartX) / Math.max(1, DAY_LABELS.length - 1);
-  const plotHeight = SVG_HEIGHT - PLOT_TOP - PLOT_BOTTOM;
-  const bottomY = PLOT_TOP + plotHeight;
-
   const chart = useMemo(() => {
     const rawRatios = data.map((minutes) =>
       typeof minutes === 'number' ? Math.max(0, Math.min(MAX_MINUTES, minutes)) / MAX_MINUTES : null
@@ -168,19 +167,19 @@ export default function WeeklySleepChart({ data, todayIndex }: WeeklySleepChartP
     const { ratios: displayRatios, missingMask } = buildDisplayRatios(rawRatios);
 
     const dayPoints: ChartRenderPoint[] = displayRatios.map((ratio, index) => ({
-      x: dayStartX + index * dayStepX,
-      y: bottomY - ratio * plotHeight,
+      x: DAY_START_X + index * DAY_STEP_X,
+      y: BOTTOM_Y - ratio * PLOT_HEIGHT,
       hasData: !missingMask[index],
       isMissing: missingMask[index],
     }));
 
-    const leftEdgePoint = buildEdgePoint(dayPoints[0], dayPoints[1], 0, PLOT_TOP, bottomY);
+    const leftEdgePoint = buildEdgePoint(dayPoints[0], dayPoints[1], 0, PLOT_TOP, BOTTOM_Y);
     const rightEdgePoint = buildEdgePoint(
       dayPoints[DAY_LABELS.length - 1],
       dayPoints[DAY_LABELS.length - 2],
-      chartWidth,
+      CHART_WIDTH,
       PLOT_TOP,
-      bottomY
+      BOTTOM_Y
     );
 
     const pathPoints: ChartRenderPoint[] = [leftEdgePoint, ...dayPoints, rightEdgePoint];
@@ -210,11 +209,11 @@ export default function WeeklySleepChart({ data, todayIndex }: WeeklySleepChartP
     return {
       dayPoints,
       segments,
-      areaPath: buildAreaPath(pathPoints, bottomY),
+      areaPath: buildAreaPath(pathPoints, BOTTOM_Y),
       todayPoint: dayPoints[todayIndex] ?? null,
       todayLabel: formatMinutesLabel(todayMinutes),
     };
-  }, [bottomY, chartWidth, data, dayStartX, dayStepX, plotHeight, todayIndex]);
+  }, [data, todayIndex]);
 
   // ── Animated dot / pill ──────────────────────────────────────────────────
   // SharedValues are initialised to the current day's position so the dot
@@ -304,15 +303,15 @@ export default function WeeklySleepChart({ data, todayIndex }: WeeklySleepChartP
     const x = cubicBezierPoint(animProgress.value, dotFromX.value, cp1x.value, cp2x.value, dotToX.value);
     const y = cubicBezierPoint(animProgress.value, dotFromY.value, cp1y.value, cp2y.value, dotToY.value);
     return {
-      left: Math.max(TODAY_PILL_MIN_LEFT, Math.min(chartWidth - TODAY_PILL_HALF_WIDTH * 2 - TODAY_PILL_MIN_LEFT, x - TODAY_PILL_HALF_WIDTH)),
+      left: Math.max(TODAY_PILL_MIN_LEFT, Math.min(CHART_WIDTH - TODAY_PILL_HALF_WIDTH * 2 - TODAY_PILL_MIN_LEFT, x - TODAY_PILL_HALF_WIDTH)),
       top: Math.min(SVG_HEIGHT - TODAY_PILL_HEIGHT - 2, y + 20),
     };
   });
   // ── Sliding day-label highlight ──────────────────────────────────────
-  const highlightX = useSharedValue(dayStartX + todayIndex * dayStepX - LABEL_WIDTH / 2);
+  const highlightX = useSharedValue(DAY_START_X + todayIndex * DAY_STEP_X - LABEL_WIDTH / 2);
 
   useEffect(() => {
-    highlightX.value = withTiming(dayStartX + todayIndex * dayStepX - LABEL_WIDTH / 2, {
+    highlightX.value = withTiming(DAY_START_X + todayIndex * DAY_STEP_X - LABEL_WIDTH / 2, {
       duration: 350,
       easing: Easing.out(Easing.cubic),
     });

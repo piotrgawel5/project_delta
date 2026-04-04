@@ -90,8 +90,11 @@ export default function SleepScreen() {
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
   const { user } = useAuthStore();
-  const { recentHistory, monthlyData, fetchSleepDataRange, forceSaveManualSleep, loading } =
-    useSleepStore();
+  const recentHistory = useSleepStore((s) => s.recentHistory);
+  const monthlyData = useSleepStore((s) => s.monthlyData);
+  const fetchSleepDataRange = useSleepStore((s) => s.fetchSleepDataRange);
+  const forceSaveManualSleep = useSleepStore((s) => s.forceSaveManualSleep);
+  const loading = useSleepStore((s) => s.loading);
 
   const [selectedDate, setSelectedDate] = useState(() => normalizeDate(new Date()));
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
@@ -221,18 +224,17 @@ export default function SleepScreen() {
       ? 'No sleep data recorded for this day yet.'
       : getSleepDescription(score, currentData.historyItem.duration_minutes);
   const weeklyDelta = calculateWeeklyDelta(score, weekData.scores, weekData.todayIndex);
-  const bedtimeParts = currentData.historyItem?.start_time
-    ? (() => {
-        const parts = formatTimeParts(currentData.historyItem?.start_time);
-        return parts.meridiem ? { time: parts.time, meridiem: parts.meridiem } : null;
-      })()
-    : null;
-  const wakeTimeParts = currentData.historyItem?.end_time
-    ? (() => {
-        const parts = formatTimeParts(currentData.historyItem?.end_time);
-        return parts.meridiem ? { time: parts.time, meridiem: parts.meridiem } : null;
-      })()
-    : null;
+  const bedtimeParts = useMemo(() => {
+    if (!currentData.historyItem?.start_time) return null;
+    const parts = formatTimeParts(currentData.historyItem.start_time);
+    return parts.meridiem ? { time: parts.time, meridiem: parts.meridiem } : null;
+  }, [currentData.historyItem?.start_time]);
+
+  const wakeTimeParts = useMemo(() => {
+    if (!currentData.historyItem?.end_time) return null;
+    const parts = formatTimeParts(currentData.historyItem.end_time);
+    return parts.meridiem ? { time: parts.time, meridiem: parts.meridiem } : null;
+  }, [currentData.historyItem?.end_time]);
   const isLoading =
     loading || (!currentData.historyItem && dateFetchStatus[selectedDateKey] !== 'done');
 
