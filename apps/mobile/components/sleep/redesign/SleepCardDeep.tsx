@@ -99,7 +99,7 @@ export default function SleepCardDeep({ deepMinutes, totalMinutes }: SleepCardDe
   const deepPct = totalMinutes && deepMinutes !== null ? deepMinutes / totalMinutes : null;
   const zone = getZone(deepPct);
   const status = getStatus(zone);
-  const { main, suffix } = formatDeepValue(deepMinutes);
+  const { main, suffix } = useMemo(() => formatDeepValue(deepMinutes), [deepMinutes]);
   const [barWidth, setBarWidth] = useState(0);
   const indicatorX = useSharedValue(0);
 

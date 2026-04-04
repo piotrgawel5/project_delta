@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -51,9 +51,15 @@ function samePreset(a: HeroPreset, b: HeroPreset): boolean {
   );
 }
 
-function HeroGradientLayer({ preset }: { preset: HeroPreset }) {
-  const radialId = `hero-radial-${preset.primary.replace('#', '')}-${preset.mid.replace('#', '')}-${preset.end.replace('#', '')}`;
-  const overlayId = `hero-overlay-${preset.overlayStart.replace('#', '')}-${preset.overlayEnd.replace('#', '')}`;
+const HeroGradientLayer = memo(function HeroGradientLayer({ preset }: { preset: HeroPreset }) {
+  const radialId = useMemo(
+    () => `hero-radial-${preset.primary.replace('#', '')}-${preset.mid.replace('#', '')}-${preset.end.replace('#', '')}`,
+    [preset.primary, preset.mid, preset.end]
+  );
+  const overlayId = useMemo(
+    () => `hero-overlay-${preset.overlayStart.replace('#', '')}-${preset.overlayEnd.replace('#', '')}`,
+    [preset.overlayStart, preset.overlayEnd]
+  );
 
   return (
     <Svg
@@ -80,7 +86,7 @@ function HeroGradientLayer({ preset }: { preset: HeroPreset }) {
       />
     </Svg>
   );
-}
+});
 
 function ScoreRow({ score }: { score: number | undefined }) {
   const scoreLabel = score === undefined ? '--' : `${score}`;
