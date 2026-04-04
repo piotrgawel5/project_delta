@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, {
   FadeIn,
   FadeInDown,
+  FadeOut,
   interpolate,
   type SharedValue,
   useAnimatedScrollHandler,
@@ -100,6 +101,7 @@ export default function SleepScreen() {
   const pagerRef = useRef<FlatList<Date>>(null);
   const pagerScrollX = useSharedValue(0);
   const instantTransitionRef = useRef(false);
+  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
 
   const selectedDateKey = useMemo(() => dateKey(selectedDate), [selectedDate]);
   const selectedYear = selectedDate.getFullYear();
@@ -247,6 +249,7 @@ export default function SleepScreen() {
     if (!next || isSameDay(next, selectedDate)) return;
 
     instantTransitionRef.current = true;
+    setSwipeDirection(index > activeIndex ? 'right' : 'left');
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedDate(next);
     setActiveIndex(index);
@@ -284,6 +287,7 @@ export default function SleepScreen() {
           prevGrade={prevNextGrades.prevGrade}
           nextGrade={prevNextGrades.nextGrade}
           instantTransitionRef={instantTransitionRef}
+          swipeDirection={swipeDirection}
         />
       </View>
 
@@ -341,32 +345,39 @@ export default function SleepScreen() {
         showsVerticalScrollIndicator={false}>
         {isLoading ? (
           <FullScreenSkeleton />
-        ) : !currentData.historyItem ? (
-          <Animated.View entering={FadeIn.duration(300)}>
-            <SleepEmptyState date={selectedDate} onAddData={() => setIsAddModalVisible(true)} />
-          </Animated.View>
         ) : (
-          <>
-            <Animated.View entering={FadeInDown.duration(400)}>
-              <SleepCardBedtime
-                bedtime={bedtimeParts}
-                wakeTime={wakeTimeParts}
-                weekBedtimes={weekData.bedtimes}
-                weekWakeTimes={weekData.wakeTimes}
-                todayIndex={weekData.todayIndex}
-              />
-            </Animated.View>
-            <Animated.View entering={FadeInDown.duration(400).delay(50)}>
-              <SleepCardDeep
-                deepMinutes={currentData.historyItem.deep_sleep_minutes ?? null}
-                totalMinutes={currentData.historyItem.duration_minutes ?? null}
-              />
-            </Animated.View>
-            <Animated.View entering={FadeInDown.duration(400).delay(100)}>
-              <SleepStagesCard />
-            </Animated.View>
-            <SleepEditLink onPress={() => setIsAddModalVisible(true)} />
-          </>
+          <Animated.View
+            key={`cards-${selectedDateKey}`}
+            exiting={FadeOut.duration(150)}
+            style={styles.cardTransitionWrap}>
+            {!currentData.historyItem ? (
+              <Animated.View entering={FadeIn.duration(300).delay(220)}>
+                <SleepEmptyState date={selectedDate} onAddData={() => setIsAddModalVisible(true)} />
+              </Animated.View>
+            ) : (
+              <>
+                <Animated.View entering={FadeInDown.duration(400).delay(220)}>
+                  <SleepCardBedtime
+                    bedtime={bedtimeParts}
+                    wakeTime={wakeTimeParts}
+                    weekBedtimes={weekData.bedtimes}
+                    weekWakeTimes={weekData.wakeTimes}
+                    todayIndex={weekData.todayIndex}
+                  />
+                </Animated.View>
+                <Animated.View entering={FadeInDown.duration(400).delay(270)}>
+                  <SleepCardDeep
+                    deepMinutes={currentData.historyItem.deep_sleep_minutes ?? null}
+                    totalMinutes={currentData.historyItem.duration_minutes ?? null}
+                  />
+                </Animated.View>
+                <Animated.View entering={FadeInDown.duration(400).delay(320)}>
+                  <SleepStagesCard />
+                </Animated.View>
+                <SleepEditLink onPress={() => setIsAddModalVisible(true)} />
+              </>
+            )}
+          </Animated.View>
         )}
       </Animated.ScrollView>
 
@@ -375,6 +386,7 @@ export default function SleepScreen() {
         onClose={() => setIsCalendarVisible(false)}
         selectedDate={selectedDate}
         onDateSelect={(date) => {
+          setSwipeDirection(null);
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           setSelectedDate(normalizeDate(date));
         }}
@@ -436,6 +448,9 @@ const styles = StyleSheet.create({
   blurHeaderFill: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: SLEEP_THEME.navbarBg,
+  },
+  cardTransitionWrap: {
+    gap: SLEEP_LAYOUT.cardGap,
   },
   cardsScroll: {
     position: 'relative',

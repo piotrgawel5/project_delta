@@ -61,11 +61,12 @@ export const SLEEP_THEME = {
    * overlayEnd:   linear overlay 61% stop — black fade floor
    */
   heroGradePresets: {
+    // Green-family grades — forest-night atmosphere (green mid + green overlay)
     Excellent: {
       primary: '#5B529F',
-      mid: '#0A1A0E',
+      mid: '#0B0A1A',
       end: '#000000',
-      overlayStart: '#4CAF6A',
+      overlayStart: '#4A45A0',
       overlayEnd: '#000000',
     },
     Great: {
@@ -82,32 +83,33 @@ export const SLEEP_THEME = {
       overlayStart: '#4CAF6A',
       overlayEnd: '#000000',
     },
+    // Warm-family grades — amber / red atmosphere (no green)
     Fair: {
       primary: '#A48023',
-      mid: '#0A1A0E',
+      mid: '#1A1400',
       end: '#000000',
-      overlayStart: '#4CAF6A',
+      overlayStart: '#7A6020',
       overlayEnd: '#000000',
     },
     Poor: {
       primary: '#AB4E46',
-      mid: '#0A1A0E',
+      mid: '#1A0808',
       end: '#000000',
-      overlayStart: '#4CAF6A',
+      overlayStart: '#7A3A35',
       overlayEnd: '#000000',
     },
     Bad: {
       primary: '#8D372D',
-      mid: '#0A1A0E',
+      mid: '#180808',
       end: '#000000',
-      overlayStart: '#4CAF6A',
+      overlayStart: '#6A2A22',
       overlayEnd: '#000000',
     },
     Terrible: {
       primary: '#853A21',
-      mid: '#0A1A0E',
+      mid: '#160A04',
       end: '#000000',
-      overlayStart: '#4CAF6A',
+      overlayStart: '#622A14',
       overlayEnd: '#000000',
     },
     Empty: {

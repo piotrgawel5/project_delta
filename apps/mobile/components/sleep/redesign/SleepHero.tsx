@@ -3,6 +3,9 @@ import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   Easing,
+  FadeIn,
+  FadeOut,
+  Keyframe,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -26,11 +29,15 @@ const BADGE_RADIUS = 18;
 const OVERLAY_LAYER_OPACITY = 0.35;
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
+const HERO_SLIDE_DIST = 28;
+const HERO_SLIDE_IN_MS = 280;
+const HERO_SLIDE_OUT_MS = 160;
+
 function getHeroPreset(grade: string, isEmpty: boolean): HeroPreset {
   if (isEmpty) return SLEEP_THEME.heroGradePresets.Empty;
   return (
     SLEEP_THEME.heroGradePresets[grade as keyof typeof SLEEP_THEME.heroGradePresets] ??
-    SLEEP_THEME.heroGradePresets.Great
+    SLEEP_THEME.heroGradePresets.Empty
   );
 }
 
@@ -109,7 +116,7 @@ function WeeklyDeltaBadge({ weeklyDelta }: { weeklyDelta: number | null }) {
 }
 
 export default function SleepHero(props: SleepHeroProps) {
-  const { instantTransitionRef, pagerScrollX, pageIndex } = props;
+  const { instantTransitionRef, pagerScrollX, pageIndex, swipeDirection } = props;
   const isEmpty = props.score === undefined;
   const targetPreset = useMemo(() => getHeroPreset(props.grade, isEmpty), [props.grade, isEmpty]);
 
@@ -169,6 +176,34 @@ export default function SleepHero(props: SleepHeroProps) {
     opacity: overlayOpacity.value,
   }));
 
+  // Fresh Keyframe instance per (direction × date) — Reanimated requires a new object
+  // each time to avoid treating the same reference as "already running" and skipping it.
+  // No delay — old text fades out while new text simultaneously slides in.
+  // The slide motion provides enough visual separation; a delay would create
+  // a visible gap where neither text is visible (flash frame).
+  const heroTextEntering = useMemo(() => {
+    if (swipeDirection === 'right')
+      return new Keyframe({
+        0: { opacity: 0, transform: [{ translateX: HERO_SLIDE_DIST }] },
+        100: { opacity: 1, transform: [{ translateX: 0 }] },
+      }).duration(HERO_SLIDE_IN_MS);
+    if (swipeDirection === 'left')
+      return new Keyframe({
+        0: { opacity: 0, transform: [{ translateX: -HERO_SLIDE_DIST }] },
+        100: { opacity: 1, transform: [{ translateX: 0 }] },
+      }).duration(HERO_SLIDE_IN_MS);
+    return FadeIn.duration(HERO_SLIDE_IN_MS);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [swipeDirection, props.selectedDate]);
+
+  const heroFadeOut = useMemo(
+    () => FadeOut.duration(HERO_SLIDE_OUT_MS),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [props.selectedDate]
+  );
+
+  const heroTextKey = `hero-${props.selectedDate.getTime()}`;
+
   // Real-time blend layers driven by the pager scroll position.
   // prevBlend fades in as the user drags right (going to yesterday).
   // nextBlend fades in as the user drags left (going to tomorrow).
@@ -214,25 +249,27 @@ export default function SleepHero(props: SleepHeroProps) {
           </>
         ) : (
           <>
-            <Pressable
-              disabled={!props.onPressDate}
-              onPress={props.onPressDate}
-              style={styles.dateButton}>
-              <Text style={styles.dateText}>{dateLabel}</Text>
-              <Ionicons name="chevron-forward" size={12} color={SLEEP_THEME.textSecondary} />
-            </Pressable>
+            <Animated.View key={heroTextKey} entering={heroTextEntering} exiting={heroFadeOut}>
+              <Pressable
+                disabled={!props.onPressDate}
+                onPress={props.onPressDate}
+                style={styles.dateButton}>
+                <Text style={styles.dateText}>{dateLabel}</Text>
+                <Ionicons name="chevron-forward" size={12} color={SLEEP_THEME.textSecondary} />
+              </Pressable>
 
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              style={[styles.grade, isEmpty && styles.emptyMetric]}>
-              {props.grade}
-            </Text>
-            <ScoreRow score={props.score} />
-            <Text style={[styles.description, isEmpty && styles.emptyMetric]}>
-              {props.description}
-            </Text>
-            <WeeklyDeltaBadge weeklyDelta={props.weeklyDelta} />
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={[styles.grade, isEmpty && styles.emptyMetric]}>
+                {props.grade}
+              </Text>
+              <ScoreRow score={props.score} />
+              <Text style={[styles.description, isEmpty && styles.emptyMetric]}>
+                {props.description}
+              </Text>
+              <WeeklyDeltaBadge weeklyDelta={props.weeklyDelta} />
+            </Animated.View>
 
             <View style={styles.chartArea}>
               <WeeklySleepChart

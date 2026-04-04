@@ -308,6 +308,20 @@ export default function WeeklySleepChart({ data, todayIndex }: WeeklySleepChartP
       top: Math.min(SVG_HEIGHT - TODAY_PILL_HEIGHT - 2, y + 20),
     };
   });
+  // ── Sliding day-label highlight ──────────────────────────────────────
+  const highlightX = useSharedValue(dayStartX + todayIndex * dayStepX - LABEL_WIDTH / 2);
+
+  useEffect(() => {
+    highlightX.value = withTiming(dayStartX + todayIndex * dayStepX - LABEL_WIDTH / 2, {
+      duration: 350,
+      easing: Easing.out(Easing.cubic),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayIndex]); // dayStartX/dayStepX are derived from constants
+
+  const highlightLabelStyle = useAnimatedStyle(() => ({
+    left: highlightX.value,
+  }));
   // ─────────────────────────────────────────────────────────────────────────
 
 
@@ -354,22 +368,19 @@ export default function WeeklySleepChart({ data, todayIndex }: WeeklySleepChartP
 
       <View style={styles.labelsRow}>
         {DAY_LABELS.map((label, index) => {
-          const isSelected = index === todayIndex;
           const dayPoint = chart.dayPoints[index];
           const left = (dayPoint?.x ?? 0) - LABEL_WIDTH / 2;
-
           return (
             <Text
               key={`${label}-${index}`}
-              style={[
-                styles.label,
-                { left },
-                isSelected ? styles.labelSelected : styles.labelDefault,
-              ]}>
+              style={[styles.label, { left }, styles.labelDefault]}>
               {label}
             </Text>
           );
         })}
+        <Animated.Text style={[styles.label, styles.labelSelected, highlightLabelStyle]}>
+          {DAY_LABELS[todayIndex]}
+        </Animated.Text>
       </View>
     </View>
   );
