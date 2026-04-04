@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: SLEEP_LAYOUT.heroHeight,
-    zIndex: 2,
+    zIndex: 6,
     backgroundColor: 'transparent',
   },
   pagerItem: {

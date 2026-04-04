@@ -1,15 +1,31 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import Svg, {
   Circle,
   Defs,
-  G,
   LinearGradient as SvgLinearGradient,
   Path,
   Stop,
 } from 'react-native-svg';
+import Animated, {
+  Easing,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import type { ChartPoint, WeeklySleepChartProps } from '../../../types/sleep-ui';
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+/** Evaluates a cubic bezier at parameter t. Runs as a UI-thread worklet. */
+function cubicBezierPoint(t: number, p0: number, cp1v: number, cp2v: number, p1: number): number {
+  'worklet';
+  const mt = 1 - t;
+  return mt * mt * mt * p0 + 3 * mt * mt * t * cp1v + 3 * mt * t * t * cp2v + t * t * t * p1;
+}
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -25,7 +41,6 @@ const MAX_TEMPLATE_RATIO = 0.86;
 const TODAY_PILL_HALF_WIDTH = 38;
 const TODAY_PILL_MIN_LEFT = 10;
 const TODAY_PILL_HEIGHT = 30;
-const TODAY_PILL_MIN_GAP = 30;
 const BLEND_REAL_WEIGHT = 0.55;
 const BLEND_PROFILE_WEIGHT = 0.45;
 const SMOOTH_PREV_WEIGHT = 0.15;
@@ -43,27 +58,17 @@ function clampY(y: number, topY: number, bottomY: number): number {
   return Math.max(topY, Math.min(bottomY, y));
 }
 
-function resolveAnchorRatio(rawRatios: readonly (number | null)[], todayIndex: number): number {
-  const today = rawRatios[todayIndex];
-  if (typeof today === 'number') return today;
-
-  let bestIndex = -1;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < rawRatios.length; index += 1) {
-    if (typeof rawRatios[index] !== 'number') continue;
-    const distance = Math.abs(index - todayIndex);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestIndex = index;
-    }
+function resolveAnchorIndex(rawRatios: readonly (number | null)[]): number {
+  for (let i = rawRatios.length - 1; i >= 0; i -= 1) {
+    if (typeof rawRatios[i] === 'number') return i;
   }
-
-  return bestIndex >= 0 ? (rawRatios[bestIndex] as number) : WAVE_PROFILE[todayIndex];
+  return rawRatios.length - 1;
 }
 
-function buildDisplayRatios(rawRatios: readonly (number | null)[], todayIndex: number) {
-  const anchorRatio = resolveAnchorRatio(rawRatios, todayIndex);
-  const profileShift = anchorRatio - WAVE_PROFILE[todayIndex];
+function buildDisplayRatios(rawRatios: readonly (number | null)[]) {
+  const anchorIndex = resolveAnchorIndex(rawRatios);
+  const anchorRatio = (rawRatios[anchorIndex] as number) ?? WAVE_PROFILE[anchorIndex];
+  const profileShift = anchorRatio - WAVE_PROFILE[anchorIndex];
   const anchoredProfile = WAVE_PROFILE.map((ratio) => clampRatio(ratio + profileShift));
 
   const blended = rawRatios.map((ratio, index) =>
@@ -160,7 +165,7 @@ export default function WeeklySleepChart({ data, todayIndex }: WeeklySleepChartP
     const rawRatios = data.map((minutes) =>
       typeof minutes === 'number' ? Math.max(0, Math.min(MAX_MINUTES, minutes)) / MAX_MINUTES : null
     );
-    const { ratios: displayRatios, missingMask } = buildDisplayRatios(rawRatios, todayIndex);
+    const { ratios: displayRatios, missingMask } = buildDisplayRatios(rawRatios);
 
     const dayPoints: ChartRenderPoint[] = displayRatios.map((ratio, index) => ({
       x: dayStartX + index * dayStepX,
@@ -211,25 +216,100 @@ export default function WeeklySleepChart({ data, todayIndex }: WeeklySleepChartP
     };
   }, [bottomY, chartWidth, data, dayStartX, dayStepX, plotHeight, todayIndex]);
 
-  const todayPillLeft =
-    chart.todayPoint === null
-      ? 0
-      : Math.max(
-          TODAY_PILL_MIN_LEFT,
-          Math.min(
-            chartWidth - TODAY_PILL_HALF_WIDTH * 2 - TODAY_PILL_MIN_LEFT,
-            chart.todayPoint.x - TODAY_PILL_HALF_WIDTH
-          )
-        );
+  // ── Animated dot / pill ──────────────────────────────────────────────────
+  // SharedValues are initialised to the current day's position so the dot
+  // appears correctly on the first frame without waiting for useEffect.
+  const initPt = chart.dayPoints[todayIndex];
+  const animProgress = useSharedValue(1);
+  const dotFromX = useSharedValue(initPt?.x ?? 0);
+  const dotFromY = useSharedValue(initPt?.y ?? 0);
+  const dotToX   = useSharedValue(initPt?.x ?? 0);
+  const dotToY   = useSharedValue(initPt?.y ?? 0);
+  const cp1x = useSharedValue(initPt?.x ?? 0);
+  const cp1y = useSharedValue(initPt?.y ?? 0);
+  const cp2x = useSharedValue(initPt?.x ?? 0);
+  const cp2y = useSharedValue(initPt?.y ?? 0);
 
-  const belowTop =
-    chart.todayPoint === null ? 0 : chart.todayPoint.y + TODAY_PILL_MIN_GAP;
-  const todayPillTop =
-    chart.todayPoint === null
-      ? 0
-      : belowTop + TODAY_PILL_HEIGHT <= SVG_HEIGHT - 2
-        ? belowTop
-        : Math.max(2, chart.todayPoint.y - TODAY_PILL_MIN_GAP - TODAY_PILL_HEIGHT);
+  const prevTodayIndexRef = useRef(todayIndex);
+
+  useEffect(() => {
+    const prevIndex = prevTodayIndexRef.current;
+    prevTodayIndexRef.current = todayIndex;
+
+    const { dayPoints } = chart;
+    const toPoint = dayPoints[todayIndex];
+    if (!toPoint) return;
+
+    if (prevIndex === todayIndex) {
+      // Data changed without day change — snap dot to new position.
+      dotFromX.value = toPoint.x; dotFromY.value = toPoint.y;
+      dotToX.value   = toPoint.x; dotToY.value   = toPoint.y;
+      cp1x.value = toPoint.x;     cp1y.value = toPoint.y;
+      cp2x.value = toPoint.x;     cp2y.value = toPoint.y;
+      animProgress.value = 1;
+      return;
+    }
+
+    const fromPoint = dayPoints[prevIndex];
+    if (!fromPoint) return;
+
+    // Compute the cubic bezier for the segment between the two day points,
+    // using the same Catmull-Rom-style formula as buildSegmentPath.
+    const goingRight = todayIndex > prevIndex;
+    const minIdx = Math.min(prevIndex, todayIndex);
+    const maxIdx = Math.max(prevIndex, todayIndex);
+    const pPrev  = dayPoints[Math.max(0, minIdx - 1)] ?? dayPoints[minIdx];
+    const pFrom  = dayPoints[minIdx];
+    const pTo    = dayPoints[maxIdx];
+    const pAfter = dayPoints[Math.min(dayPoints.length - 1, maxIdx + 1)] ?? dayPoints[maxIdx];
+
+    const fwdCp1x = pFrom.x + ((pTo.x - pPrev.x)  * CURVE_TENSION) / 2;
+    const fwdCp1y = pFrom.y + ((pTo.y - pPrev.y)  * CURVE_TENSION) / 2;
+    const fwdCp2x = pTo.x   - ((pAfter.x - pFrom.x) * CURVE_TENSION) / 2;
+    const fwdCp2y = pTo.y   - ((pAfter.y - pFrom.y) * CURVE_TENSION) / 2;
+
+    dotFromX.value = fromPoint.x;
+    dotFromY.value = fromPoint.y;
+    dotToX.value   = toPoint.x;
+    dotToY.value   = toPoint.y;
+
+    if (goingRight) {
+      cp1x.value = fwdCp1x; cp1y.value = fwdCp1y;
+      cp2x.value = fwdCp2x; cp2y.value = fwdCp2y;
+    } else {
+      // Reverse the bezier by swapping control points.
+      cp1x.value = fwdCp2x; cp1y.value = fwdCp2y;
+      cp2x.value = fwdCp1x; cp2y.value = fwdCp1y;
+    }
+
+    animProgress.value = 0;
+    animProgress.value = withDelay(
+      300,
+      withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) })
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayIndex, chart]); // SharedValues are stable — intentionally omitted from deps
+
+  const dotAnimatedProps = useAnimatedProps(() => ({
+    cx: cubicBezierPoint(animProgress.value, dotFromX.value, cp1x.value, cp2x.value, dotToX.value),
+    cy: cubicBezierPoint(animProgress.value, dotFromY.value, cp1y.value, cp2y.value, dotToY.value),
+  }));
+
+  const glowAnimatedProps = useAnimatedProps(() => ({
+    cx: cubicBezierPoint(animProgress.value, dotFromX.value, cp1x.value, cp2x.value, dotToX.value),
+    cy: cubicBezierPoint(animProgress.value, dotFromY.value, cp1y.value, cp2y.value, dotToY.value),
+  }));
+
+  const pillAnimStyle = useAnimatedStyle(() => {
+    const x = cubicBezierPoint(animProgress.value, dotFromX.value, cp1x.value, cp2x.value, dotToX.value);
+    const y = cubicBezierPoint(animProgress.value, dotFromY.value, cp1y.value, cp2y.value, dotToY.value);
+    return {
+      left: Math.max(TODAY_PILL_MIN_LEFT, Math.min(chartWidth - TODAY_PILL_HALF_WIDTH * 2 - TODAY_PILL_MIN_LEFT, x - TODAY_PILL_HALF_WIDTH)),
+      top: Math.min(SVG_HEIGHT - TODAY_PILL_HEIGHT - 2, y + 20),
+    };
+  });
+  // ─────────────────────────────────────────────────────────────────────────
+
 
   return (
     <View style={styles.container}>
@@ -260,28 +340,16 @@ export default function WeeklySleepChart({ data, todayIndex }: WeeklySleepChartP
             />
           ))}
 
-          {chart.dayPoints.map((point, index) => {
-            const isSelected = index === todayIndex;
-            const radius = isSelected ? 5.5 : 4.8;
-            const glowRadius = isSelected ? 12 : 0;
-            const fill = isSelected ? '#FFFFFF' : '#3F4148';
-
-            return (
-              <G key={index}>
-                {isSelected ? (
-                  <Circle cx={point.x} cy={point.y} r={glowRadius} fill="rgba(255,255,255,0.22)" />
-                ) : null}
-                <Circle cx={point.x} cy={point.y} r={radius} fill={fill} />
-              </G>
-            );
-          })}
+          {chart.dayPoints.map((point, index) => (
+            <Circle key={index} cx={point.x} cy={point.y} r={4.8} fill="#3F4148" />
+          ))}
+          <AnimatedCircle r={12} fill="rgba(255,255,255,0.22)" animatedProps={glowAnimatedProps} />
+          <AnimatedCircle r={5.5} fill="#FFFFFF" animatedProps={dotAnimatedProps} />
         </Svg>
 
-        {chart.todayPoint ? (
-          <View style={[styles.todayPill, { left: todayPillLeft, top: todayPillTop }]}>
-            <Text style={styles.todayPillText}>{chart.todayLabel}</Text>
-          </View>
-        ) : null}
+        <Animated.View style={[styles.todayPill, pillAnimStyle]}>
+          <Text style={styles.todayPillText}>{chart.todayLabel}</Text>
+        </Animated.View>
       </View>
 
       <View style={styles.labelsRow}>

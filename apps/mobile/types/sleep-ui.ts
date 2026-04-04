@@ -24,6 +24,8 @@ export interface SleepHeroProps {
   nextGrade: string;
   /** Set to true by the pager before a drag-triggered date change; consumed by SleepHero to skip gradient animation. */
   instantTransitionRef: MutableRefObject<boolean>;
+  /** Swipe direction for hero text slide animation. null = calendar/initial (cross-fade). */
+  swipeDirection: 'left' | 'right' | null;
 }
 
 export interface HeroGradientStops {
