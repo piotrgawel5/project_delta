@@ -704,7 +704,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 
               for (const record of scoredRecentHistory) {
                 if (!record.start_time || !record.end_time) continue;
-                const age = phys.basisNotes.find((n) => n.startsWith('age='))?.replace('age=', '');
+                const age = phys.basisNotes.find((n: string) => n.startsWith('age='))?.replace('age=', '');
 
                 record.premiumPrediction = buildPremiumPrediction({
                   durationMinutes: record.duration_minutes,
@@ -757,7 +757,8 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                     );
 
                     record.premiumPrediction = {
-                      ...record.premiumPrediction,
+                      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                      ...record.premiumPrediction!,
                       cycleMap: {
                         estimatedCycles,
                         phaseTimeline,
@@ -826,7 +827,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                       .eq('sleep_data_id', record.id)
                       .eq('user_id', userId);
 
-                    const rows = distOutput.phaseTimeline.map((event) => ({
+                    const rows = distOutput.phaseTimeline.map((event: SleepPhaseEvent) => ({
                       sleep_data_id: record.id,
                       user_id: userId,
                       cycle_number: event.cycleNumber,
@@ -1314,7 +1315,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 
         for (const record of scoredRecentHistory) {
           if (!record.start_time || !record.end_time) continue;
-          const age = phys.basisNotes.find((n) => n.startsWith('age='))?.replace('age=', '');
+          const age = phys.basisNotes.find((n: string) => n.startsWith('age='))?.replace('age=', '');
 
           record.premiumPrediction = buildPremiumPrediction({
             durationMinutes: record.duration_minutes,
