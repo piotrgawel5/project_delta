@@ -82,8 +82,51 @@ supabase/.temp/
 codex*
 
 # =========================
+# Secrets & Mobile Configs
+# =========================
+google-services.json
+GoogleService-Info.plist
+*.pem
+*.p8
+*.p12
+service-account*.json
+
+# =========================
+# Android Build Artifacts
+# =========================
+*.apk
+*.aab
+*.aar
+local.properties
+captures/
+
+# =========================
+# iOS Build Artifacts
+# =========================
+DerivedData/
+xcuserdata/
+*.ipa
+*.xcarchive
+
+# =========================
+# TypeScript Build Cache
+# =========================
+**/*.tsbuildinfo
+
+# =========================
+# Monorepo / Tooling Cache
+# =========================
+.turbo/
+coverage/
+.nyc_output/
+
+# =========================
 # OS / Misc
 # =========================
 *.orig
 *.bak
+.AppleDouble
+._*
+ehthumbs.db
+Desktop.ini
 .claude/settings.local.json
