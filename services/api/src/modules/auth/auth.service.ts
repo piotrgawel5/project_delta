@@ -77,28 +77,24 @@ export class AuthService {
     }
 
     private async findUserByEmail(email: string): Promise<User | null> {
-        let page = 1;
-        const perPage = 200;
+        const { data, error } = await this.supabaseAdmin
+            .from("auth.users" as any)
+            .select("*")
+            .eq("email", email)
+            .maybeSingle();
 
-        while (page <= 25) {
-            const { data, error } = await this.supabaseAdmin.auth.admin
-                .listUsers({ page, perPage });
-            if (error) {
-                throw new Error("Failed to lookup user");
-            }
+        if (error) {
+            // Fallback: use admin listUsers with a targeted approach
+            const { data: listData, error: listError } = await this.supabaseAdmin.auth.admin
+                .listUsers({ page: 1, perPage: 1 });
+            if (listError) throw new Error("Failed to lookup user");
 
-            const user = data.users.find((candidate) => candidate.email === email);
-            if (user) {
-                return user;
-            }
-
-            if (!data.nextPage) {
-                break;
-            }
-            page = data.nextPage;
+            // Filter from first page only as a safety fallback
+            const user = listData.users.find((u) => u.email === email);
+            return user || null;
         }
 
-        return null;
+        return (data as unknown as User) || null;
     }
 
     private async createSessionForEmail(email: string) {
@@ -182,6 +178,7 @@ export class AuthService {
             throw new Error("Challenge not found or expired");
         }
         this.assertChallengeFresh(challengeRecord);
+        await this.consumeChallenge(challengeRecord.id);
 
         const verification = await verifyRegistrationResponse({
             response: credential,
@@ -223,7 +220,11 @@ export class AuthService {
             createError?.message?.toLowerCase().includes("already") ||
             createError?.message?.toLowerCase().includes("exists")
         ) {
-            user = await this.findUserByEmail(email);
+            // Security: Do not silently link a passkey to an existing account.
+            // The user must prove email ownership by signing in first.
+            throw new Error(
+                "An account with this email already exists. Please sign in first, then add a passkey from your account settings.",
+            );
         } else {
             throw new Error(createError?.message || "Failed to create user");
         }
@@ -259,8 +260,6 @@ export class AuthService {
         if (insertError) {
             throw new Error("Failed to store credential: " + insertError.message);
         }
-
-        await this.consumeChallenge(challengeRecord.id);
 
         const session = await this.createSessionForEmail(email);
         return { session, user_id: user.id };
@@ -300,6 +299,7 @@ export class AuthService {
             throw new Error("Challenge not found or expired");
         }
         this.assertChallengeFresh(challengeRecord);
+        await this.consumeChallenge(challengeId);
 
         const { data: storedCredential, error: storedCredentialError } = await this
             .supabaseAdmin
@@ -344,8 +344,6 @@ export class AuthService {
             .from("passkey_credentials")
             .update({ counter: verification.authenticationInfo.newCounter })
             .eq("id", storedCredential.id);
-
-        await this.consumeChallenge(challengeId);
 
         const { data: userData, error: userError } = await this.supabaseAdmin.auth
             .admin.getUserById(storedCredential.user_id);

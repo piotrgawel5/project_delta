@@ -137,19 +137,22 @@ export class SleepService {
   ): Promise<{
     synced: number;
     failed: number;
+    syncedDates: string[];
     errors: Array<{ date: string; error: string }>;
   }> {
     const results = {
       synced: 0,
       failed: 0,
+      syncedDates: [] as string[],
       errors: [] as Array<{ date: string; error: string }>,
     };
 
-    // Prepare records with user_id
+    // Server sets synced_at to avoid client clock skew
+    const now = new Date().toISOString();
     const recordsWithUserId = records.map((r) => ({
       ...r,
       user_id: userId,
-      synced_at: new Date().toISOString(),
+      synced_at: now,
     }));
 
     // Upsert in batch
@@ -162,11 +165,12 @@ export class SleepService {
       .select();
 
     if (error) {
-      // If batch fails, try individual inserts
+      // If batch fails, try individual inserts and track which succeed
       for (const record of recordsWithUserId) {
         try {
           await this.saveLog(record);
           results.synced++;
+          results.syncedDates.push(record.date);
         } catch (err) {
           results.failed++;
           results.errors.push({
@@ -177,6 +181,7 @@ export class SleepService {
       }
     } else {
       results.synced = data?.length || 0;
+      results.syncedDates = (data || []).map((r: any) => r.date);
     }
 
     return results;
