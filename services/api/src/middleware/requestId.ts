@@ -17,9 +17,9 @@ export const requestIdMiddleware = (
     res: Response,
     next: NextFunction,
 ) => {
-    // Use existing header if provided (e.g., from load balancer)
-    const requestId = (req.headers["x-request-id"] as string) ||
-        crypto.randomUUID();
+    const clientId = req.headers["x-request-id"] as string | undefined;
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const requestId = clientId && UUID_RE.test(clientId) ? clientId : crypto.randomUUID();
 
     req.requestId = requestId;
     res.setHeader("X-Request-ID", requestId);

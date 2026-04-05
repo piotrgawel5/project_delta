@@ -6,7 +6,7 @@ import { config } from "../../config";
 const COOKIE_OPTIONS = {
     httpOnly: true,
     secure: config.nodeEnv === "production",
-    sameSite: "lax" as const,
+    sameSite: "strict" as const,
     path: "/",
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
 };
@@ -15,7 +15,7 @@ const COOKIE_OPTIONS = {
 const CLEAR_COOKIE_OPTIONS = {
     httpOnly: true,
     secure: config.nodeEnv === "production",
-    sameSite: "lax" as const,
+    sameSite: "strict" as const,
     path: "/",
 };
 
