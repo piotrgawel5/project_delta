@@ -7,19 +7,22 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { AGE_NORMS, SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
+import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import { formatDuration } from '@lib/sleepFormatters';
 import type { DeepSleepZone, SleepCardDeepProps } from '../../../types/sleep-ui';
 
-const DEEP_FAIR_THRESHOLD = 0.13;
-const DEEP_GREAT_THRESHOLD = AGE_NORMS['18-25'].deepPctIdeal / 100;
-const DEEP_VISUAL_CAP = 0.35;
+// Absolute-minute thresholds — percentage-based is unreliable because estimated
+// stage data always uses a fixed ratio (~18%), making the bar position identical
+// regardless of actual deep sleep duration.
+const DEEP_LOW_MAX_MIN = 60;    // < 60 min = low
+const DEEP_GREAT_MIN = 90;      // ≥ 90 min = great
+const DEEP_VISUAL_CAP_MIN = 150; // visual max — >150 min is exceptional
 const INDICATOR_SIZE = 16;
 
-function getZone(deepPct: number | null): DeepSleepZone {
-  if (deepPct === null) return 'nodata';
-  if (deepPct < DEEP_FAIR_THRESHOLD) return 'low';
-  if (deepPct >= DEEP_GREAT_THRESHOLD) return 'great';
+function getZone(deepMinutes: number | null): DeepSleepZone {
+  if (deepMinutes === null) return 'nodata';
+  if (deepMinutes < DEEP_LOW_MAX_MIN) return 'low';
+  if (deepMinutes >= DEEP_GREAT_MIN) return 'great';
   return 'fair';
 }
 
@@ -65,17 +68,15 @@ function getStatus(zone: DeepSleepZone) {
     }
 }
 
-function mapDeepPctToBarRatio(deepPct: number): number {
-  const clamped = Math.max(0, Math.min(DEEP_VISUAL_CAP, deepPct));
-  if (clamped < DEEP_FAIR_THRESHOLD) {
-    return (clamped / DEEP_FAIR_THRESHOLD) * (1 / 3);
+function mapDeepMinutesToBarRatio(minutes: number): number {
+  const clamped = Math.max(0, Math.min(DEEP_VISUAL_CAP_MIN, minutes));
+  if (clamped < DEEP_LOW_MAX_MIN) {
+    return (clamped / DEEP_LOW_MAX_MIN) * (1 / 3);
   }
-  if (clamped < DEEP_GREAT_THRESHOLD) {
-    const fairSpan = DEEP_GREAT_THRESHOLD - DEEP_FAIR_THRESHOLD || 1;
-    return 1 / 3 + ((clamped - DEEP_FAIR_THRESHOLD) / fairSpan) * (1 / 3);
+  if (clamped < DEEP_GREAT_MIN) {
+    return 1 / 3 + ((clamped - DEEP_LOW_MAX_MIN) / (DEEP_GREAT_MIN - DEEP_LOW_MAX_MIN)) * (1 / 3);
   }
-  const greatSpan = DEEP_VISUAL_CAP - DEEP_GREAT_THRESHOLD || 1;
-  return 2 / 3 + ((clamped - DEEP_GREAT_THRESHOLD) / greatSpan) * (1 / 3);
+  return 2 / 3 + ((clamped - DEEP_GREAT_MIN) / (DEEP_VISUAL_CAP_MIN - DEEP_GREAT_MIN)) * (1 / 3);
 }
 
 function formatDeepValue(minutes: number | null) {
@@ -95,20 +96,19 @@ function formatDeepValue(minutes: number | null) {
 
 const AnimatedView = Animated.createAnimatedComponent(View);
 
-export default function SleepCardDeep({ deepMinutes, totalMinutes }: SleepCardDeepProps) {
-  const deepPct = totalMinutes && deepMinutes !== null ? deepMinutes / totalMinutes : null;
-  const zone = getZone(deepPct);
+export default function SleepCardDeep({ deepMinutes, totalMinutes: _totalMinutes }: SleepCardDeepProps) {
+  const zone = getZone(deepMinutes);
   const status = getStatus(zone);
   const { main, suffix } = useMemo(() => formatDeepValue(deepMinutes), [deepMinutes]);
   const [barWidth, setBarWidth] = useState(0);
   const indicatorX = useSharedValue(0);
 
   const clampedIndicatorX = useMemo(() => {
-    if (!barWidth || deepPct === null) return 0;
-    const barRatio = mapDeepPctToBarRatio(deepPct);
+    if (!barWidth || deepMinutes === null) return 0;
+    const barRatio = mapDeepMinutesToBarRatio(deepMinutes);
     const raw = barWidth * barRatio;
     return Math.max(INDICATOR_SIZE / 2, Math.min(barWidth - INDICATOR_SIZE / 2, raw));
-  }, [barWidth, deepPct]);
+  }, [barWidth, deepMinutes]);
 
   useEffect(() => {
     indicatorX.value = withTiming(Math.max(0, clampedIndicatorX - INDICATOR_SIZE / 2), {
