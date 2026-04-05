@@ -14,9 +14,9 @@ import type { DeepSleepZone, SleepCardDeepProps } from '../../../types/sleep-ui'
 // Absolute-minute thresholds — percentage-based is unreliable because estimated
 // stage data always uses a fixed ratio (~18%), making the bar position identical
 // regardless of actual deep sleep duration.
-const DEEP_LOW_MAX_MIN = 60;    // < 60 min = low
-const DEEP_GREAT_MIN = 90;      // ≥ 90 min = great
-const DEEP_VISUAL_CAP_MIN = 150; // visual max — >150 min is exceptional
+const DEEP_LOW_MAX_MIN = 50; // < 50 min = low
+const DEEP_GREAT_MIN = 75; // ≥ 75 min = great
+const DEEP_VISUAL_CAP_MIN = 120; // visual max — >120 min is exceptional
 const INDICATOR_SIZE = 16;
 
 function getZone(deepMinutes: number | null): DeepSleepZone {
@@ -65,7 +65,7 @@ function getStatus(zone: DeepSleepZone) {
         backgroundColor: 'rgba(255,255,255,0.10)',
         textColor: 'rgba(255,255,255,0.64)',
       };
-    }
+  }
 }
 
 function mapDeepMinutesToBarRatio(minutes: number): number {
@@ -96,7 +96,10 @@ function formatDeepValue(minutes: number | null) {
 
 const AnimatedView = Animated.createAnimatedComponent(View);
 
-export default function SleepCardDeep({ deepMinutes, totalMinutes: _totalMinutes }: SleepCardDeepProps) {
+export default function SleepCardDeep({
+  deepMinutes,
+  totalMinutes: _totalMinutes,
+}: SleepCardDeepProps) {
   const zone = getZone(deepMinutes);
   const status = getStatus(zone);
   const { main, suffix } = useMemo(() => formatDeepValue(deepMinutes), [deepMinutes]);
@@ -130,7 +133,9 @@ export default function SleepCardDeep({ deepMinutes, totalMinutes: _totalMinutes
       <Text style={styles.title}>DEEP SLEEP</Text>
 
       <View style={styles.metricRow}>
-        <Text style={[styles.metricMain, deepMinutes === null && styles.metricMissing]}>{main}</Text>
+        <Text style={[styles.metricMain, deepMinutes === null && styles.metricMissing]}>
+          {main}
+        </Text>
         {suffix ? (
           <Text style={[styles.metricSuffix, deepMinutes === null && styles.metricMissing]}>
             {suffix}
