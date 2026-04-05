@@ -54,10 +54,34 @@ export const api = {
     };
 
     try {
-      const response = await fetch(url, defaultOptions);
+      let response = await fetch(url, defaultOptions);
       clearTimeout(timeoutId);
 
       console.log('[API] Response status:', response.status);
+
+      if (response.status === 401) {
+        console.log('[API] 401 received, attempting token refresh');
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError || !refreshData.session) {
+          console.log('[API] Token refresh failed:', refreshError?.message);
+          const data = await response.json();
+          throw new Error(data.error || 'API Request Failed');
+        }
+        const newToken = refreshData.session.access_token;
+        const retryOptions: RequestInit = {
+          ...defaultOptions,
+          headers: {
+            ...(defaultOptions.headers as Record<string, string>),
+            Authorization: `Bearer ${newToken}`,
+          },
+        };
+        const retryController = new AbortController();
+        const retryTimeoutId = setTimeout(() => retryController.abort(), 10000);
+        response = await fetch(url, { ...retryOptions, signal: retryController.signal });
+        clearTimeout(retryTimeoutId);
+        console.log('[API] Retry response status:', response.status);
+      }
+
       const data = await response.json();
 
       if (!response.ok) {

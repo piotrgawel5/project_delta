@@ -54,7 +54,9 @@ export const config = {
     },
 
     cors: {
-        origin: parsedCorsOrigins.length > 0 ? parsedCorsOrigins : true,
+        origin: parsedCorsOrigins.length > 0
+            ? parsedCorsOrigins
+            : ["http://localhost:3000", "http://localhost:8081"],
         credentials: true,
     },
 

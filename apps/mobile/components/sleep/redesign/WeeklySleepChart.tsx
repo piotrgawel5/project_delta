@@ -34,14 +34,14 @@ const CHART_WIDTH = SCREEN_WIDTH;
 const DAY_START_X = CHART_PADDING_H;
 const DAY_END_X = CHART_WIDTH - CHART_PADDING_H;
 const DAY_STEP_X = (DAY_END_X - DAY_START_X) / Math.max(1, DAY_LABELS.length - 1);
-const PLOT_HEIGHT = SVG_HEIGHT - PLOT_TOP - PLOT_BOTTOM;
-const BOTTOM_Y = PLOT_TOP + PLOT_HEIGHT;
 const MAX_MINUTES = 10 * 60;
 const LABEL_WIDTH = 14;
 const LABEL_ROW_HEIGHT = 12;
 const SVG_HEIGHT = SLEEP_LAYOUT.chartHeight - LABEL_ROW_HEIGHT;
 const PLOT_TOP = 10;
 const PLOT_BOTTOM = 20;
+const PLOT_HEIGHT = SVG_HEIGHT - PLOT_TOP - PLOT_BOTTOM;
+const BOTTOM_Y = PLOT_TOP + PLOT_HEIGHT;
 const CURVE_TENSION = 0.48;
 const MIN_TEMPLATE_RATIO = 0.12;
 const MAX_TEMPLATE_RATIO = 0.86;
@@ -327,7 +327,7 @@ export default function WeeklySleepChart({ data, todayIndex }: WeeklySleepChartP
   return (
     <View style={styles.container}>
       <View style={styles.svgWrap}>
-        <Svg width={chartWidth} height={SVG_HEIGHT}>
+        <Svg width={CHART_WIDTH} height={SVG_HEIGHT}>
           <Defs>
             <SvgLinearGradient id="sleepAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
               <Stop offset="0%" stopColor={SLEEP_THEME.chartLine} stopOpacity={0.24} />

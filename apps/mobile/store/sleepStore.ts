@@ -219,6 +219,10 @@ function toScorePersistUpdates(records: SleepData[]): ScorePersistUpdate[] {
   }));
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function flushScorePersistQueue(): Promise<void> {
   if (isScorePersistWorkerRunning) return;
   isScorePersistWorkerRunning = true;
@@ -230,6 +234,12 @@ async function flushScorePersistQueue(): Promise<void> {
 
       for (const item of pending) {
         const { id, ...payload } = item.update;
+
+        // Exponential backoff: 1s, 4s, 16s based on attempt number
+        if (item.attempts > 0) {
+          await delay(Math.pow(4, item.attempts) * 1000);
+        }
+
         try {
           // Use UPDATE (not UPSERT) to avoid triggering insert RLS policies on score-only persistence.
           const { error } = await supabase.from('sleep_data').update(payload).eq('id', id);
@@ -463,7 +473,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       return currentFetchPromise;
     }
 
-    currentFetchPromise = (async () => {
+    const fetchWork = (async () => {
       inFlightRanges.clear();
 
       // Check if we should fetch (cooldown) - non-Android continues to cloud fetch
@@ -694,7 +704,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 
               for (const record of scoredRecentHistory) {
                 if (!record.start_time || !record.end_time) continue;
-                const age = phys.basisNotes.find((n) => n.startsWith('age='))?.replace('age=', '');
+                const age = phys.basisNotes.find((n: string) => n.startsWith('age='))?.replace('age=', '');
 
                 record.premiumPrediction = buildPremiumPrediction({
                   durationMinutes: record.duration_minutes,
@@ -747,7 +757,8 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                     );
 
                     record.premiumPrediction = {
-                      ...record.premiumPrediction,
+                      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                      ...record.premiumPrediction!,
                       cycleMap: {
                         estimatedCycles,
                         phaseTimeline,
@@ -816,7 +827,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
                       .eq('sleep_data_id', record.id)
                       .eq('user_id', userId);
 
-                    const rows = distOutput.phaseTimeline.map((event) => ({
+                    const rows = distOutput.phaseTimeline.map((event: SleepPhaseEvent) => ({
                       sleep_data_id: record.id,
                       user_id: userId,
                       cycle_number: event.cycleNumber,
@@ -875,6 +886,9 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         set({ loading: false });
       }
     })();
+
+    // Assign before awaiting to prevent concurrent fetches
+    currentFetchPromise = fetchWork;
 
     try {
       await currentFetchPromise;
@@ -1113,11 +1127,14 @@ export const useSleepStore = create<SleepState>((set, get) => ({
         records,
       });
 
-      const synced = result?.data?.synced || records.length;
-      console.log(`[SleepStore] Batch sync complete: ${synced} synced`);
+      // Server returns syncedDates to track exactly which records succeeded
+      const syncedDates: string[] = result?.data?.syncedDates || records.map((r) => r.date);
+      console.log(`[SleepStore] Batch sync complete: ${syncedDates.length} synced`);
 
-      // Mark synced records
-      await markRecordsSynced(records.map((r) => r.date));
+      // Only mark dates the server confirmed as synced
+      if (syncedDates.length > 0) {
+        await markRecordsSynced(syncedDates);
+      }
       set({ lastSyncTime: Date.now() });
 
       // If there are more pending records, schedule another sync
@@ -1128,29 +1145,6 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       }
     } catch (error) {
       console.error('[SleepStore] Error syncing pending records:', error);
-      // Fallback to individual sync on batch failure
-      try {
-        const pending = await getPendingSyncRecords();
-        for (const record of pending.slice(0, 10)) {
-          await api.post('/api/sleep/log', {
-            user_id: record.user_id,
-            date: record.date,
-            start_time: record.start_time,
-            end_time: record.end_time,
-            duration_minutes: record.duration_minutes,
-            quality_score: record.quality_score,
-            deep_sleep_minutes: record.deep_sleep_minutes,
-            rem_sleep_minutes: record.rem_sleep_minutes,
-            light_sleep_minutes: record.light_sleep_minutes,
-            awake_minutes: record.awake_minutes,
-            data_source: record.data_source,
-          });
-          await markRecordsSynced([record.date]);
-        }
-        console.log('[SleepStore] Fallback individual sync completed');
-      } catch (fallbackError) {
-        console.error('[SleepStore] Fallback sync also failed:', fallbackError);
-      }
     }
   },
 
@@ -1321,7 +1315,7 @@ export const useSleepStore = create<SleepState>((set, get) => ({
 
         for (const record of scoredRecentHistory) {
           if (!record.start_time || !record.end_time) continue;
-          const age = phys.basisNotes.find((n) => n.startsWith('age='))?.replace('age=', '');
+          const age = phys.basisNotes.find((n: string) => n.startsWith('age='))?.replace('age=', '');
 
           record.premiumPrediction = buildPremiumPrediction({
             durationMinutes: record.duration_minutes,

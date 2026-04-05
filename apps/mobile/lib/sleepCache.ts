@@ -28,10 +28,8 @@ const CACHE_KEYS = {
 // COOLDOWNS AND RETENTION
 // ============================================================================
 
-// Sync cooldown (30 seconds for testing - change to 5 * 60 * 1000 for production)
-const SYNC_COOLDOWN_MS = 30 * 1000;
-// Fetch cooldown (30 seconds for testing - change to 2 * 60 * 1000 for production)
-const FETCH_COOLDOWN_MS = 30 * 1000;
+const SYNC_COOLDOWN_MS = __DEV__ ? 30 * 1000 : 5 * 60 * 1000;
+const FETCH_COOLDOWN_MS = __DEV__ ? 30 * 1000 : 2 * 60 * 1000;
 // Cache expiry (24 hours) - when to consider cache stale
 const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000;
 // Raw data retention (90 days default)
@@ -230,7 +228,6 @@ export async function markRecordsSynced(dates: string[]): Promise<void> {
         ? {
             ...r,
             needs_sync: false,
-            synced_at: new Date().toISOString(),
           }
         : r
     );
