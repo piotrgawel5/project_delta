@@ -901,8 +901,8 @@ export const useSleepStore = create<SleepState>((set, get) => ({
     // month is 0-indexed (0 = Jan)
     const key = `${year}-${(month + 1).toString().padStart(2, '0')}`;
 
-    // If we already have data for this month and it's not the current month, maybe skip?
-    // But user might want fresh info. Let's fetch.
+    if (inFlightRanges.has(key)) return;
+    inFlightRanges.add(key);
 
     const startDate = new Date(year, month, 1);
     const endDate = new Date(year, month + 1, 0); // Last day of month
@@ -932,6 +932,8 @@ export const useSleepStore = create<SleepState>((set, get) => ({
       }
     } catch (error) {
       console.error(`[SleepStore] Failed to fetch month history for ${key}`, error);
+    } finally {
+      inFlightRanges.delete(key);
     }
   },
 

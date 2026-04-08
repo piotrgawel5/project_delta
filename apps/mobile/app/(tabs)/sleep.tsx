@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, FlatList, StyleSheet, View } from 'react-native';
+import { Dimensions, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -195,11 +195,16 @@ export default function SleepScreen() {
     [monthlyData, recentHistory, selectedDate]
   );
 
+  const score = resolveSleepScore(currentData.historyItem);
+  const gradeInfo = getSleepScoreGrade(score ?? 0);
+  const heroGrade = score === undefined ? '--' : gradeInfo.grade;
+  const heroColor = score === undefined ? SLEEP_THEME.elevatedBg : gradeInfo.color;
+
   const prevNextGrades = useMemo(() => {
     const hist = recentHistory as SleepRecordLike[];
     const gradeForIndex = (idx: number): string => {
       const date = monthDates[idx];
-      if (!date) return '--';
+      if (!date) return heroGrade;
       const key = dateKey(date);
       const monthKey = key.substring(0, 7);
       const item =
@@ -207,18 +212,13 @@ export default function SleepScreen() {
         (monthlyData[monthKey] as SleepRecordLike[] | undefined)?.find((r) => r.date === key) ??
         null;
       const s = resolveSleepScore(item);
-      return s === undefined ? '--' : getSleepScoreGrade(s).grade;
+      return s === undefined ? heroGrade : getSleepScoreGrade(s).grade;
     };
     return {
       prevGrade: gradeForIndex(activeIndex - 1),
       nextGrade: gradeForIndex(activeIndex + 1),
     };
-  }, [activeIndex, monthDates, recentHistory, monthlyData]);
-
-  const score = resolveSleepScore(currentData.historyItem);
-  const gradeInfo = getSleepScoreGrade(score ?? 0);
-  const heroGrade = score === undefined ? '--' : gradeInfo.grade;
-  const heroColor = score === undefined ? SLEEP_THEME.elevatedBg : gradeInfo.color;
+  }, [activeIndex, monthDates, recentHistory, monthlyData, heroGrade]);
   const description =
     score === undefined || !currentData.historyItem?.duration_minutes
       ? 'No sleep data recorded for this day yet.'
@@ -294,7 +294,6 @@ export default function SleepScreen() {
       </View>
 
       <FlatList
-        key={`${selectedYear}-${selectedMonth}`}
         ref={(ref) => {
           pagerRef.current = ref;
         }}
@@ -323,6 +322,14 @@ export default function SleepScreen() {
         }}
         onMomentumScrollEnd={(event) => handlePagerEnd(event.nativeEvent.contentOffset.x)}
       />
+
+      {!isLoading && (
+        <Pressable
+          style={styles.dateOverlay}
+          onPress={() => setIsCalendarVisible(true)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        />
+      )}
 
       <Animated.View pointerEvents="none" style={[styles.backdropBlur, backdropBlurStyle]}>
         <BlurView
@@ -392,7 +399,6 @@ export default function SleepScreen() {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           setSelectedDate(normalizeDate(date));
         }}
-        history={recentHistory}
       />
 
       <AddSleepRecordModal
@@ -425,6 +431,17 @@ const styles = StyleSheet.create({
   backdropBlur: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 3,
+  },
+  dateOverlay: {
+    position: 'absolute',
+    top: SLEEP_LAYOUT.heroTextPaddingTop,
+    left: SLEEP_LAYOUT.heroTextPaddingH,
+    height: 28,
+    paddingHorizontal: 4,
+    alignSelf: 'flex-start',
+    zIndex: 7,
+    // Width determined by content — use a fixed estimate matching the date label
+    width: 120,
   },
   heroPager: {
     position: 'absolute',
