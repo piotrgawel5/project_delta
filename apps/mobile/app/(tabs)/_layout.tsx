@@ -64,11 +64,7 @@ function TabButton({
       onPress={onPress}
       style={styles.tabItem}>
       <Animated.View style={[styles.tabInner, animatedStyle, !focused && styles.tabInnerInactive]}>
-        {routeName === 'sleep' ? (
-          <MaterialCommunityIcons name={getIconName(routeName, focused)} size={24} color={color} />
-        ) : (
-          <MaterialCommunityIcons name={getIconName(routeName, focused)} size={24} color={color} />
-        )}
+        <MaterialCommunityIcons name={getIconName(routeName, focused)} size={24} color={color} />
         {focused ? <Animated.Text style={styles.activeLabel}>{label}</Animated.Text> : null}
       </Animated.View>
     </Pressable>
