@@ -137,7 +137,7 @@ export const SLEEP_LAYOUT = {
   cardPadding: 18,
   navbarHeight: 72,
   navbarBottom: 10,
-  navbarSideMargin: 30,
+  navbarSideMargin: 20,
   scrollBottomPad: 112,
   dotSize: 8,
   dotSizeToday: 12,

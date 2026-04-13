@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Dimensions, Pressable, Animated as RNAnimated } from 'react-native';
+import { View, StyleSheet, Dimensions, Pressable } from 'react-native';
 import { MaterialTopTabs } from '../../components/navigation/MaterialTopTabs';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -7,7 +7,6 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import Svg, { G, Path } from 'react-native-svg';
 import { useAuthStore } from '@store/authStore';
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import {
@@ -18,75 +17,8 @@ import {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TAB_BAR_WIDTH = SCREEN_WIDTH - SLEEP_LAYOUT.navbarSideMargin * 2;
-const INDICATOR_WIDTH = 84;
-const INDICATOR_HEIGHT = 56;
-
-const AnimatedG = RNAnimated.createAnimatedComponent(G);
-
-function SleepTabIcon({
-  focused,
-  color,
-}: {
-  focused: boolean;
-  color: string;
-}) {
-  const starAnim = useRef(new RNAnimated.Value(focused ? 1 : 0)).current;
-
-  useEffect(() => {
-    RNAnimated.timing(starAnim, {
-      toValue: focused ? 1 : 0,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
-  }, [focused, starAnim]);
-
-  const starTranslateX = starAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-4, 6],
-  });
-
-  const starTranslateY = starAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [4, -8],
-  });
-
-  const starOpacity = starAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0, 0.5, 1],
-  });
-
-  const starScale = starAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 1],
-  });
-
-  return (
-    <View style={styles.iconGlyphWrap}>
-      <Svg width={28} height={28} viewBox="0 0 24 24">
-        <Path
-          d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"
-          fill={color}
-        />
-        <AnimatedG
-          {...({
-            style: {
-              transform: [
-                { translateX: starTranslateX },
-                { translateY: starTranslateY },
-                { scale: starScale },
-              ],
-              opacity: starOpacity,
-            },
-          } as any)}>
-          <Path
-            d="M19 5l.5 1l1 .5l-1 .5l-.5 1l-.5-1l-1-.5l1-.5z"
-            fill={focused ? '#FFD60A' : color}
-          />
-        </AnimatedG>
-      </Svg>
-    </View>
-  );
-}
+const INDICATOR_WIDTH = 76;
+const INDICATOR_HEIGHT = 52;
 
 function getIconName(routeName: string, focused: boolean) {
   switch (routeName) {
@@ -94,6 +26,8 @@ function getIconName(routeName: string, focused: boolean) {
       return focused ? 'food-apple' : 'food-apple-outline';
     case 'workout':
       return 'dumbbell';
+    case 'sleep':
+      return focused ? 'bed-king' : 'bed-king-outline';
     case 'account':
       return focused ? 'account' : 'account-outline';
     default:
@@ -131,7 +65,7 @@ function TabButton({
       style={styles.tabItem}>
       <Animated.View style={[styles.tabInner, animatedStyle, !focused && styles.tabInnerInactive]}>
         {routeName === 'sleep' ? (
-          <SleepTabIcon focused={focused} color={color} />
+          <MaterialCommunityIcons name={getIconName(routeName, focused)} size={24} color={color} />
         ) : (
           <MaterialCommunityIcons name={getIconName(routeName, focused)} size={24} color={color} />
         )}
@@ -145,17 +79,17 @@ function FloatingTabBar({ state, descriptors, navigation }: MaterialTopTabBarPro
   const insets = useSafeAreaInsets();
   const routes = state.routes;
   const tabWidth = TAB_BAR_WIDTH / routes.length;
-  const indicatorX = useSharedValue(state.index * tabWidth + (tabWidth - INDICATOR_WIDTH) / 2);
+  const indicatorLeft = useSharedValue(state.index * tabWidth + (tabWidth - INDICATOR_WIDTH) / 2);
 
   useEffect(() => {
-    indicatorX.value = withSpring(state.index * tabWidth + (tabWidth - INDICATOR_WIDTH) / 2, {
-      damping: 18,
-      stiffness: 120,
+    indicatorLeft.value = withSpring(state.index * tabWidth + (tabWidth - INDICATOR_WIDTH) / 2, {
+      damping: 64,
+      stiffness: 256,
     });
-  }, [indicatorX, state.index, tabWidth]);
+  }, [indicatorLeft, state.index, tabWidth]);
 
   const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: indicatorX.value }],
+    left: indicatorLeft.value,
   }));
 
   return (
@@ -166,7 +100,11 @@ function FloatingTabBar({ state, descriptors, navigation }: MaterialTopTabBarPro
           bottom: SLEEP_LAYOUT.navbarBottom + insets.bottom,
         },
       ]}>
-      <BlurView intensity={SLEEP_THEME.navbarBlurIntensity} tint="dark" style={styles.blurBackground} />
+      <BlurView
+        intensity={SLEEP_THEME.navbarBlurIntensity}
+        tint="dark"
+        style={styles.blurBackground}
+      />
       <Animated.View style={[styles.activeIndicator, indicatorStyle]} />
 
       <View style={styles.tabsContent}>
@@ -307,8 +245,8 @@ const styles = StyleSheet.create({
     top: (SLEEP_LAYOUT.navbarHeight - INDICATOR_HEIGHT) / 2,
     width: INDICATOR_WIDTH,
     height: INDICATOR_HEIGHT,
-    borderRadius: INDICATOR_HEIGHT / 2,
-    backgroundColor: 'rgba(255,255,255,0.09)',
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   activeLabel: {
     marginTop: 2,
