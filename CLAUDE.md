@@ -2,7 +2,8 @@
 
 Project Delta — sleep, workout, and nutrition tracking monorepo.
 
-Full architecture context: @packages/docs/context.md
+Architecture detail (read only when needed for cross-cutting tasks): `packages/docs/context.md`
+Cross-cutting reference (API ↔ mobile ↔ stores): `packages/docs/cross-reference.md`
 
 ## Monorepo Layout
 
