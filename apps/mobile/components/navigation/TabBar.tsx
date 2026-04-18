@@ -1,5 +1,5 @@
 // components/navigation/TabBar.tsx
-import React from 'react';
+import React, { memo } from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -9,9 +9,9 @@ import Animated, {
   withSpring,
   interpolate,
 } from 'react-native-reanimated';
+import { SLEEP_THEME, SLEEP_FONTS } from '@constants';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ACCENT = '#30D158';
 
 interface TabItem {
   name: string;
@@ -32,7 +32,7 @@ interface TabBarProps {
   onTabPress: (tabName: string) => void;
 }
 
-export default function TabBar({ activeTab, onTabPress }: TabBarProps) {
+function TabBar({ activeTab, onTabPress }: TabBarProps) {
   return (
     <View style={styles.container}>
       <BlurView intensity={80} tint="dark" style={styles.blurContainer}>
@@ -55,13 +55,15 @@ export default function TabBar({ activeTab, onTabPress }: TabBarProps) {
   );
 }
 
+export default TabBar;
+
 interface TabItemProps {
   tab: TabItem;
   isActive: boolean;
   onPress: () => void;
 }
 
-function TabItem({ tab, isActive, onPress }: TabItemProps) {
+const TabItem = memo(function TabItem({ tab, isActive, onPress }: TabItemProps) {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -87,14 +89,14 @@ function TabItem({ tab, isActive, onPress }: TabItemProps) {
           <MaterialCommunityIcons
             name={(isActive ? tab.iconFilled : tab.icon) as any}
             size={24}
-            color={isActive ? ACCENT : 'rgba(255,255,255,0.5)'}
+            color={isActive ? SLEEP_THEME.success : 'rgba(255,255,255,0.5)'}
           />
         </View>
         <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{tab.label}</Text>
       </Animated.View>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -135,13 +137,11 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 11,
-    fontWeight: '500',
+    fontFamily: SLEEP_FONTS.regular,
     color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'Inter-Regular',
   },
   tabLabelActive: {
-    color: ACCENT,
-    fontWeight: '600',
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: SLEEP_FONTS.semiBold,
+    color: SLEEP_THEME.success,
   },
 });
