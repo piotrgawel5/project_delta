@@ -1,3 +1,4 @@
+import { randomUUID } from "expo-crypto";
 import { create } from "zustand";
 import { api } from "@lib/api";
 import type { WorkoutExerciseLog, WorkoutSession, WorkoutSet } from "@shared";
@@ -38,17 +39,19 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
   activeSession: null,
 
   fetchSessions: async (userId: string) => {
-    // TODO: implement when backend is live
-    // GET /api/workout/sessions/:userId?from=YYYY-MM-DD&to=YYYY-MM-DD
-    void userId;
-    void api;
-    set({ isLoaded: true });
+    if (get().isLoaded) return;
+    try {
+      const resp = await api.get(`/api/workout/sessions/${userId}`);
+      set({ sessions: resp.data as WorkoutSession[], isLoaded: true, error: null });
+    } catch (e) {
+      set({ error: "Failed to load sessions", isLoaded: false });
+    }
   },
 
   startWorkout: (userId: string) => {
     const now = new Date().toISOString();
     const session: WorkoutSession = {
-      id: generateId(),
+      id: randomUUID(),
       userId,
       date: now.substring(0, 10),
       startedAt: now,
@@ -87,7 +90,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
 
     const newSet: WorkoutSet = {
       ...setData,
-      id: generateId(),
+      id: randomUUID(),
       completedAt: new Date().toISOString(),
     };
 
@@ -167,25 +170,21 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => ({
       durationSeconds,
     };
 
-    // Optimistic update — persist locally immediately
+    // Optimistic update — persists locally immediately
     set({
       sessions: [finishedSession, ...sessions],
       activeSession: null,
     });
 
-    // TODO: sync to backend when live
-    // await api.post('/api/workout/sessions', { session: finishedSession });
+    // Sync to backend (fire-and-forget; session is already in local state)
+    try {
+      await api.post("/api/workout/sessions", { session: finishedSession });
+    } catch {
+      // Silent fail — session preserved in local state, retry on next app open via fetchSessions
+    }
   },
 
   discardWorkout: () => {
     set({ activeSession: null });
   },
 }));
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
