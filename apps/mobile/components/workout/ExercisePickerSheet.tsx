@@ -157,8 +157,8 @@ export default function ExercisePickerSheet({ sheetRef, onAdd }: ExercisePickerS
         {/* Exercise list */}
         <BottomSheetFlatList<Exercise>
           data={filtered}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <ExerciseRow exercise={item} onAdd={handleAdd} />}
+          keyExtractor={(item: Exercise) => item.id}
+          renderItem={({ item }: { item: Exercise }) => <ExerciseRow exercise={item} onAdd={handleAdd} />}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
