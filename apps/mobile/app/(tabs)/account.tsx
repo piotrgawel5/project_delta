@@ -42,14 +42,22 @@ export default function AccountScreen() {
   const [checkingPasskey, setCheckingPasskey] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      fetchProfile(user.id);
-      checkHasPasskey(user.id).then((result: boolean) => {
+    if (!user) return;
+
+    let isMounted = true;
+
+    fetchProfile(user.id);
+    checkHasPasskey(user.id).then((result: boolean) => {
+      if (isMounted) {
         setHasPasskey(result);
         setCheckingPasskey(false);
-      });
-    }
-  }, [user]);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, fetchProfile, checkHasPasskey]);
 
   const loading = authLoading || profileLoading;
   const authMethod = profile?.primary_auth_method || 'password';
