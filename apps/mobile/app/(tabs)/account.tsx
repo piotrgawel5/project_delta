@@ -1,39 +1,40 @@
 // app/(tabs)/account.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  ScrollView,
-  ActivityIndicator,
-  Dimensions,
   Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAuthStore } from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
 import { useDialog } from '@components/ui/Dialog';
 import EditProfileModal from '@components/profile/EditProfileModal';
 import Constants from 'expo-constants';
+import { SLEEP_THEME, SLEEP_LAYOUT, SLEEP_FONTS } from '@constants';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ACCENT = '#30D158';
-
-// Get version from app.json via Constants
 const APP_VERSION = Constants.expoConfig?.version || '0.1';
 
 export default function AccountScreen() {
-  const { user, session, signOut, createAccountWithPasskey, loading: authLoading } = useAuthStore();
-  const {
-    profile,
-    fetchProfile,
-    updateAuthMethod,
-    checkHasPasskey,
-    loading: profileLoading,
-  } = useProfileStore();
+  const user = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
+  const createAccountWithPasskey = useAuthStore((s) => s.createAccountWithPasskey);
+  const authLoading = useAuthStore((s) => s.loading);
+
+  const profile = useProfileStore((s) => s.profile);
+  const fetchProfile = useProfileStore((s) => s.fetchProfile);
+  const updateAuthMethod = useProfileStore((s) => s.updateAuthMethod);
+  const checkHasPasskey = useProfileStore((s) => s.checkHasPasskey);
+  const profileLoading = useProfileStore((s) => s.loading);
+
   const { showConfirm, showSuccess, showError } = useDialog();
 
   const [showEditModal, setShowEditModal] = useState(false);
@@ -66,7 +67,6 @@ export default function AccountScreen() {
       await showError('Error', 'No email associated with this account');
       return;
     }
-
     const result = await createAccountWithPasskey(user.email);
     if (result.success) {
       await updateAuthMethod(user.id, profile?.primary_auth_method || 'password', true);
@@ -76,6 +76,11 @@ export default function AccountScreen() {
       await showError('Error', result.error || 'Failed to add passkey');
     }
   };
+
+  const handleEditPress = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowEditModal(true);
+  }, []);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -109,24 +114,13 @@ export default function AccountScreen() {
   if (loading && !profile) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={ACCENT} />
+        <ActivityIndicator size="large" color={SLEEP_THEME.success} />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Background */}
-      <View style={styles.backgroundGradient}>
-        <LinearGradient
-          colors={['rgba(48, 209, 88, 0.12)', 'rgba(48, 209, 88, 0.03)', 'transparent']}
-          locations={[0, 0.3, 0.6]}
-          style={styles.gradientOrb}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-      </View>
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -137,7 +131,9 @@ export default function AccountScreen() {
             {profile?.avatar_url ? (
               <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
             ) : (
-              <LinearGradient colors={[ACCENT, '#22C55E']} style={styles.avatarGradient}>
+              <LinearGradient
+                colors={[SLEEP_THEME.success, '#22C55E']}
+                style={styles.avatarGradient}>
                 <Text style={styles.avatarText}>
                   {profile?.username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '?'}
                 </Text>
@@ -185,135 +181,159 @@ export default function AccountScreen() {
           )}
         </View>
 
-        {/* Edit Profile Button */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.editProfileButton,
-            pressed && styles.editProfileButtonPressed,
-          ]}
-          onPress={() => setShowEditModal(true)}>
-          <MaterialCommunityIcons name="pencil-outline" size={20} color={ACCENT} />
-          <Text style={styles.editProfileText}>Edit Profile</Text>
+        {/* Edit Profile Link */}
+        <Pressable style={styles.editLink} onPress={handleEditPress}>
+          <Text style={styles.editLinkText}>edit profile</Text>
         </Pressable>
 
-        {/* Profile Details Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <MaterialCommunityIcons name="account-circle-outline" size={20} color={ACCENT} />
-            <Text style={styles.cardTitle}>Profile Details</Text>
-          </View>
+        {/* Cards */}
+        <View style={styles.cardStack}>
+          {/* Profile Details Card */}
+          <Animated.View entering={FadeInDown.duration(400).delay(220)} style={styles.card}>
+            <Text style={styles.sectionTitle}>PROFILE DETAILS</Text>
 
-          {profile?.goal && (
+            {profile?.goal && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Goal</Text>
+                <Text style={styles.detailValue}>
+                  {profile.goal
+                    .replace(/_/g, ' ')
+                    .replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                </Text>
+              </View>
+            )}
+
+            {profile?.activity_level && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Activity Level</Text>
+                <Text style={styles.detailValue}>
+                  {profile.activity_level
+                    .replace(/_/g, ' ')
+                    .replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                </Text>
+              </View>
+            )}
+
+            {profile?.preferred_sport && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Sports</Text>
+                <Text style={styles.detailValue}>
+                  {profile.preferred_sport
+                    .split(',')
+                    .map((s: string) =>
+                      s.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+                    )
+                    .join(', ')}
+                </Text>
+              </View>
+            )}
+
+            {!profile?.goal && !profile?.activity_level && !profile?.preferred_sport && (
+              <Text style={styles.emptyNote}>No profile details set.</Text>
+            )}
+          </Animated.View>
+
+          {/* Security Card */}
+          <Animated.View entering={FadeInDown.duration(400).delay(270)} style={styles.card}>
+            <Text style={styles.sectionTitle}>SECURITY</Text>
+
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Goal</Text>
-              <Text style={styles.detailValue}>
-                {profile.goal.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
-              </Text>
-            </View>
-          )}
-
-          {profile?.activity_level && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Activity Level</Text>
-              <Text style={styles.detailValue}>
-                {profile.activity_level
-                  .replace(/_/g, ' ')
-                  .replace(/\b\w/g, (l: string) => l.toUpperCase())}
-              </Text>
-            </View>
-          )}
-
-          {profile?.preferred_sport && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Sports</Text>
-              <Text style={styles.detailValue}>
-                {profile.preferred_sport
-                  .split(',')
-                  .map((s: string) =>
-                    s.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-                  )
-                  .join(', ')}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Security Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <MaterialCommunityIcons name="shield-check-outline" size={20} color={ACCENT} />
-            <Text style={styles.cardTitle}>Security</Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Auth Method</Text>
-            <View style={styles.authBadge}>
-              <Text style={styles.authBadgeText}>{getAuthMethodLabel()}</Text>
-            </View>
-          </View>
-
-          {!checkingPasskey && hasPasskey && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Passkey</Text>
-              <View style={[styles.authBadge, styles.authBadgeActive]}>
-                <MaterialCommunityIcons name="fingerprint" size={14} color={ACCENT} />
-                <Text style={[styles.authBadgeText, styles.authBadgeTextActive]}>Enabled</Text>
+              <Text style={styles.detailLabel}>Auth Method</Text>
+              <View style={styles.authBadge}>
+                <Text style={styles.authBadgeText}>{getAuthMethodLabel()}</Text>
               </View>
             </View>
-          )}
 
-          {!checkingPasskey && !hasPasskey && (
+            {!checkingPasskey && hasPasskey && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Passkey</Text>
+                <View style={[styles.authBadge, styles.authBadgeActive]}>
+                  <MaterialCommunityIcons
+                    name="fingerprint"
+                    size={14}
+                    color={SLEEP_THEME.success}
+                  />
+                  <Text style={[styles.authBadgeText, styles.authBadgeTextActive]}>Enabled</Text>
+                </View>
+              </View>
+            )}
+
+            {!checkingPasskey && !hasPasskey && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  pressed && styles.actionButtonPressed,
+                ]}
+                onPress={handleAddPasskey}>
+                <View style={styles.actionIconContainer}>
+                  <MaterialCommunityIcons
+                    name="fingerprint"
+                    size={22}
+                    color={SLEEP_THEME.success}
+                  />
+                </View>
+                <View style={styles.actionContent}>
+                  <Text style={styles.actionTitle}>Add Passkey</Text>
+                  <Text style={styles.actionDescription}>Enable biometric login</Text>
+                </View>
+                <MaterialCommunityIcons name="plus" size={24} color={SLEEP_THEME.success} />
+              </Pressable>
+            )}
+
+            {/* Health Services Management */}
             <Pressable
-              style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
-              onPress={handleAddPasskey}>
-              <View style={styles.actionIconContainer}>
-                <MaterialCommunityIcons name="fingerprint" size={22} color={ACCENT} />
+              style={({ pressed }) => [
+                styles.actionButton,
+                pressed && styles.actionButtonPressed,
+              ]}
+              onPress={async () => {
+                try {
+                  const { openHealthConnectSettings } = await import(
+                    '../../modules/health-connect'
+                  );
+                  await openHealthConnectSettings();
+                } catch (error) {
+                  console.error('Error opening Health Connect:', error);
+                }
+              }}>
+              <View style={[styles.actionIconContainer, styles.actionIconHealth]}>
+                <MaterialCommunityIcons
+                  name="heart-pulse"
+                  size={22}
+                  color={SLEEP_THEME.colorREM}
+                />
               </View>
               <View style={styles.actionContent}>
-                <Text style={styles.actionTitle}>Add Passkey</Text>
-                <Text style={styles.actionDescription}>Enable biometric login</Text>
+                <Text style={styles.actionTitle}>Health Services</Text>
+                <Text style={styles.actionDescription}>Manage Health Connect permissions</Text>
               </View>
-              <MaterialCommunityIcons name="plus" size={24} color={ACCENT} />
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={24}
+                color={SLEEP_THEME.textDisabled}
+              />
             </Pressable>
-          )}
-
-          {/* Health Services Management */}
-          <Pressable
-            style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
-            onPress={async () => {
-              try {
-                const { openHealthConnectSettings } = await import('../../modules/health-connect');
-                await openHealthConnectSettings();
-              } catch (error) {
-                console.error('Error opening Health Connect:', error);
-              }
-            }}>
-            <View
-              style={[styles.actionIconContainer, { backgroundColor: 'rgba(62, 66, 169, 0.15)' }]}>
-              <MaterialCommunityIcons name="heart-pulse" size={22} color="#3E42A9" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Health Services</Text>
-              <Text style={styles.actionDescription}>Manage Health Connect permissions</Text>
-            </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color="rgba(255,255,255,0.4)" />
-          </Pressable>
+          </Animated.View>
         </View>
 
-        {/* Sign Out Button */}
-        <Pressable
-          style={({ pressed }) => [styles.signOutButton, pressed && styles.signOutButtonPressed]}
-          onPress={handleSignOut}>
-          <MaterialCommunityIcons name="logout" size={20} color="#FF453A" />
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </Pressable>
+        {/* Sign Out */}
+        <Animated.View entering={FadeInDown.duration(400).delay(320)}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.signOutButton,
+              pressed && styles.signOutButtonPressed,
+            ]}
+            onPress={handleSignOut}>
+            <MaterialCommunityIcons name="logout" size={20} color={SLEEP_THEME.danger} />
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </Pressable>
+        </Animated.View>
 
         <Text style={styles.version}>Delta v{APP_VERSION}</Text>
       </ScrollView>
 
-      {/* Edit Profile Modal */}
       <EditProfileModal
-        visible={showEditModal}
+        isVisible={showEditModal}
         onClose={() => {
           setShowEditModal(false);
           if (user) {
@@ -328,82 +348,65 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: SLEEP_THEME.screenBg,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: SLEEP_THEME.screenBg,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  backgroundGradient: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-  },
-  gradientOrb: {
-    position: 'absolute',
-    width: SCREEN_WIDTH * 1.5,
-    height: SCREEN_WIDTH * 1.2,
-    borderRadius: SCREEN_WIDTH,
-    top: -SCREEN_WIDTH * 0.3,
-    right: -SCREEN_WIDTH * 0.25,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 140,
+    paddingHorizontal: SLEEP_LAYOUT.screenPaddingH,
+    paddingBottom: SLEEP_LAYOUT.scrollBottomPad,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   avatarContainer: {
     marginBottom: 16,
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 3,
-    borderColor: ACCENT,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
   },
   avatarGradient: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: '#000',
+    fontSize: 38,
+    fontFamily: SLEEP_FONTS.bold,
+    color: SLEEP_THEME.screenBg,
   },
   greeting: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    fontFamily: SLEEP_FONTS.regular,
+    color: SLEEP_THEME.textMuted1,
   },
   username: {
     fontSize: 28,
-    fontWeight: '700',
-    color: '#fff',
+    fontFamily: SLEEP_FONTS.bold,
+    color: SLEEP_THEME.textPrimary,
     marginTop: 4,
-    fontFamily: 'Poppins-Bold',
   },
   quickStats: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 20,
-    backgroundColor: 'rgba(28, 28, 30, 0.8)',
-    borderRadius: 28,
+    backgroundColor: SLEEP_THEME.cardBg,
+    borderRadius: SLEEP_LAYOUT.cardRadiusOuter,
     paddingVertical: 16,
     paddingHorizontal: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   statItem: {
     alignItems: 'center',
@@ -411,89 +414,78 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 22,
-    fontWeight: '700',
-    color: '#fff',
-    fontFamily: 'Poppins-Bold',
+    fontFamily: SLEEP_FONTS.bold,
+    color: SLEEP_THEME.textPrimary,
   },
   statLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 2,
-    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    fontFamily: SLEEP_FONTS.semiBold,
+    color: SLEEP_THEME.textMuted1,
+    letterSpacing: 0.7,
+    marginTop: 3,
+    textTransform: 'uppercase',
   },
   statDivider: {
     width: 1,
     height: 32,
     backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  editProfileButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(48, 209, 88, 0.12)',
-    borderRadius: 24,
-    height: 48,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(48, 209, 88, 0.3)',
+  editLink: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    marginBottom: 16,
   },
-  editProfileButtonPressed: {
-    opacity: 0.7,
+  editLinkText: {
+    color: SLEEP_THEME.textDisabled,
+    fontFamily: SLEEP_FONTS.regular,
+    fontSize: 13,
+    textDecorationLine: 'underline',
   },
-  editProfileText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: ACCENT,
-    fontFamily: 'Inter-SemiBold',
+  cardStack: {
+    gap: SLEEP_LAYOUT.cardGap,
   },
   card: {
-    backgroundColor: 'rgba(28, 28, 30, 0.8)',
-    borderRadius: 28,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: SLEEP_THEME.cardBg,
+    borderRadius: SLEEP_LAYOUT.cardRadiusOuter,
+    padding: SLEEP_LAYOUT.cardPadding,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-    fontFamily: 'Inter-SemiBold',
+  sectionTitle: {
+    fontSize: 11,
+    fontFamily: SLEEP_FONTS.semiBold,
+    color: SLEEP_THEME.textMuted1,
+    letterSpacing: 0.7,
+    marginBottom: 12,
+    textTransform: 'uppercase',
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: 11,
   },
   detailLabel: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
-    fontFamily: 'Inter-Regular',
+    fontFamily: SLEEP_FONTS.regular,
+    color: SLEEP_THEME.textSecondary,
   },
   detailValue: {
     fontSize: 14,
-    color: '#fff',
-    fontWeight: '600',
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: SLEEP_FONTS.semiBold,
+    color: SLEEP_THEME.textPrimary,
     maxWidth: '60%',
     textAlign: 'right',
+  },
+  emptyNote: {
+    fontSize: 13,
+    fontFamily: SLEEP_FONTS.regular,
+    color: SLEEP_THEME.textDisabled,
+    paddingVertical: 8,
   },
   authBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: SLEEP_THEME.elevatedBg,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
@@ -503,18 +495,17 @@ const styles = StyleSheet.create({
   },
   authBadgeText: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '600',
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: SLEEP_FONTS.semiBold,
+    color: SLEEP_THEME.textSecondary,
   },
   authBadgeTextActive: {
-    color: ACCENT,
+    color: SLEEP_THEME.success,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
-    marginTop: 8,
+    marginTop: 4,
     gap: 12,
   },
   actionButtonPressed: {
@@ -523,25 +514,27 @@ const styles = StyleSheet.create({
   actionIconContainer: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: SLEEP_LAYOUT.cardRadiusInner,
     backgroundColor: 'rgba(48, 209, 88, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  actionIconHealth: {
+    backgroundColor: 'rgba(94, 92, 230, 0.15)',
   },
   actionContent: {
     flex: 1,
   },
   actionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    fontFamily: SLEEP_FONTS.semiBold,
+    color: SLEEP_THEME.textPrimary,
   },
   actionDescription: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontFamily: SLEEP_FONTS.regular,
+    color: SLEEP_THEME.textDisabled,
     marginTop: 2,
-    fontFamily: 'Inter-Regular',
   },
   signOutButton: {
     flexDirection: 'row',
@@ -549,27 +542,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: 'rgba(255, 69, 58, 0.1)',
-    borderRadius: 16,
+    borderRadius: SLEEP_LAYOUT.cardRadiusOuter,
     height: 56,
     marginTop: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 69, 58, 0.2)',
   },
   signOutButtonPressed: {
     opacity: 0.7,
     transform: [{ scale: 0.98 }],
   },
   signOutText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF453A',
-    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    fontFamily: SLEEP_FONTS.semiBold,
+    color: SLEEP_THEME.danger,
   },
   version: {
     textAlign: 'center',
     fontSize: 12,
-    color: 'rgba(255,255,255,0.3)',
+    fontFamily: SLEEP_FONTS.regular,
+    color: SLEEP_THEME.textDisabled,
     marginTop: 24,
-    fontFamily: 'Inter-Regular',
   },
 });

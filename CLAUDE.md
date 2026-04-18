@@ -1,73 +1,111 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Project Delta — sleep, workout, and nutrition tracking monorepo.
 
-## Project Overview
+Architecture detail (read only when needed for cross-cutting tasks): `packages/docs/context.md`
+Cross-cutting reference (API ↔ mobile ↔ stores): `packages/docs/cross-reference.md`
 
-Project Delta is a sleep tracking app — a monorepo containing:
-- `apps/mobile/` — Expo React Native app (primary UI)
-- `services/api/` — Express.js backend
-- `packages/shared/`, `packages/constants/`, `packages/types/` — shared code
+## Monorepo Layout
+
+```
+apps/mobile/          → Expo 54 app (primary UI)
+services/api/         → Express 4 backend
+packages/shared/      → Shared types, theme (@project-delta/shared)
+packages/constants/   → Sleep scoring constants
+packages/docs/        → Architecture docs, reference assets
+```
+
+Nested guides: @apps/mobile/CLAUDE.md · @services/api/CLAUDE.md · @packages/shared/CLAUDE.md
 
 ## Commands
 
-All commands run from `apps/mobile/` unless noted.
-
+### Mobile (run from `apps/mobile/`)
 ```bash
-# Mobile development
-npm run start          # Start Expo dev server
-npm run android        # Run on Android emulator/device
-npm run ios            # Run on iOS simulator/device
+npm run start          # Expo dev server
+npm run android        # Android emulator/device (expo run:android)
+npm run ios            # iOS simulator/device (expo run:ios)
+npm run web            # Expo web
 npm run lint           # ESLint + Prettier check
-npm run format         # Auto-fix lint + Prettier
-
-# API (from services/api/)
-npm run dev            # Run with ts-node
-npm run build          # Compile TypeScript to dist/
-
-# Tests (from repo root)
-npx jest apps/mobile/lib/__tests__                            # All unit tests
-npx jest apps/mobile/lib/__tests__/sleepTimeline.test.ts      # Single test file
-npx jest apps/mobile/lib/__tests__/sleepTimeline.test.ts --watch
-
-# Task runner (from repo root)
-just dev               # Run API + mobile in parallel
-just lint / just build / just test
+npm run lint:prettier  # Prettier-only check
+npm run format         # Auto-fix ESLint + Prettier
+npm run prebuild       # Generate native projects
 ```
 
-## Architecture
+### API (run from `services/api/`)
+```bash
+npm run dev            # ts-node dev server (port 3000)
+npm run build          # Compile TypeScript → dist/
+npm run start          # Run compiled server
+```
 
-**Data flow**: Mobile app collects sleep data (Android Health Connect, manual entry, wearables) → Zustand stores cache locally in AsyncStorage (offline-first) → syncs to Express API → PostgreSQL via Supabase.
+### Tests & Type Checks (from repo root)
+```bash
+npx jest apps/mobile/lib/__tests__                       # All unit tests
+npx jest apps/mobile/lib/__tests__/sleepTimeline.test.ts # Single file
+npx tsc --noEmit -p apps/mobile/tsconfig.json            # Type-check mobile
+npx tsc --noEmit -p services/api/tsconfig.json           # Type-check API
+```
 
-**State management**: Zustand (`store/authStore.ts`, `sleepStore.ts`, `profileStore.ts`, `healthStore.ts`). The sleep store maintains a sync queue with cooldown logic and batch-syncs via `POST /api/sleep/sync-batch`.
+### Orchestration (justfile)
+```bash
+just dev     # API + mobile Android in parallel
+just api     # API only
+just mobile  # Mobile Android only
+just lint    # Lint all workspaces
+just build   # Build all workspaces
+just test    # Full test suite
+```
 
-**API client** (`apps/mobile/lib/api.ts`): Centralized fetch wrapper that injects Supabase JWT as Bearer token, 10s timeout, structured error handling.
-
-**Backend** (`services/api/src/`): Feature modules under `modules/` (auth, sleep, profile). Middleware stack: Helmet, CORS, rate limiting (100 req/15min global, 5/hour auth), request ID tracing, Zod validation.
-
-**Sleep analysis engine** (`apps/mobile/lib/sleep*.ts`): 15+ deterministic modules computing a 0–100 sleep score with component weights: duration 35%, deep sleep 20%, REM 20%, efficiency 15%, consistency 10%. Key modules: `sleepScoreCalculator`, `sleepCycleDistributor` (Borbély-derived), `sleepHypnogram`, `sleepStagePredictor`, `sleepBaseline`.
-
-**Routing**: Expo Router file-based routing under `app/`. Tabs at `app/(tabs)/` (sleep, workout, nutrition, account).
-
-**Styling**: NativeWind (Tailwind for React Native). Theme in `packages/shared/src/constants/theme.ts`.
-
-**Native modules** (`apps/mobile/modules/`): Kotlin bridges for Android Health Connect, credentials auth, and screen time.
-
-## Path Aliases (mobile app)
+## Path Aliases (mobile)
 
 ```
-@/*         → app/*
-@lib/*      → lib/*
+@/*           → app/*
+@lib/*        → lib/*
 @components/* → components/*
-@store/*    → store/*
-@shared     → ../../packages/shared/src/index.ts
-@constants  → constants/index.ts
+@store/*      → store/*
+@shared       → packages/shared/src/index.ts
+@constants    → constants/index.ts
 ```
 
-## Conventions
+## Non-Negotiable Rules
 
-- Sleep UI corner radii: outer radius = inner radius + padding. Never hard-code a single radius across nested components.
-- Shared config/constants belong in `packages/constants` or `packages/shared`, not duplicated in `apps/mobile`.
-- Unit tests go in `apps/mobile/lib/__tests__/` with `.test.ts` naming. Keep them deterministic and logic-focused (no UI snapshots).
-- Commit messages use conventional commits: `feat:`, `fix:`, `perf:`, `chore:`, etc.
-- PRs for UI changes should include iOS + Android screenshots.
+### Colors & Tokens
+- All colors from `SLEEP_THEME` in `apps/mobile/constants/theme.ts`. Zero hardcoded hex. Zero `slate-*` Tailwind classes.
+- Grade colors: `SLEEP_THEME.heroGradePresets[grade]` for gradients; `SLEEP_THEME.zoneBarLow/Fair/Great` for quality zones.
+- Spacing/radii: `SLEEP_LAYOUT` tokens. **Outer radius = inner radius + padding.** Never same radius on nested elements.
+- Typography: `SLEEP_FONTS` (`DMSans-Regular/Medium/SemiBold/Bold`). No `System` or `Inter`.
+
+### Animations
+- **Reanimated 4 only** (`useSharedValue`, `useAnimatedStyle`, `withSpring`, `withTiming`). Never `useNativeDriver: false`.
+- Never animate `width`/`height`/`padding` — use `transform` instead.
+- Target: 120fps. Minimum: 118fps on mid-range Android (Samsung Galaxy A-series).
+
+### SVG
+- Gradient on vertical bars: `<Rect fill="url(#grad)">` — **never** `<Line stroke="url(#grad)">` (zero-width bounding box collapses gradient).
+
+### Fetch Architecture
+- No waterfall `useEffect` chains. Batch in Zustand with `Promise.all`. Cache guard: check `isLoaded` before fetching.
+- Never write directly to Supabase from components. All writes: Zustand → `POST /api/sleep/sync-batch`.
+
+### State (Zustand)
+- Granular selectors: `useSleepStore(s => s.data?.score)`. Never `useSleepStore()`.
+- No inline selector functions inside components (new reference per render = unnecessary re-render).
+
+### Types
+- No `any`. Use `unknown` + type guard or a Zod-validated type.
+- API responses validated with Zod at boundary (`lib/api.ts`).
+- No `as SomeType` casts that bypass runtime validation.
+
+### Architecture
+- Shared config/types go in `packages/constants` or `packages/shared` — not duplicated in `apps/mobile`.
+- Unit tests in `apps/mobile/lib/__tests__/` with `.test.ts`. Deterministic, no UI snapshots.
+- Conventional commits: `feat:`, `fix:`, `perf:`, `chore:`, `docs:`, with scope e.g. `feat(sleep):`.
+- PRs touching UI: include iOS + Android screenshots.
+
+## Communication Style
+
+- Direct. No hedging. No "I think" or "maybe".
+- Match Figma exactly — "close enough" is wrong.
+- Minimal diffs. Don't touch what wasn't asked.
+- Large tasks: use P0–P3 stages (foundations → logic → UI → quality). Validate after each stage.
+- Blockers: surface the exact issue, list options, ask once.

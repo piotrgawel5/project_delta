@@ -129,4 +129,5 @@ coverage/
 ._*
 ehthumbs.db
 Desktop.ini
+CLAUDE.local.md
 .claude/settings.local.json

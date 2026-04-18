@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -149,7 +149,7 @@ export default function SleepHero(props: SleepHeroProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settledPreset, targetPreset]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Always consume the instant-transition flag so it doesn't persist to calendar selects.
     const isInstant = instantTransitionRef.current;
     if (isInstant) instantTransitionRef.current = false;

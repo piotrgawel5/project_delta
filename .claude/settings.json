@@ -1,0 +1,63 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "permissions": {
+    "allow": [
+      "Bash(npm run start)",
+      "Bash(npm run android)",
+      "Bash(npm run ios)",
+      "Bash(npm run web)",
+      "Bash(npm run prebuild)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint:prettier)",
+      "Bash(npm run format)",
+      "Bash(npm run build)",
+      "Bash(npm run dev)",
+      "Bash(npx jest*)",
+      "Bash(npx tsc*)",
+      "Bash(npx prettier*)",
+      "Bash(npx eslint*)",
+      "Bash(just*)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git stash*)",
+      "Bash(git show*)",
+      "Bash(find*)",
+      "Bash(ls*)",
+      "Bash(cat*)",
+      "Bash(wc*)",
+      "Bash(echo*)"
+    ],
+    "deny": [
+      "Bash(rm -rf*)",
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(npx supabase db reset*)",
+      "Bash(npx supabase db drop*)",
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.production)"
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const name=(j.model&&j.model.display_name)||'';const cw=j.context_window||{};const size=cw.context_window_size||0;const pctVal=cw.used_percentage;const usedK=pctVal!=null?Math.round(pctVal/100*size/1000):0;const sizeK=Math.round(size/1000);const pct=pctVal!=null?' ('+Math.round(pctVal)+'%)':'';process.stdout.write(name+' \\u00b7 '+usedK+'K/'+sizeK+'K'+pct)}catch(e){}})\""
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"$CLAUDE_FILE_PATHS\" in *.ts|*.tsx) cd \"$(git rev-parse --show-toplevel)/apps/mobile\" && npx prettier --write $CLAUDE_FILE_PATHS 2>/dev/null || true ;; esac"
+          }
+        ]
+      }
+    ]
+  }
+}

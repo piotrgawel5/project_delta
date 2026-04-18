@@ -1,5 +1,14 @@
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { createContext, useContext, useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
+import Animated, {
+  Easing,
+  interpolate,
+  type SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 import { SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import type { SleepSkeletonProps } from '../../../types/sleep-ui';
 
@@ -8,37 +17,20 @@ const STAGES_HEIGHT = 188;
 
 type SkeletonWidth = number | `${number}%`;
 
-function useShimmer() {
-  const animation = useRef(new Animated.Value(0)).current;
+const ShimmerContext = createContext<SharedValue<number> | null>(null);
+
+function ShimmerProvider({ children }: { children: React.ReactNode }) {
+  const shimmer = useSharedValue(0);
 
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(animation, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: false,
-        }),
-        Animated.timing(animation, {
-          toValue: 0,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: false,
-        }),
-      ])
+    shimmer.value = withRepeat(
+      withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
     );
+  }, [shimmer]);
 
-    loop.start();
-    return () => {
-      loop.stop();
-    };
-  }, [animation]);
-
-  return animation.interpolate({
-    inputRange: [0, 1],
-    outputRange: [SLEEP_THEME.skeletonBase, SLEEP_THEME.skeletonHighlight],
-  });
+  return <ShimmerContext.Provider value={shimmer}>{children}</ShimmerContext.Provider>;
 }
 
 function SkeletonBlock({
@@ -52,7 +44,10 @@ function SkeletonBlock({
   radius: number;
   style?: object;
 }) {
-  const backgroundColor = useShimmer();
+  const shimmer = useContext(ShimmerContext)!;
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(shimmer.value, [0, 1], [0.5, 1]),
+  }));
 
   return (
     <Animated.View
@@ -61,17 +56,16 @@ function SkeletonBlock({
           width,
           height,
           borderRadius: radius,
-          backgroundColor,
+          backgroundColor: SLEEP_THEME.skeletonHighlight,
         },
         style,
+        animatedStyle,
       ]}
     />
   );
 }
 
-export function HeroSkeleton({ visible = true }: SleepSkeletonProps) {
-  if (!visible) return null;
-
+function HeroContent() {
   return (
     <View style={styles.hero}>
       <SkeletonBlock width="34%" height={18} radius={9} style={styles.heroDate} />
@@ -87,9 +81,7 @@ export function HeroSkeleton({ visible = true }: SleepSkeletonProps) {
   );
 }
 
-export function ChartSkeleton({ visible = true }: SleepSkeletonProps) {
-  if (!visible) return null;
-
+function ChartContent() {
   return (
     <View style={styles.chartWrap}>
       <SkeletonBlock width="100%" height={96} radius={30} />
@@ -102,9 +94,7 @@ export function ChartSkeleton({ visible = true }: SleepSkeletonProps) {
   );
 }
 
-export function CardSkeleton({ visible = true }: SleepSkeletonProps) {
-  if (!visible) return null;
-
+function CardContent() {
   return (
     <View style={styles.card}>
       <SkeletonBlock width="28%" height={12} radius={6} style={styles.cardTitle} />
@@ -116,20 +106,52 @@ export function CardSkeleton({ visible = true }: SleepSkeletonProps) {
   );
 }
 
+export function HeroSkeleton({ visible = true }: SleepSkeletonProps) {
+  if (!visible) return null;
+
+  return (
+    <ShimmerProvider>
+      <HeroContent />
+    </ShimmerProvider>
+  );
+}
+
+export function ChartSkeleton({ visible = true }: SleepSkeletonProps) {
+  if (!visible) return null;
+
+  return (
+    <ShimmerProvider>
+      <ChartContent />
+    </ShimmerProvider>
+  );
+}
+
+export function CardSkeleton({ visible = true }: SleepSkeletonProps) {
+  if (!visible) return null;
+
+  return (
+    <ShimmerProvider>
+      <CardContent />
+    </ShimmerProvider>
+  );
+}
+
 export function FullScreenSkeleton({ visible = true }: SleepSkeletonProps) {
   if (!visible) return null;
 
   return (
-    <View style={styles.fullScreen}>
-      <HeroSkeleton />
-      <ChartSkeleton />
-      <CardSkeleton />
-      <CardSkeleton />
-      <View style={styles.stageCard}>
-        <SkeletonBlock width="34%" height={12} radius={6} style={styles.cardTitle} />
-        <SkeletonBlock width="100%" height={116} radius={14} />
+    <ShimmerProvider>
+      <View style={styles.fullScreen}>
+        <HeroContent />
+        <ChartContent />
+        <CardContent />
+        <CardContent />
+        <View style={styles.stageCard}>
+          <SkeletonBlock width="34%" height={12} radius={6} style={styles.cardTitle} />
+          <SkeletonBlock width="100%" height={116} radius={14} />
+        </View>
       </View>
-    </View>
+    </ShimmerProvider>
   );
 }
 
