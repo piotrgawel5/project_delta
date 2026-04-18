@@ -124,6 +124,36 @@ export const SLEEP_THEME = {
 
 export type SleepTheme = typeof SLEEP_THEME;
 
+export const WORKOUT_THEME = {
+  accent: '#30D158',
+  accentDim: 'rgba(48,209,88,0.15)',
+  accentMid: '#1D8B41',
+  accentSubtle: 'rgba(48,209,88,0.08)',
+  heroGradientPrimary: '#1A5C2A',
+  heroGradientMid: '#0A1A0E',
+  heroGradientEnd: '#000000',
+  heroOverlayStart: 'rgba(48,209,88,0.22)',
+  heroOverlayEnd: 'rgba(0,0,0,0)',
+  muscleUntrained: 'rgba(255,255,255,0.06)',
+  muscleLight: '#1D8B41',
+  muscleModerate: '#30D158',
+  muscleHeavy: '#FF9F0A',
+  muscleOvertrain: '#FF453A',
+  restTimerActive: '#30D158',
+  restTimerWarning: '#FF9F0A',
+  restTimerDone: '#FFFFFF',
+  setComplete: '#30D158',
+  setIncomplete: 'rgba(255,255,255,0.12)',
+  weekDayActive: '#FFFFFF',
+  weekDayInactive: 'rgba(255,255,255,0.35)',
+  weekDotWorkedOut: '#30D158',
+  weekDotEmpty: 'rgba(255,255,255,0.15)',
+  fabBg: '#30D158',
+  fabShadow: 'rgba(48,209,88,0.35)',
+} as const;
+
+export type WorkoutTheme = typeof WORKOUT_THEME;
+
 export const SLEEP_LAYOUT = {
   screenPaddingH: 16,
   heroHeight: 356,

@@ -1,117 +1,270 @@
-// app/(tabs)/workout.tsx
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import Animated, {
+  FadeInDown,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+import { useAuthStore } from '@store/authStore';
+import { useWorkoutStore } from '@store/workoutStore';
+import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
+import { computeWeeklyVolume } from '@lib/workoutAnalytics';
+import WorkoutHeroShell from '@components/workout/WorkoutHeroShell';
+import WorkoutWeekGrid from '@components/workout/WorkoutWeekGrid';
+import WorkoutEmptyState from '@components/workout/WorkoutEmptyState';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ACCENT = '#30D158';
+const SPRING_FAB = { damping: 16, stiffness: 220 } as const;
+const FAB_SIZE = 58;
+const FAB_BOTTOM = 96;
+const FAB_RIGHT = 20;
+
+function AnimatedBlurHeader({
+  scrollY,
+  threshold,
+  insetTop,
+}: {
+  scrollY: ReturnType<typeof useSharedValue<number>>;
+  threshold: number;
+  insetTop: number;
+}) {
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [threshold, threshold + 30], [0, 1], 'clamp'),
+  }));
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.blurHeader, { height: insetTop + 56 }, animatedStyle]}>
+      <BlurView
+        intensity={SLEEP_THEME.navbarBlurIntensity}
+        tint="dark"
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.blurHeaderFill} />
+    </Animated.View>
+  );
+}
 
 export default function WorkoutScreen() {
+  const insets = useSafeAreaInsets();
+  const scrollY = useSharedValue(0);
+  const fabScale = useSharedValue(1);
+  const router = useRouter();
+  const { user } = useAuthStore();
+
+  const sessions = useWorkoutStore((s) => s.sessions);
+  const isLoaded = useWorkoutStore((s) => s.isLoaded);
+  const startWorkout = useWorkoutStore((s) => s.startWorkout);
+
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+
+  const totalSets = useMemo(() => computeWeeklyVolume(sessions), [sessions]);
+
+  const thisWeekSessions = useMemo(() => {
+    const now = new Date();
+    const monday = new Date(now);
+    const day = monday.getDay();
+    monday.setDate(monday.getDate() + (day === 0 ? -6 : 1 - day));
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    return sessions.filter((s) => {
+      const d = new Date(s.date);
+      return d >= monday && d <= sunday;
+    });
+  }, [sessions]);
+
+  const scrollHandler = useAnimatedScrollHandler((event) => {
+    scrollY.value = event.contentOffset.y;
+  });
+
+  const fabAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: fabScale.value }],
+  }));
+
+  const handleStartWorkout = useCallback(() => {
+    if (!user?.id) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    startWorkout(user.id);
+    router.push('/workout/active');
+  }, [user?.id, startWorkout, router]);
+
+  const cardContentStyle = useMemo(
+    () => ({
+      paddingTop: SLEEP_LAYOUT.heroHeight + 16,
+      paddingBottom: SLEEP_LAYOUT.scrollBottomPad,
+      gap: SLEEP_LAYOUT.cardGap,
+    }),
+    []
+  );
+
   return (
     <View style={styles.container}>
-      {/* Background */}
-      <View style={styles.backgroundGradient}>
-        <LinearGradient
-          colors={['rgba(48, 209, 88, 0.25)', 'rgba(10, 47, 28, 0.15)', 'transparent']}
-          style={styles.gradientOrb}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0.8 }}
-        />
+      <View pointerEvents="box-none" style={styles.heroLayer}>
+        <WorkoutHeroShell totalSets={totalSets} weeklyDelta={null} selectedDate={selectedDate} />
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Workout</Text>
-          <Text style={styles.subtitle}>Log and plan your exercises</Text>
-        </View>
+      <AnimatedBlurHeader
+        scrollY={scrollY}
+        threshold={SLEEP_LAYOUT.heroHeight * 0.6}
+        insetTop={insets.top}
+      />
 
-        {/* Placeholder Content */}
-        <View style={styles.placeholder}>
-          <View style={styles.iconCircle}>
-            <MaterialCommunityIcons name="dumbbell" size={48} color={ACCENT} />
-          </View>
-          <Text style={styles.placeholderTitle}>Coming Soon</Text>
-          <Text style={styles.placeholderText}>
-            Log workouts, track progress, and follow personalized training plans.
-          </Text>
-        </View>
-      </ScrollView>
+      <Animated.ScrollView
+        style={styles.scroll}
+        contentContainerStyle={cardContentStyle}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}>
+        <Animated.View entering={FadeInDown.duration(350).delay(180)}>
+          <WorkoutWeekGrid
+            sessions={thisWeekSessions}
+            selectedDate={selectedDate}
+            onDayPress={setSelectedDate}
+          />
+        </Animated.View>
+
+        {isLoaded && (
+          <Animated.View
+            entering={FadeInDown.duration(350).delay(220)}
+            style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {thisWeekSessions.length > 0
+                ? `${thisWeekSessions.length} workout${thisWeekSessions.length !== 1 ? 's' : ''} this week`
+                : 'This week'}
+            </Text>
+          </Animated.View>
+        )}
+
+        {isLoaded && thisWeekSessions.length === 0 && (
+          <WorkoutEmptyState onStartWorkout={handleStartWorkout} />
+        )}
+
+        {isLoaded && thisWeekSessions.length > 0 && (
+          <Animated.View
+            entering={FadeInDown.duration(350).delay(270)}
+            style={styles.analyticsPlaceholder}>
+            <Text style={styles.analyticsPlaceholderText}>Analytics — coming P3</Text>
+          </Animated.View>
+        )}
+      </Animated.ScrollView>
+
+      <Animated.View style={[styles.fab, fabAnimatedStyle]}>
+        <Pressable
+          onPressIn={() => {
+            fabScale.value = withSpring(0.92, SPRING_FAB);
+          }}
+          onPressOut={() => {
+            fabScale.value = withSpring(1, SPRING_FAB);
+          }}
+          onPress={handleStartWorkout}
+          style={styles.fabInner}>
+          <MaterialCommunityIcons name="plus" size={28} color={SLEEP_THEME.screenBg} />
+        </Pressable>
+      </Animated.View>
+
+      <Animated.View style={[styles.fabLabel, fabAnimatedStyle]} pointerEvents="none">
+        <Text style={styles.fabLabelText}>Start Workout</Text>
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  backgroundGradient: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-  },
-  gradientOrb: {
+  container: { flex: 1, backgroundColor: SLEEP_THEME.screenBg },
+  heroLayer: {
     position: 'absolute',
-    width: SCREEN_WIDTH * 1.5,
-    height: SCREEN_WIDTH,
-    borderRadius: SCREEN_WIDTH,
-    top: -SCREEN_WIDTH * 0.3,
-    right: -SCREEN_WIDTH * 0.25,
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 0,
+    overflow: 'visible',
   },
-  scrollView: {
-    flex: 1,
+  blurHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 4,
   },
-  scrollContent: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 120,
+  blurHeaderFill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: SLEEP_THEME.navbarBg,
   },
-  header: {
-    marginBottom: 32,
+  scroll: { flex: 1, zIndex: 2 },
+  sectionHeader: {
+    paddingHorizontal: SLEEP_LAYOUT.screenPaddingH,
+    paddingTop: 4,
   },
-  title: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: '#fff',
-    fontFamily: 'Poppins-Bold',
+  sectionTitle: {
+    fontFamily: SLEEP_FONTS.semiBold,
+    fontSize: 13,
+    lineHeight: 18,
+    color: SLEEP_THEME.textMuted1,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 4,
-    fontFamily: 'Inter-Regular',
-  },
-  placeholder: {
+  analyticsPlaceholder: {
+    marginHorizontal: SLEEP_LAYOUT.screenPaddingH,
+    height: 120,
+    borderRadius: SLEEP_LAYOUT.cardRadiusOuter,
+    backgroundColor: SLEEP_THEME.cardBg,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 80,
   },
-  iconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(48, 209, 88, 0.15)',
-    justifyContent: 'center',
+  analyticsPlaceholderText: {
+    fontFamily: SLEEP_FONTS.regular,
+    fontSize: 13,
+    color: SLEEP_THEME.textMuted2,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: FAB_BOTTOM,
+    right: FAB_RIGHT,
+    zIndex: 10,
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
+    shadowColor: WORKOUT_THEME.fabShadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  fabInner: {
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
+    backgroundColor: WORKOUT_THEME.fabBg,
     alignItems: 'center',
-    marginBottom: 24,
+    justifyContent: 'center',
   },
-  placeholderTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 12,
-    fontFamily: 'Poppins-Bold',
+  fabLabel: {
+    position: 'absolute',
+    bottom: FAB_BOTTOM - 22,
+    right: FAB_RIGHT,
+    zIndex: 10,
+    width: FAB_SIZE,
+    alignItems: 'center',
   },
-  placeholderText: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.5)',
+  fabLabelText: {
+    fontFamily: SLEEP_FONTS.medium,
+    fontSize: 10,
+    lineHeight: 12,
+    color: SLEEP_THEME.textMuted1,
     textAlign: 'center',
-    lineHeight: 22,
-    paddingHorizontal: 40,
-    fontFamily: 'Inter-Regular',
   },
 });
