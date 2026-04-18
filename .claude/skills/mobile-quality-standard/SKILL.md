@@ -5,7 +5,7 @@ description: >
   (Expo React Native, TypeScript, Zustand, Expo Router, NativeWind).
   Apply to every task touching apps/mobile/. Violations here produce visual regressions,
   FPS drops, or waterfall fetches — all of which require expensive remediation.
-allowed-tools: Read,Write(apps/mobile/**),Bash(npm run test:mobile),Bash(npm run lint:mobile)
+allowed-tools: Read,Write(apps/mobile/**),Bash(npx jest apps/mobile/lib/__tests__*),Bash(cd apps/mobile && npm run lint),Bash(npx tsc --noEmit*)
 ---
 
 # Project Delta — Mobile Quality Standard
@@ -48,17 +48,26 @@ style={{ backgroundColor: SLEEP_THEME.colors.background }}
 className="text-[color:rgb(var(--color-text-primary))]"
 ```
 
-### NEON_COLORS (Sleep Quality Grades)
+### Grade Colors (Sleep Quality)
 
 ```ts
-// A → NEON_COLORS.A   (premium green)
-// B → NEON_COLORS.B   (blue-green)
-// C → NEON_COLORS.C   (amber)
-// D → NEON_COLORS.D   (orange)
-// F → NEON_COLORS.F   (red)
+import { SLEEP_THEME } from '@constants';
 
-import { NEON_COLORS } from '@/constants/theme';
-const gradeColor = NEON_COLORS[grade];  // Never hardcode
+// Grade → gradient stop colors
+const { primary, mid, end, overlayStart } = SLEEP_THEME.heroGradePresets[grade];
+// grade: 'Excellent' | 'Great' | 'Good' | 'Fair' | 'Poor' | 'Bad' | 'Terrible' | 'Empty'
+
+// Zone bar indicators
+SLEEP_THEME.zoneBarGreat   // #30D158 green
+SLEEP_THEME.zoneBarFair    // #FF9F0A amber
+SLEEP_THEME.zoneBarLow     // #FF453A red
+
+// Hypnogram stage colors (use sleepHypnogramColors, not hardcoded)
+import { sleepHypnogramColors } from '@constants';
+sleepHypnogramColors.deep   // #6d2cf3
+sleepHypnogramColors.rem    // #3bd6c9
+sleepHypnogramColors.core   // #4aa3ff
+sleepHypnogramColors.awake  // #ff8a00
 ```
 
 ---
@@ -344,8 +353,8 @@ import { Image } from 'expo-image';
 ## 10. Task Completion Validation
 
 ```
-[ ] npm run lint:mobile — zero errors
-[ ] npm run typecheck — zero errors
+[ ] cd apps/mobile && npm run lint — zero errors
+[ ] npx tsc --noEmit (from apps/mobile/) — zero errors
 [ ] No console.warn or console.error in touched files
 [ ] All animations verified Reanimated (not JS-thread Animated)
 [ ] Grep 'slate-' in touched files — result must be empty
