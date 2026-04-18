@@ -1,0 +1,61 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Workout Tables — TODO: implement when backend work begins
+-- ─────────────────────────────────────────────────────────────────────────────
+--
+-- This migration is a documented stub. Do not run it yet.
+-- Implement and test before applying.
+--
+-- Table relationships:
+--   workout_sessions
+--     └── workout_exercise_logs (many per session)
+--           └── workout_sets (many per log)
+--
+-- Exercise definitions are stored as a static fixture in the mobile app
+-- (apps/mobile/lib/workoutFixtures.ts), not in the database. Only exercise_id
+-- (string FK to fixture) is stored in workout_exercise_logs.
+
+-- TODO:
+-- CREATE TABLE workout_sessions (
+--   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+--   date DATE NOT NULL,
+--   started_at TIMESTAMPTZ NOT NULL,
+--   finished_at TIMESTAMPTZ,
+--   duration_seconds INT,
+--   notes TEXT,
+--   created_at TIMESTAMPTZ DEFAULT now(),
+--   updated_at TIMESTAMPTZ DEFAULT now()
+-- );
+
+-- TODO:
+-- CREATE TABLE workout_exercise_logs (
+--   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   session_id UUID NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,
+--   exercise_id TEXT NOT NULL,
+--   exercise_order INT NOT NULL,
+--   notes TEXT
+-- );
+
+-- TODO:
+-- CREATE TABLE workout_sets (
+--   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--   log_id UUID NOT NULL REFERENCES workout_exercise_logs(id) ON DELETE CASCADE,
+--   set_number INT NOT NULL,
+--   reps INT,
+--   weight_kg NUMERIC(6,2),
+--   duration_seconds INT,
+--   rpe NUMERIC(3,1),
+--   completed_at TIMESTAMPTZ NOT NULL
+-- );
+
+-- TODO: RLS policies — users can only SELECT/INSERT/UPDATE/DELETE their own rows
+-- ALTER TABLE workout_sessions ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "users own sessions"
+--   ON workout_sessions FOR ALL
+--   USING (user_id = auth.uid())
+--   WITH CHECK (user_id = auth.uid());
+
+-- TODO: Indexes
+-- CREATE INDEX idx_workout_sessions_user_date ON workout_sessions(user_id, date DESC);
+-- CREATE INDEX idx_workout_exercise_logs_session ON workout_exercise_logs(session_id);
+-- CREATE INDEX idx_workout_sets_log ON workout_sets(log_id);
