@@ -21,6 +21,7 @@ import WorkoutHeroShell from '@components/workout/WorkoutHeroShell';
 import WorkoutWeekGrid from '@components/workout/WorkoutWeekGrid';
 import WorkoutEmptyState from '@components/workout/WorkoutEmptyState';
 import ActiveSessionCard from '@components/workout/ActiveSessionCard';
+import WorkoutSessionCard from '@components/workout/WorkoutSessionCard';
 
 const SPRING_FAB = { damping: 16, stiffness: 220 } as const;
 const FAB_SIZE = 58;
@@ -180,8 +181,10 @@ export default function WorkoutScreen() {
         {isLoaded && thisWeekSessions.length > 0 && (
           <Animated.View
             entering={FadeInDown.duration(350).delay(270)}
-            style={styles.analyticsPlaceholder}>
-            <Text style={styles.analyticsPlaceholderText}>Analytics — coming P3</Text>
+            style={styles.sessionList}>
+            {thisWeekSessions.map((session) => (
+              <WorkoutSessionCard key={session.id} session={session} />
+            ))}
           </Animated.View>
         )}
       </Animated.ScrollView>
@@ -245,18 +248,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  analyticsPlaceholder: {
-    marginHorizontal: SLEEP_LAYOUT.screenPaddingH,
-    height: 120,
-    borderRadius: SLEEP_LAYOUT.cardRadiusOuter,
-    backgroundColor: SLEEP_THEME.cardBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  analyticsPlaceholderText: {
-    fontFamily: SLEEP_FONTS.regular,
-    fontSize: 13,
-    color: SLEEP_THEME.textMuted2,
+  sessionList: {
+    paddingHorizontal: SLEEP_LAYOUT.screenPaddingH,
+    gap: SLEEP_LAYOUT.cardGap,
   },
   fab: {
     position: 'absolute',

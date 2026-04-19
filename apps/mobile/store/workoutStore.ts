@@ -19,6 +19,13 @@ export interface ActiveWorkoutSession extends WorkoutSession {
   isPaused: boolean;
 }
 
+export interface SessionMetadata {
+  name: string | null;
+  feelRating: number | null;
+  difficultyRating: number | null;
+  notes: string | null;
+}
+
 interface WorkoutStore {
   // Persisted session history (loaded from API)
   sessions: WorkoutSession[];
@@ -41,7 +48,7 @@ interface WorkoutStore {
   removeExercise: (exerciseId: string) => void;
   pauseWorkout: () => void;
   resumeWorkout: () => void;
-  finishWorkout: () => Promise<void>;
+  finishWorkout: (metadata?: SessionMetadata) => Promise<void>;
   discardWorkout: () => void;
   drainSyncQueue: () => Promise<void>;
 }
@@ -80,6 +87,9 @@ export const useWorkoutStore = create<WorkoutStore>()(
           durationSeconds: null,
           exercises: [],
           notes: null,
+          name: null,
+          feelRating: null,
+          difficultyRating: null,
           pausedIntervals: [],
           isPaused: false,
         };
@@ -210,7 +220,7 @@ export const useWorkoutStore = create<WorkoutStore>()(
         });
       },
 
-      finishWorkout: async () => {
+      finishWorkout: async (metadata?: SessionMetadata) => {
         const { activeSession, sessions, syncQueue } = get();
         if (!activeSession) return;
 
@@ -233,7 +243,10 @@ export const useWorkoutStore = create<WorkoutStore>()(
           finishedAt,
           durationSeconds,
           exercises: activeSession.exercises,
-          notes: activeSession.notes,
+          notes: metadata?.notes ?? activeSession.notes ?? null,
+          name: metadata?.name ?? null,
+          feelRating: metadata?.feelRating ?? null,
+          difficultyRating: metadata?.difficultyRating ?? null,
         };
 
         // Optimistic update — add to local history immediately

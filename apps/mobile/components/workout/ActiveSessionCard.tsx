@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
     borderRadius: SLEEP_LAYOUT.cardRadiusOuter,
     backgroundColor: SLEEP_THEME.cardBg,
     borderWidth: 1,
-    borderColor: 'rgba(48,209,88,0.25)',
+    borderColor: WORKOUT_THEME.accentBorder,
     flexDirection: 'row',
     overflow: 'hidden',
   },

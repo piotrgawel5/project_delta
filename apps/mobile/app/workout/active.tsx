@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,7 +20,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useWorkoutStore } from '@store/workoutStore';
-import type { ActiveWorkoutSession } from '@store/workoutStore';
+import type { ActiveWorkoutSession, SessionMetadata } from '@store/workoutStore';
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
 import { getExerciseById } from '@lib/workoutFixtures';
 import { getTotalSets } from '@lib/workoutAnalytics';
@@ -225,23 +224,10 @@ export default function ActiveWorkoutScreen() {
     [addExercise]
   );
 
-  const handleDiscard = useCallback(() => {
-    Alert.alert(
-      'Discard Workout',
-      'All progress will be lost. Are you sure?',
-      [
-        { text: 'Keep Going', style: 'cancel' },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: () => {
-            discardWorkout();
-            router.back();
-          },
-        },
-      ]
-    );
-  }, [discardWorkout, router]);
+  const handleMinimize = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.back();
+  }, [router]);
 
   const handleTogglePause = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -265,7 +251,7 @@ export default function ActiveWorkoutScreen() {
       {/* Header */}
       <BlurView intensity={12} tint="dark" style={styles.header}>
         <View style={styles.headerLeft}>
-          <Pressable onPress={handleDiscard} hitSlop={8} style={styles.headerIconBtn}>
+          <Pressable onPress={handleMinimize} hitSlop={8} style={styles.headerIconBtn}>
             <Ionicons name="close" size={22} color={SLEEP_THEME.textMuted1} />
           </Pressable>
           <Pressable onPress={handleTogglePause} hitSlop={8} style={styles.headerIconBtn}>
@@ -366,8 +352,8 @@ export default function ActiveWorkoutScreen() {
       <WorkoutFinishSheet
         sheetRef={finishRef}
         session={activeSession}
-        onSave={async () => {
-          await finishWorkout();
+        onSave={async (metadata: SessionMetadata) => {
+          await finishWorkout(metadata);
           router.back();
         }}
         onDiscard={() => {
@@ -431,8 +417,8 @@ const styles = StyleSheet.create({
   finishBtn: {
     paddingHorizontal: 18,
     paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: WORKOUT_THEME.accent,
+    borderRadius: SLEEP_LAYOUT.cardRadiusInner,
+    backgroundColor: SLEEP_THEME.textPrimary,
   },
   finishBtnText: {
     fontFamily: SLEEP_FONTS.semiBold,
@@ -531,7 +517,7 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: SLEEP_LAYOUT.cardRadiusOuter,
     borderWidth: 1,
-    borderColor: 'rgba(48,209,88,0.25)',
+    borderColor: WORKOUT_THEME.accentBorder,
     borderStyle: 'dashed',
   },
   addExerciseText: {

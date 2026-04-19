@@ -150,6 +150,7 @@ export const WORKOUT_THEME = {
   weekDotEmpty: 'rgba(255,255,255,0.15)',
   fabBg: '#30D158',
   fabShadow: 'rgba(48,209,88,0.35)',
+  accentBorder: 'rgba(48,209,88,0.25)',
 } as const;
 
 export type WorkoutTheme = typeof WORKOUT_THEME;
