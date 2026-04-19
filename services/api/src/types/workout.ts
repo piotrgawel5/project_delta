@@ -26,4 +26,7 @@ export interface WorkoutSession {
   durationSeconds: number | null;
   exercises: WorkoutExerciseLog[];
   notes: string | null;
+  name: string | null;
+  feelRating: number | null;
+  difficultyRating: number | null;
 }

@@ -29,6 +29,9 @@ const WorkoutSessionSchema = z.object({
   durationSeconds: z.number().int().min(0).nullable(),
   exercises: z.array(WorkoutExerciseLogSchema),
   notes: z.string().max(1000).nullable(),
+  name: z.string().max(100).nullable(),
+  feelRating: z.number().int().min(1).max(4).nullable(),
+  difficultyRating: z.number().int().min(1).max(4).nullable(),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

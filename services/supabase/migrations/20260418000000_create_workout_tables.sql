@@ -24,7 +24,10 @@ CREATE TABLE workout_sessions (
   started_at TIMESTAMPTZ NOT NULL,
   finished_at TIMESTAMPTZ,
   duration_seconds INT,
+  name TEXT,
   notes TEXT,
+  feel_rating SMALLINT CHECK (feel_rating BETWEEN 1 AND 4),
+  difficulty_rating SMALLINT CHECK (difficulty_rating BETWEEN 1 AND 4),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
