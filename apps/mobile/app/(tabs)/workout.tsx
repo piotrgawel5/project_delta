@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -63,6 +63,22 @@ export default function WorkoutScreen() {
   const sessions = useWorkoutStore((s) => s.sessions);
   const isLoaded = useWorkoutStore((s) => s.isLoaded);
   const startWorkout = useWorkoutStore((s) => s.startWorkout);
+  const fetchSessions = useWorkoutStore((s) => s.fetchSessions);
+  const drainSyncQueue = useWorkoutStore((s) => s.drainSyncQueue);
+
+  useEffect(() => {
+    if (user?.id) {
+      void fetchSessions(user.id);
+      void drainSyncQueue();
+    }
+  }, [user?.id, fetchSessions, drainSyncQueue]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void drainSyncQueue();
+    });
+    return () => sub.remove();
+  }, [drainSyncQueue]);
 
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
