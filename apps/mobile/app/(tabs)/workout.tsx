@@ -20,6 +20,7 @@ import { computeWeeklyVolume } from '@lib/workoutAnalytics';
 import WorkoutHeroShell from '@components/workout/WorkoutHeroShell';
 import WorkoutWeekGrid from '@components/workout/WorkoutWeekGrid';
 import WorkoutEmptyState from '@components/workout/WorkoutEmptyState';
+import ActiveSessionCard from '@components/workout/ActiveSessionCard';
 
 const SPRING_FAB = { damping: 16, stiffness: 220 } as const;
 const FAB_SIZE = 58;
@@ -62,6 +63,7 @@ export default function WorkoutScreen() {
 
   const sessions = useWorkoutStore((s) => s.sessions);
   const isLoaded = useWorkoutStore((s) => s.isLoaded);
+  const activeSession = useWorkoutStore((s) => s.activeSession);
   const startWorkout = useWorkoutStore((s) => s.startWorkout);
   const fetchSessions = useWorkoutStore((s) => s.fetchSessions);
   const drainSyncQueue = useWorkoutStore((s) => s.drainSyncQueue);
@@ -145,6 +147,12 @@ export default function WorkoutScreen() {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}>
+        {activeSession && (
+          <Animated.View entering={FadeInDown.duration(350).delay(100)}>
+            <ActiveSessionCard />
+          </Animated.View>
+        )}
+
         <Animated.View entering={FadeInDown.duration(350).delay(180)}>
           <WorkoutWeekGrid
             sessions={thisWeekSessions}
@@ -178,23 +186,27 @@ export default function WorkoutScreen() {
         )}
       </Animated.ScrollView>
 
-      <Animated.View style={[styles.fab, fabAnimatedStyle]}>
-        <Pressable
-          onPressIn={() => {
-            fabScale.value = withSpring(0.92, SPRING_FAB);
-          }}
-          onPressOut={() => {
-            fabScale.value = withSpring(1, SPRING_FAB);
-          }}
-          onPress={handleStartWorkout}
-          style={styles.fabInner}>
-          <MaterialCommunityIcons name="plus" size={28} color={SLEEP_THEME.screenBg} />
-        </Pressable>
-      </Animated.View>
+      {!activeSession && (
+        <>
+          <Animated.View style={[styles.fab, fabAnimatedStyle]}>
+            <Pressable
+              onPressIn={() => {
+                fabScale.value = withSpring(0.92, SPRING_FAB);
+              }}
+              onPressOut={() => {
+                fabScale.value = withSpring(1, SPRING_FAB);
+              }}
+              onPress={handleStartWorkout}
+              style={styles.fabInner}>
+              <MaterialCommunityIcons name="plus" size={28} color={SLEEP_THEME.screenBg} />
+            </Pressable>
+          </Animated.View>
 
-      <Animated.View style={[styles.fabLabel, fabAnimatedStyle]} pointerEvents="none">
-        <Text style={styles.fabLabelText}>Start Workout</Text>
-      </Animated.View>
+          <Animated.View style={[styles.fabLabel, fabAnimatedStyle]} pointerEvents="none">
+            <Text style={styles.fabLabelText}>Start Workout</Text>
+          </Animated.View>
+        </>
+      )}
     </View>
   );
 }
