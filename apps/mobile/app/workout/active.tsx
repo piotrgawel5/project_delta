@@ -21,6 +21,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useWorkoutStore } from '@store/workoutStore';
+import type { ActiveWorkoutSession } from '@store/workoutStore';
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
 import { getExerciseById } from '@lib/workoutFixtures';
 import { getTotalSets } from '@lib/workoutAnalytics';
@@ -33,23 +34,45 @@ import WorkoutFinishSheet from '@components/workout/WorkoutFinishSheet';
 const SPRING = { damping: 16, stiffness: 220 } as const;
 
 // ─── Elapsed timer ────────────────────────────────────────────────────────────
-// Uses Date.now() diff so it survives tab switches without drift.
-function useElapsedTimer(startedAt: string | null) {
-  const [elapsed, setElapsed] = useState(0);
+// Accounts for paused intervals so the display freezes while paused and
+// resumes from the correct value. Uses a ref so the interval closure always
+// reads the latest session without causing effect re-runs on every mutation.
+function computeElapsedSeconds(session: ActiveWorkoutSession): number {
+  const now = Date.now();
+  const start = new Date(session.startedAt).getTime();
+  const pausedMs = session.pausedIntervals.reduce((acc, interval) => {
+    const end = interval.to ? new Date(interval.to).getTime() : now;
+    return acc + (end - new Date(interval.from).getTime());
+  }, 0);
+  return Math.max(0, Math.floor((now - start - pausedMs) / 1000));
+}
+
+function useActiveTimer(session: ActiveWorkoutSession | null): string {
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+
+  const [elapsed, setElapsed] = useState(() =>
+    session ? computeElapsedSeconds(session) : 0,
+  );
+
+  const isPaused = session?.isPaused ?? false;
 
   useEffect(() => {
-    if (!startedAt) return;
-    const startMs = new Date(startedAt).getTime();
-
-    const tick = () => setElapsed(Math.floor((Date.now() - startMs) / 1000));
-    tick();
-    const id = setInterval(tick, 1000);
+    if (!session || isPaused) {
+      if (session) setElapsed(computeElapsedSeconds(session));
+      return;
+    }
+    const id = setInterval(() => {
+      if (sessionRef.current) setElapsed(computeElapsedSeconds(sessionRef.current));
+    }, 1000);
     return () => clearInterval(id);
-  }, [startedAt]);
+  }, [isPaused]);
 
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s = elapsed % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 // ─── Exercise section ──────────────────────────────────────────────────────────
@@ -168,13 +191,16 @@ export default function ActiveWorkoutScreen() {
   const logSet = useWorkoutStore((s) => s.logSet);
   const removeSet = useWorkoutStore((s) => s.removeSet);
   const removeExercise = useWorkoutStore((s) => s.removeExercise);
+  const pauseWorkout = useWorkoutStore((s) => s.pauseWorkout);
+  const resumeWorkout = useWorkoutStore((s) => s.resumeWorkout);
   const finishWorkout = useWorkoutStore((s) => s.finishWorkout);
   const discardWorkout = useWorkoutStore((s) => s.discardWorkout);
 
   const [restTimerVisible, setRestTimerVisible] = useState(false);
   const finishScale = useSharedValue(1);
 
-  const elapsedLabel = useElapsedTimer(activeSession?.startedAt ?? null);
+  const isPaused = activeSession?.isPaused ?? false;
+  const elapsedLabel = useActiveTimer(activeSession);
   const totalSets = useMemo(
     () => (activeSession ? getTotalSets(activeSession) : 0),
     [activeSession]
@@ -217,6 +243,12 @@ export default function ActiveWorkoutScreen() {
     );
   }, [discardWorkout, router]);
 
+  const handleTogglePause = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (isPaused) resumeWorkout();
+    else pauseWorkout();
+  }, [isPaused, pauseWorkout, resumeWorkout]);
+
   const handleFinish = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     finishRef.current?.snapToIndex(0);
@@ -232,15 +264,30 @@ export default function ActiveWorkoutScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <BlurView intensity={12} tint="dark" style={styles.header}>
-        <Pressable onPress={handleDiscard} hitSlop={8} style={styles.headerBtn}>
-          <Ionicons name="close" size={22} color={SLEEP_THEME.textMuted1} />
-        </Pressable>
+        <View style={styles.headerLeft}>
+          <Pressable onPress={handleDiscard} hitSlop={8} style={styles.headerIconBtn}>
+            <Ionicons name="close" size={22} color={SLEEP_THEME.textMuted1} />
+          </Pressable>
+          <Pressable onPress={handleTogglePause} hitSlop={8} style={styles.headerIconBtn}>
+            <MaterialCommunityIcons
+              name={isPaused ? 'play' : 'pause'}
+              size={20}
+              color={isPaused ? WORKOUT_THEME.accent : SLEEP_THEME.textMuted1}
+            />
+          </Pressable>
+        </View>
 
         <View style={styles.headerCenter}>
-          <Animated.Text entering={FadeIn.duration(300)} style={styles.elapsedLabel}>
+          <Animated.Text
+            entering={FadeIn.duration(300)}
+            style={[styles.elapsedLabel, isPaused && styles.elapsedLabelPaused]}>
             {elapsedLabel}
           </Animated.Text>
-          <Text style={styles.setsLabel}>{totalSets} sets</Text>
+          {isPaused ? (
+            <Text style={styles.pausedBadge}>PAUSED</Text>
+          ) : (
+            <Text style={styles.setsLabel}>{totalSets} sets</Text>
+          )}
         </View>
 
         <Animated.View style={finishBtnStyle}>
@@ -343,7 +390,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: SLEEP_THEME.border,
   },
-  headerBtn: {
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerIconBtn: {
     width: 36,
     height: 36,
     alignItems: 'center',
@@ -357,11 +409,23 @@ const styles = StyleSheet.create({
     color: SLEEP_THEME.textPrimary,
     fontVariant: ['tabular-nums'],
   },
+  elapsedLabelPaused: {
+    color: SLEEP_THEME.textMuted1,
+  },
   setsLabel: {
     fontFamily: SLEEP_FONTS.regular,
     fontSize: 12,
     lineHeight: 16,
     color: SLEEP_THEME.textMuted1,
+    marginTop: 2,
+  },
+  pausedBadge: {
+    fontFamily: SLEEP_FONTS.semiBold,
+    fontSize: 10,
+    lineHeight: 13,
+    color: WORKOUT_THEME.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
     marginTop: 2,
   },
   finishBtn: {
