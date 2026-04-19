@@ -76,6 +76,9 @@ export interface WorkoutSession {
   durationSeconds: number | null;
   exercises: WorkoutExerciseLog[];
   notes: string | null;
+  name: string | null;              // user-provided session name, e.g. "Morning workout"
+  feelRating: number | null;        // 1–4 (1=Rough, 2=OK, 3=Good, 4=Great)
+  difficultyRating: number | null;  // 1–4 (1=Easy, 2=Moderate, 3=Hard, 4=Full Effort)
 }
 
 // Zod schemas for these types live in services/api/src/modules/workout/workout.validation.ts

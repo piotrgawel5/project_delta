@@ -40,7 +40,10 @@ interface SessionRow {
   started_at: string;
   finished_at: string | null;
   duration_seconds: number | null;
+  name: string | null;
   notes: string | null;
+  feel_rating: number | null;
+  difficulty_rating: number | null;
   workout_exercise_logs: LogRow[];
 }
 
@@ -78,7 +81,10 @@ function mapSession(row: SessionRow): WorkoutSession {
     startedAt: row.started_at,
     finishedAt: row.finished_at,
     durationSeconds: row.duration_seconds,
+    name: row.name,
     notes: row.notes,
+    feelRating: row.feel_rating,
+    difficultyRating: row.difficulty_rating,
     exercises: (row.workout_exercise_logs ?? [])
       .sort((a, b) => a.exercise_order - b.exercise_order)
       .map(mapLog),
@@ -104,7 +110,8 @@ export async function fetchSessions(
   const { data, error } = await supabase
     .from("workout_sessions")
     .select(
-      `id, user_id, date, started_at, finished_at, duration_seconds, notes,
+      `id, user_id, date, started_at, finished_at, duration_seconds,
+       name, notes, feel_rating, difficulty_rating,
        workout_exercise_logs (
          id, exercise_id, exercise_order, notes,
          workout_sets ( id, set_number, reps, weight_kg, duration_seconds, rpe, completed_at )
@@ -147,7 +154,10 @@ export async function saveSession(
         started_at: session.startedAt,
         finished_at: session.finishedAt,
         duration_seconds: session.durationSeconds,
-        notes: session.notes,
+        name: session.name ?? null,
+        notes: session.notes ?? null,
+        feel_rating: session.feelRating ?? null,
+        difficulty_rating: session.difficultyRating ?? null,
       },
       { onConflict: "id" },
     );
