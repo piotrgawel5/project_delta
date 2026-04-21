@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import Svg, {
   Defs,
@@ -7,14 +7,18 @@ import Svg, {
   Rect,
   Stop,
 } from 'react-native-svg';
+import { useRouter } from 'expo-router';
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
+import type { MuscleGroup, MuscleIntensity } from '@shared';
+import { MuscleHeatmapCompact } from '@components/workout/muscleMap';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface WorkoutHeroShellProps {
   totalSets: number;
-  weeklyDelta: number | null; // delta vs last week (null = no comparison data)
+  weeklyDelta: number | null;
   selectedDate: Date;
+  heatmap: Record<MuscleGroup, MuscleIntensity>;
 }
 
 function formatDate(date: Date): string {
@@ -62,8 +66,13 @@ export default function WorkoutHeroShell({
   totalSets,
   weeklyDelta,
   selectedDate,
+  heatmap,
 }: WorkoutHeroShellProps) {
+  const router = useRouter();
   const dateLabel = useMemo(() => formatDate(selectedDate), [selectedDate]);
+  const handleMapPress = useCallback(() => {
+    router.push('/workout/progress');
+  }, [router]);
 
   const deltaLabel = useMemo(() => {
     if (weeklyDelta === null) return null;
@@ -105,9 +114,8 @@ export default function WorkoutHeroShell({
           )}
         </View>
 
-        {/* Muscle map placeholder — wired in P3 */}
         <View style={styles.right}>
-          <View style={styles.muscleMapPlaceholder} />
+          <MuscleHeatmapCompact heatmap={heatmap} onPress={handleMapPress} />
         </View>
       </View>
     </View>
@@ -194,13 +202,5 @@ const styles = StyleSheet.create({
   },
   deltaTextNegative: {
     color: SLEEP_THEME.danger,
-  },
-  muscleMapPlaceholder: {
-    width: 100,
-    height: 180,
-    borderRadius: 50,
-    backgroundColor: WORKOUT_THEME.accentSubtle,
-    borderWidth: 1,
-    borderColor: 'rgba(48,209,88,0.12)',
   },
 });

@@ -16,7 +16,7 @@ import Animated, {
 import { useAuthStore } from '@store/authStore';
 import { useWorkoutStore } from '@store/workoutStore';
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
-import { computeWeeklyVolume } from '@lib/workoutAnalytics';
+import { computeMuscleHeatmap, computeWeeklyVolume } from '@lib/workoutAnalytics';
 import WorkoutHeroShell from '@components/workout/WorkoutHeroShell';
 import WorkoutWeekGrid from '@components/workout/WorkoutWeekGrid';
 import WorkoutEmptyState from '@components/workout/WorkoutEmptyState';
@@ -90,6 +90,7 @@ export default function WorkoutScreen() {
   });
 
   const totalSets = useMemo(() => computeWeeklyVolume(sessions), [sessions]);
+  const heatmap = useMemo(() => computeMuscleHeatmap(sessions, 7), [sessions]);
 
   const thisWeekSessions = useMemo(() => {
     const now = new Date();
@@ -133,7 +134,12 @@ export default function WorkoutScreen() {
   return (
     <View style={styles.container}>
       <View pointerEvents="box-none" style={styles.heroLayer}>
-        <WorkoutHeroShell totalSets={totalSets} weeklyDelta={null} selectedDate={selectedDate} />
+        <WorkoutHeroShell
+          totalSets={totalSets}
+          weeklyDelta={null}
+          selectedDate={selectedDate}
+          heatmap={heatmap}
+        />
       </View>
 
       <AnimatedBlurHeader
