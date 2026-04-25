@@ -30,6 +30,7 @@ interface WorkoutStore {
   // Persisted session history (loaded from API)
   sessions: WorkoutSession[];
   isLoaded: boolean;
+  loadedForUserId: string | null;
   error: string | null;
 
   // In-progress session (live tracking) — persisted to AsyncStorage
@@ -62,15 +63,21 @@ export const useWorkoutStore = create<WorkoutStore>()(
     (set, get) => ({
       sessions: [],
       isLoaded: false,
+      loadedForUserId: null,
       error: null,
       activeSession: null,
       syncQueue: [],
 
       fetchSessions: async (userId: string) => {
-        if (get().isLoaded) return;
+        const state = get();
+        if (state.isLoaded && state.loadedForUserId === userId) return;
+        // Different user — clear stale sessions before fetching
+        if (state.loadedForUserId !== userId) {
+          set({ sessions: [], isLoaded: false, loadedForUserId: null });
+        }
         try {
           const resp = await api.get(`/api/workout/sessions/${userId}`);
-          set({ sessions: resp.data as WorkoutSession[], isLoaded: true, error: null });
+          set({ sessions: resp.data as WorkoutSession[], isLoaded: true, loadedForUserId: userId, error: null });
         } catch {
           set({ error: "Failed to load sessions", isLoaded: false });
         }

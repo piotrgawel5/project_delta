@@ -139,6 +139,7 @@ export const WORKOUT_THEME = {
   muscleModerate: '#30D158',
   muscleHeavy: '#FF9F0A',
   muscleOvertrain: '#FF453A',
+  muscleOvertrainBg: 'rgba(255,69,58,0.12)',
   restTimerActive: '#30D158',
   restTimerWarning: '#FF9F0A',
   restTimerDone: '#FFFFFF',

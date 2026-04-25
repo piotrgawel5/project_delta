@@ -1,6 +1,5 @@
-import { config } from "../../config";
 import { AppError } from "../../utils/AppError";
-import type { WorkoutSession } from "../../types/workout";
+import type { WorkoutSession } from "./workout.validation";
 
 // TODO: wire up Supabase client (same pattern as sleep.service.ts)
 // const supabase = createClient(config.supabase.url!, config.supabase.serviceRoleKey!);

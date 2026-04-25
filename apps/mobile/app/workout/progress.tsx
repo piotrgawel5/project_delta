@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     backgroundColor: SLEEP_THEME.elevatedBg,
   },
   tagDanger: {
-    backgroundColor: 'rgba(255,69,58,0.12)',
+    backgroundColor: WORKOUT_THEME.muscleOvertrainBg,
   },
   tagText: {
     fontFamily: SLEEP_FONTS.medium,

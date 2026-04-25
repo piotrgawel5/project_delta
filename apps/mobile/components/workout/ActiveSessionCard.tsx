@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -12,35 +12,8 @@ import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useWorkoutStore } from '@store/workoutStore';
-import type { ActiveWorkoutSession } from '@store/workoutStore';
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-function computeElapsedSeconds(session: ActiveWorkoutSession): number {
-  const now = Date.now();
-  const start = new Date(session.startedAt).getTime();
-  const pausedMs = session.pausedIntervals.reduce((acc, interval) => {
-    // Open interval (currently paused): count up to now so elapsed stays frozen
-    const end = interval.to ? new Date(interval.to).getTime() : now;
-    return acc + (end - new Date(interval.from).getTime());
-  }, 0);
-  return Math.max(0, Math.floor((now - start - pausedMs) / 1000));
-}
-
-function formatElapsed(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────────────────────────────────────
+import { useActiveTimer } from '@lib/workoutTimer';
 
 const SPRING = { damping: 16, stiffness: 220 } as const;
 
@@ -50,13 +23,7 @@ export default function ActiveSessionCard() {
   const pauseWorkout = useWorkoutStore((s) => s.pauseWorkout);
   const resumeWorkout = useWorkoutStore((s) => s.resumeWorkout);
 
-  // Stable ref so the interval closure always reads latest session data
-  const sessionRef = useRef(activeSession);
-  sessionRef.current = activeSession;
-
-  const [elapsed, setElapsed] = useState(() =>
-    activeSession ? computeElapsedSeconds(activeSession) : 0,
-  );
+  const elapsedLabel = useActiveTimer(activeSession);
 
   const scale = useSharedValue(1);
   const dotOpacity = useSharedValue(1);
@@ -70,18 +37,6 @@ export default function ActiveSessionCard() {
       return;
     }
     dotOpacity.value = withRepeat(withTiming(0.2, { duration: 900 }), -1, true);
-  }, [isPaused]);
-
-  // 1-second elapsed ticker — stops when paused, snaps value on resume
-  useEffect(() => {
-    if (!activeSession || isPaused) {
-      if (activeSession) setElapsed(computeElapsedSeconds(activeSession));
-      return;
-    }
-    const id = setInterval(() => {
-      if (sessionRef.current) setElapsed(computeElapsedSeconds(sessionRef.current));
-    }, 1000);
-    return () => clearInterval(id);
   }, [isPaused]);
 
   const cardStyle = useAnimatedStyle(() => ({
@@ -151,7 +106,7 @@ export default function ActiveSessionCard() {
 
           {/* Elapsed timer */}
           <Text style={[styles.timer, isPaused && styles.timerPaused]}>
-            {formatElapsed(elapsed)}
+            {elapsedLabel}
           </Text>
 
           {/* Stats + tap hint */}

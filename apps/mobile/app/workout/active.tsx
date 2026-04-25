@@ -24,6 +24,7 @@ import type { ActiveWorkoutSession, SessionMetadata } from '@store/workoutStore'
 import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
 import { getExerciseById } from '@lib/workoutFixtures';
 import { getTotalSets } from '@lib/workoutAnalytics';
+import { useActiveTimer } from '@lib/workoutTimer';
 import type { WorkoutSet } from '@shared';
 import ActiveSetRow from '@components/workout/ActiveSetRow';
 import RestTimer from '@components/workout/RestTimer';
@@ -31,48 +32,6 @@ import ExercisePickerSheet from '@components/workout/ExercisePickerSheet';
 import WorkoutFinishSheet from '@components/workout/WorkoutFinishSheet';
 
 const SPRING = { damping: 16, stiffness: 220 } as const;
-
-// ─── Elapsed timer ────────────────────────────────────────────────────────────
-// Accounts for paused intervals so the display freezes while paused and
-// resumes from the correct value. Uses a ref so the interval closure always
-// reads the latest session without causing effect re-runs on every mutation.
-function computeElapsedSeconds(session: ActiveWorkoutSession): number {
-  const now = Date.now();
-  const start = new Date(session.startedAt).getTime();
-  const pausedMs = session.pausedIntervals.reduce((acc, interval) => {
-    const end = interval.to ? new Date(interval.to).getTime() : now;
-    return acc + (end - new Date(interval.from).getTime());
-  }, 0);
-  return Math.max(0, Math.floor((now - start - pausedMs) / 1000));
-}
-
-function useActiveTimer(session: ActiveWorkoutSession | null): string {
-  const sessionRef = useRef(session);
-  sessionRef.current = session;
-
-  const [elapsed, setElapsed] = useState(() =>
-    session ? computeElapsedSeconds(session) : 0,
-  );
-
-  const isPaused = session?.isPaused ?? false;
-
-  useEffect(() => {
-    if (!session || isPaused) {
-      if (session) setElapsed(computeElapsedSeconds(session));
-      return;
-    }
-    const id = setInterval(() => {
-      if (sessionRef.current) setElapsed(computeElapsedSeconds(sessionRef.current));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [isPaused]);
-
-  const h = Math.floor(elapsed / 3600);
-  const m = Math.floor((elapsed % 3600) / 60);
-  const s = elapsed % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
 
 // ─── Exercise section ──────────────────────────────────────────────────────────
 interface ExerciseSectionProps {

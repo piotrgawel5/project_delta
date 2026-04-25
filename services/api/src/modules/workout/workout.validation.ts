@@ -29,6 +29,9 @@ const WorkoutSessionSchema = z.object({
   durationSeconds: z.number().int().min(0).nullable(),
   exercises: z.array(WorkoutExerciseLogSchema),
   notes: z.string().max(1000).nullable(),
+  name: z.string().max(100).nullable(),
+  feelRating: z.number().int().min(1).max(4).nullable(),
+  difficultyRating: z.number().int().min(1).max(4).nullable(),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,3 +71,11 @@ export const workoutSessionDeleteSchema = z.object({
     id: z.string().uuid(),
   }),
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Derived types — single source of truth; use these instead of a separate
+// types/workout.ts file so the shapes stay in sync with validation.
+// ─────────────────────────────────────────────────────────────────────────────
+export type WorkoutSet = z.infer<typeof WorkoutSetSchema>;
+export type WorkoutExerciseLog = z.infer<typeof WorkoutExerciseLogSchema>;
+export type WorkoutSession = z.infer<typeof WorkoutSessionSchema>;
