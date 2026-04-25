@@ -17,6 +17,7 @@ import { healthRoutes } from "./routes/health";
 import { authRoutes } from "./modules/auth/auth.routes";
 import { sleepRoutes } from "./modules/sleep/sleep.routes";
 import { profileRoutes } from "./modules/profile/profile.routes";
+import { workoutRoutes } from "./modules/workout/workout.routes";
 
 const app = express();
 
@@ -57,6 +58,7 @@ app.use("/health", healthRoutes);
 app.use("/auth", authRoutes);
 app.use("/api/sleep", sleepRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/workout", workoutRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
