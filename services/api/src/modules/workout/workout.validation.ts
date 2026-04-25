@@ -71,11 +71,3 @@ export const workoutSessionDeleteSchema = z.object({
     id: z.string().uuid(),
   }),
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Derived types — single source of truth; use these instead of a separate
-// types/workout.ts file so the shapes stay in sync with validation.
-// ─────────────────────────────────────────────────────────────────────────────
-export type WorkoutSet = z.infer<typeof WorkoutSetSchema>;
-export type WorkoutExerciseLog = z.infer<typeof WorkoutExerciseLogSchema>;
-export type WorkoutSession = z.infer<typeof WorkoutSessionSchema>;
