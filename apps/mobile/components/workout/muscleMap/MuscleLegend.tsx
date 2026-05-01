@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { SLEEP_FONTS, SLEEP_THEME, WORKOUT_THEME } from '@constants';
-import { INTENSITY_COLORS, INTENSITY_LABELS } from './MuscleHeatmapSVG';
+import { SLEEP_FONTS, SLEEP_THEME } from '@constants';
+import { INTENSITY_COLORS, INTENSITY_LABELS, OVERTRAIN_COLOR } from './MuscleHeatmapSVG';
 
 export default memo(function MuscleLegend() {
   return (
@@ -13,7 +13,7 @@ export default memo(function MuscleLegend() {
         </View>
       ))}
       <View style={styles.item}>
-        <View style={[styles.chip, { backgroundColor: WORKOUT_THEME.muscleOvertrain }]} />
+        <View style={[styles.chip, { backgroundColor: OVERTRAIN_COLOR }]} />
         <Text style={styles.label}>Overtrain</Text>
       </View>
     </View>

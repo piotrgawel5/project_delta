@@ -5,9 +5,8 @@ import { logger } from "../utils/logger";
 // Custom key generator for user-based limiting
 const getUserKey = (req: Request): string => {
     // Use user ID if authenticated, otherwise fall back to IP
-    const user = (req as any).user;
-    if (user?.id) {
-        return `user:${user.id}`;
+    if (req.user?.id) {
+        return `user:${req.user.id}`;
     }
     // Fall back to IP address
     return `ip:${req.ip || req.socket.remoteAddress || "unknown"}`;
@@ -50,22 +49,45 @@ export const globalLimiter = rateLimit({
 });
 
 /**
- * Authentication rate limiter - stricter limits for auth endpoints
- * 10 requests per hour per IP (prevents brute force)
+ * Auth verify limiter — stricter cap for credential-checking endpoints
+ * 5 requests per hour per IP (brute-force ceiling for password/passkey verify)
  */
-export const authLimiter = rateLimit({
+export const authVerifyLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 10,
+    max: 5,
     standardHeaders: true,
     legacyHeaders: false,
     message: rateLimitResponse(
-        "Too many authentication attempts. Try again later.",
+        "Too many verification attempts. Try again later.",
     ),
     handler: (req, res, _next, options) => {
         onLimitReached(req, res, options);
         res.status(429).json(options.message);
     },
 });
+
+/**
+ * Auth options limiter — looser cap for non-credential auth endpoints
+ * 20 requests per hour per IP (challenge/options requests carry no secrets)
+ */
+export const authOptionsLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: rateLimitResponse(
+        "Too many requests. Try again later.",
+    ),
+    handler: (req, res, _next, options) => {
+        onLimitReached(req, res, options);
+        res.status(429).json(options.message);
+    },
+});
+
+/**
+ * Backward-compat alias — defaults to the strict verify limiter.
+ */
+export const authLimiter = authVerifyLimiter;
 
 /**
  * Per-user write rate limiter - limits data modifications per user

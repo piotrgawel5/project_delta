@@ -10,12 +10,13 @@ export function requireOwnership(
     _res: Response,
     next: NextFunction,
 ) {
-    const user = (req as any).user;
-    const requestedUserId = req.params.userId || req.body?.user_id;
-
+    const user = req.user;
     if (!user?.id) {
         throw AppError.unauthorized("Authentication required");
     }
+
+    const bodyUserId = (req.body as { userId?: string } | undefined)?.userId;
+    const requestedUserId = req.params.userId ?? bodyUserId;
 
     if (!requestedUserId) {
         // No userId to check, let the route handle it
@@ -38,7 +39,7 @@ export function requireAdmin(
     _res: Response,
     next: NextFunction,
 ) {
-    const user = (req as any).user;
+    const user = req.user;
 
     if (!user?.id) {
         throw AppError.unauthorized("Authentication required");

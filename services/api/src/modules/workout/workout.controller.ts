@@ -8,7 +8,7 @@ export const workoutController = {
    */
   syncSession: async (req: Request, res: Response): Promise<void> => {
     const { session } = req.body as { session: Parameters<typeof workoutService.saveSession>[0] };
-    const userId = (req as any).user.id as string;
+    const userId = req.user!.id;
     await workoutService.saveSession(session, userId);
     res.status(201).json({ data: { id: session.id } });
   },
@@ -30,7 +30,7 @@ export const workoutController = {
    */
   deleteSession: async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
-    const userId = (req as any).user.id as string;
+    const userId = req.user!.id;
     await workoutService.deleteSession(id, userId);
     res.status(204).send();
   },

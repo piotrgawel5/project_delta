@@ -125,36 +125,65 @@ export const SLEEP_THEME = {
 export type SleepTheme = typeof SLEEP_THEME;
 
 export const WORKOUT_THEME = {
-  accent: '#30D158',
-  accentDim: 'rgba(48,209,88,0.15)',
-  accentMid: '#1D8B41',
-  accentSubtle: 'rgba(48,209,88,0.08)',
-  heroGradientPrimary: '#1A5C2A',
-  heroGradientMid: '#0A1A0E',
-  heroGradientEnd: '#000000',
-  heroOverlayStart: 'rgba(48,209,88,0.22)',
-  heroOverlayEnd: 'rgba(0,0,0,0)',
-  muscleUntrained: 'rgba(255,255,255,0.06)',
-  muscleLight: '#1D8B41',
-  muscleModerate: '#30D158',
-  muscleHeavy: '#FF9F0A',
-  muscleOvertrain: '#FF453A',
-  muscleOvertrainBg: 'rgba(255,69,58,0.12)',
-  restTimerActive: '#30D158',
-  restTimerWarning: '#FF9F0A',
-  restTimerDone: '#FFFFFF',
-  setComplete: '#30D158',
-  setIncomplete: 'rgba(255,255,255,0.12)',
-  weekDayActive: '#FFFFFF',
-  weekDayInactive: 'rgba(255,255,255,0.35)',
-  weekDotWorkedOut: '#30D158',
-  weekDotEmpty: 'rgba(255,255,255,0.15)',
-  fabBg: '#30D158',
-  fabShadow: 'rgba(48,209,88,0.35)',
-  accentBorder: 'rgba(48,209,88,0.25)',
+  // Surfaces — pure-OLED progression
+  bg: '#000000',
+  surface1: '#0E0E10',
+  surface2: '#161618',
+  surface3: '#1F1F23',
+  surface4: '#2A2A2F',
+
+  // Borders — translucent so they tint over any surface
+  border: 'rgba(255,255,255,0.07)',
+  borderStrong: 'rgba(255,255,255,0.14)',
+
+  // Text
+  fg: '#FFFFFF',
+  fg2: 'rgba(235,235,245,0.78)',
+  fg3: 'rgba(235,235,245,0.56)',
+  fg4: 'rgba(235,235,245,0.36)',
+  fg5: 'rgba(235,235,245,0.18)',
+
+  // Color is RESERVED — do not use elsewhere
+  success: '#30D158', // PR badges only
+  danger: '#FF453A', // destructive only (e.g. discard)
+  heart: '#FF6B6B', // HR readout in active header
+
+  // PR / success tints — only for PR celebrations
+  successBg: 'rgba(48,209,88,0.14)',
+  successBorder: 'rgba(48,209,88,0.32)',
+  successGlow: 'rgba(48,209,88,0.20)',
+  successInk: '#0A2415',
+
+  // Destructive tints — only for discard flow
+  dangerBgSoft: 'rgba(255,69,58,0.08)',
+  dangerBorderSoft: 'rgba(255,69,58,0.24)',
+  dangerBorderHot: 'rgba(255,69,58,0.32)',
+  dangerBgHot: 'rgba(255,69,58,0.12)',
+
+  // Surface overlays
+  overlayWhite03: 'rgba(255,255,255,0.03)',
+  overlayWhite05: 'rgba(255,255,255,0.05)',
+  overlayWhite06: 'rgba(255,255,255,0.06)',
+  overlayWhite16: 'rgba(255,255,255,0.16)',
+  handleBg: 'rgba(255,255,255,0.20)',
+
+  // Resume hero gradient
+  resumeHeroTop: '#1B1B1E',
+  resumeHeroBottom: '#131315',
+
+  // 5-tone consistency scale (grid + legend)
+  intensity: [
+    'rgba(255,255,255,0.05)',
+    'rgba(255,255,255,0.18)',
+    'rgba(255,255,255,0.35)',
+    'rgba(255,255,255,0.60)',
+    'rgba(255,255,255,0.90)',
+  ] as const,
 } as const;
 
 export type WorkoutTheme = typeof WORKOUT_THEME;
+
+export const tabularStyle = { fontVariant: ['tabular-nums'] as ['tabular-nums'] };
 
 export const SLEEP_LAYOUT = {
   screenPaddingH: 16,

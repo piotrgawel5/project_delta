@@ -2,7 +2,7 @@ import { memo, useMemo } from 'react';
 import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import type { MuscleGroup, MuscleIntensity } from '@shared';
-import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
+import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import MuscleHeatmapSVG from './MuscleHeatmapSVG';
 import MuscleLegend from './MuscleLegend';
 

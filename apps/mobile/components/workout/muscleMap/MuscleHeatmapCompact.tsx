@@ -7,7 +7,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { MuscleGroup, MuscleIntensity } from '@shared';
-import { SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
+import { SLEEP_LAYOUT } from '@constants';
 import MuscleHeatmapSVG from './MuscleHeatmapSVG';
 
 // Compact: fits in the 100×180 hero placeholder (with 20px right column width=120)
@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     width: COMPACT_WIDTH,
     height: COMPACT_HEIGHT,
     borderRadius: SLEEP_LAYOUT.cardRadiusInner,
-    backgroundColor: WORKOUT_THEME.accentSubtle,
+    backgroundColor: 'rgba(48,209,88,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(48,209,88,0.12)',
     overflow: 'hidden',

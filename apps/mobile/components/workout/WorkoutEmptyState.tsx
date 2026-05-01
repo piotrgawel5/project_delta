@@ -3,14 +3,13 @@ import Animated, {
   FadeIn,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
+import { SLEEP_FONTS, SLEEP_LAYOUT, WORKOUT_THEME } from '@constants';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-const SPRING = { damping: 15, stiffness: 200 } as const;
 
 interface WorkoutEmptyStateProps {
   onStartWorkout: () => void;
@@ -25,7 +24,7 @@ export default function WorkoutEmptyState({ onStartWorkout }: WorkoutEmptyStateP
   return (
     <Animated.View entering={FadeIn.duration(300).delay(100)} style={styles.container}>
       <View style={styles.iconWrap}>
-        <MaterialCommunityIcons name="dumbbell" size={36} color={WORKOUT_THEME.accent} />
+        <MaterialCommunityIcons name="dumbbell" size={32} color={WORKOUT_THEME.fg2} />
       </View>
 
       <Text style={styles.title}>No workouts yet</Text>
@@ -35,17 +34,18 @@ export default function WorkoutEmptyState({ onStartWorkout }: WorkoutEmptyStateP
 
       <AnimatedPressable
         onPressIn={() => {
-          scale.value = withSpring(0.96, SPRING);
+          scale.value = withTiming(0.97, { duration: 100 });
         }}
         onPressOut={() => {
-          scale.value = withSpring(1, SPRING);
+          scale.value = withTiming(1, { duration: 100 });
         }}
         onPress={() => {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           onStartWorkout();
         }}
         style={[styles.cta, animatedStyle]}>
-        <Text style={styles.ctaText}>Start First Workout</Text>
+        <MaterialCommunityIcons name="plus" size={17} color={WORKOUT_THEME.bg} />
+        <Text style={styles.ctaText}>Start first workout</Text>
       </AnimatedPressable>
     </Animated.View>
   );
@@ -54,47 +54,50 @@ export default function WorkoutEmptyState({ onStartWorkout }: WorkoutEmptyStateP
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    paddingTop: 48,
+    paddingTop: 40,
     paddingHorizontal: SLEEP_LAYOUT.screenPaddingH,
   },
   iconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: WORKOUT_THEME.accentDim,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: WORKOUT_THEME.surface2,
+    borderWidth: 1,
+    borderColor: WORKOUT_THEME.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   title: {
     fontFamily: SLEEP_FONTS.bold,
-    fontSize: 24,
-    lineHeight: 28,
-    color: SLEEP_THEME.textPrimary,
-    marginBottom: 10,
+    fontSize: 22,
+    lineHeight: 26,
+    color: WORKOUT_THEME.fg,
+    marginBottom: 8,
+    letterSpacing: -0.3,
   },
   body: {
     fontFamily: SLEEP_FONTS.regular,
-    fontSize: 15,
-    lineHeight: 22,
-    color: SLEEP_THEME.textDisabled,
+    fontSize: 14,
+    lineHeight: 20,
+    color: WORKOUT_THEME.fg3,
     textAlign: 'center',
-    marginBottom: 32,
-    paddingHorizontal: 12,
+    marginBottom: 24,
+    paddingHorizontal: 24,
   },
   cta: {
-    width: '100%',
-    maxWidth: 320,
-    height: 56,
-    borderRadius: SLEEP_LAYOUT.cardRadiusOuter,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: WORKOUT_THEME.accent,
+    gap: 8,
+    height: 50,
+    paddingHorizontal: 22,
+    borderRadius: 16,
+    backgroundColor: WORKOUT_THEME.fg,
   },
   ctaText: {
-    fontFamily: SLEEP_FONTS.semiBold,
-    fontSize: 17,
-    lineHeight: 22,
-    color: SLEEP_THEME.screenBg,
+    fontFamily: SLEEP_FONTS.bold,
+    fontSize: 15,
+    color: WORKOUT_THEME.bg,
   },
 });

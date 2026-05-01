@@ -143,81 +143,19 @@ export async function saveSession(
 
   const supabase = getClient();
 
-  // 1. Upsert session row (idempotent by id)
-  const { error: sessionErr } = await supabase
-    .from("workout_sessions")
-    .upsert(
-      {
-        id: session.id,
-        user_id: userId,
-        date: session.date,
-        started_at: session.startedAt,
-        finished_at: session.finishedAt,
-        duration_seconds: session.durationSeconds,
-        name: session.name ?? null,
-        notes: session.notes ?? null,
-        feel_rating: session.feelRating ?? null,
-        difficulty_rating: session.difficultyRating ?? null,
-      },
-      { onConflict: "id" },
-    );
+  // Single atomic RPC — Postgres function upserts session + replaces logs + sets
+  // inside one implicit transaction. Replaces the previous 4-step write that
+  // could leave orphan rows on partial failure.
+  const { error } = await supabase.rpc("save_workout_session", {
+    p_session: session,
+    p_user_id: userId,
+  });
 
-  if (sessionErr) {
-    throw AppError.internal(`Failed to save workout session: ${sessionErr.message}`);
-  }
-
-  // 2. Delete existing exercise logs (cascade deletes sets) — makes re-sync idempotent
-  const { error: deleteErr } = await supabase
-    .from("workout_exercise_logs")
-    .delete()
-    .eq("session_id", session.id);
-
-  if (deleteErr) {
-    throw AppError.internal(`Failed to clear exercise logs: ${deleteErr.message}`);
-  }
-
-  if (session.exercises.length === 0) return;
-
-  // 3. Insert all exercise logs in one batch, get back DB-generated UUIDs
-  const { data: logRows, error: logErr } = await supabase
-    .from("workout_exercise_logs")
-    .insert(
-      session.exercises.map((log, i) => ({
-        session_id: session.id,
-        exercise_id: log.exerciseId,
-        exercise_order: i + 1,
-        notes: log.notes,
-      })),
-    )
-    .select("id, exercise_order");
-
-  if (logErr || !logRows) {
-    throw AppError.internal(`Failed to save exercise logs: ${logErr?.message ?? "no data"}`);
-  }
-
-  // 4. Insert all sets in one batch, keyed by log_id from step 3
-  const logIdByOrder = Object.fromEntries(
-    (logRows as { id: string; exercise_order: number }[]).map((r) => [r.exercise_order, r.id]),
-  );
-
-  const allSets = session.exercises.flatMap((log, i) =>
-    log.sets.map((s) => ({
-      log_id: logIdByOrder[i + 1],
-      set_number: s.setNumber,
-      reps: s.reps,
-      weight_kg: s.weightKg,
-      duration_seconds: s.durationSeconds,
-      rpe: s.rpe,
-      completed_at: s.completedAt,
-    })),
-  );
-
-  if (allSets.length === 0) return;
-
-  const { error: setsErr } = await supabase.from("workout_sets").insert(allSets);
-
-  if (setsErr) {
-    throw AppError.internal(`Failed to save workout sets: ${setsErr.message}`);
+  if (error) {
+    if (error.code === "42501" || error.message.toLowerCase().includes("forbidden")) {
+      throw AppError.forbidden("Cannot save another user's session");
+    }
+    throw AppError.internal(`Failed to save workout session: ${error.message}`);
   }
 }
 

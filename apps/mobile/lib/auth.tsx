@@ -4,6 +4,7 @@ import { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { Alert } from 'react-native';
 import { api } from './api';
+import { useWorkoutStore } from '@store/workoutStore';
 
 const AuthContext = createContext<{
   session: Session | null;
@@ -26,6 +27,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // Drain any pending workout sessions queued during offline finishes.
+  useEffect(() => {
+    if (session) void useWorkoutStore.getState().drainSyncQueue();
+  }, [session]);
 
   return <AuthContext.Provider value={{ session, loading }}>{children}</AuthContext.Provider>;
 }
