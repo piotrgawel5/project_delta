@@ -20,6 +20,7 @@ import { getTotalSets } from '@lib/workoutAnalytics';
 import { useActiveTimer } from '@lib/workoutTimer';
 import FocusCard from '@components/workout/FocusCard';
 import CollapsedExerciseCard from '@components/workout/CollapsedExerciseCard';
+import QuickLogCard from '@components/workout/QuickLogCard';
 import RestTimer from '@components/workout/RestTimer';
 import ExercisePickerSheet from '@components/workout/ExercisePickerSheet';
 import WorkoutFinishSheet from '@components/workout/WorkoutFinishSheet';
@@ -47,6 +48,9 @@ export default function ActiveWorkoutScreen() {
   const drainSyncQueue = useWorkoutStore((s) => s.drainSyncQueue);
   const syncStatus = useWorkoutStore((s) => s.syncStatus);
   const lastSyncError = useWorkoutStore((s) => s.lastSyncError);
+  const loggingMode = useWorkoutStore((s) => s.loggingMode);
+  const setLoggingMode = useWorkoutStore((s) => s.setLoggingMode);
+  const pastSessions = useWorkoutStore((s) => s.sessions);
 
   const [restTimerVisible, setRestTimerVisible] = useState(false);
   const finishScale = useSharedValue(1);
@@ -181,7 +185,47 @@ export default function ActiveWorkoutScreen() {
           </Animated.View>
         )}
 
+        {activeSession.exercises.length > 0 && (
+          <View style={styles.modeToggle}>
+            {(['quick', 'detailed'] as const).map((m) => (
+              <Pressable
+                key={m}
+                onPress={() => {
+                  if (loggingMode === m) return;
+                  void Haptics.selectionAsync();
+                  setLoggingMode(m);
+                }}
+                style={[
+                  styles.modePill,
+                  loggingMode === m && styles.modePillActive,
+                ]}>
+                <Text
+                  style={[
+                    styles.modePillLabel,
+                    loggingMode === m && styles.modePillLabelActive,
+                  ]}>
+                  {m === 'quick' ? 'Quick' : 'Detailed'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
         {activeSession.exercises.map((log, i) => {
+          if (loggingMode === 'quick') {
+            return (
+              <Animated.View key={log.exerciseId} entering={FadeInDown.duration(280).delay(i * 40)}>
+                <QuickLogCard
+                  exerciseId={log.exerciseId}
+                  index={i}
+                  sets={log.sets}
+                  pastSessions={pastSessions}
+                  onLogSet={(s) => logSet(log.exerciseId, s)}
+                  onRemoveExercise={removeExercise}
+                />
+              </Animated.View>
+            );
+          }
           const isFocus = i === focusedExerciseIdx;
           if (isFocus) {
             return (
@@ -351,5 +395,32 @@ const styles = StyleSheet.create({
     fontFamily: SLEEP_FONTS.semiBold,
     fontSize: 14,
     color: WORKOUT_THEME.fg2,
+  },
+  modeToggle: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    gap: 4,
+    padding: 4,
+    borderRadius: 999,
+    backgroundColor: WORKOUT_THEME.surface2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: WORKOUT_THEME.border,
+    marginBottom: 4,
+  },
+  modePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  modePillActive: {
+    backgroundColor: WORKOUT_THEME.fg,
+  },
+  modePillLabel: {
+    fontFamily: SLEEP_FONTS.semiBold,
+    fontSize: 12,
+    color: WORKOUT_THEME.fg2,
+  },
+  modePillLabelActive: {
+    color: WORKOUT_THEME.bg,
   },
 });

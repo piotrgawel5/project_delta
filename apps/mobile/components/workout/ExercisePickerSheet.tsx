@@ -15,8 +15,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { SLEEP_FONTS, WORKOUT_THEME, tabularStyle } from '@constants';
-import { EXERCISES } from '@lib/workoutFixtures';
-import type { Exercise, MuscleGroup } from '@shared';
+import { EXERCISES, filterExercisesByEquipment } from '@lib/workoutFixtures';
+import { useWorkoutStore } from '@store/workoutStore';
+import type { Equipment, Exercise, MuscleGroup } from '@shared';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -51,16 +52,26 @@ const PRIMARY_GROUPS: { title: string; match: (m: MuscleGroup) => boolean }[] = 
   { title: 'Core', match: (m) => m === 'abs' || m === 'obliques' },
 ];
 
-function buildSections(query: string): Section[] {
+const EQUIPMENT_CHIPS: { id: Equipment; label: string }[] = [
+  { id: 'barbell', label: 'Barbell' },
+  { id: 'dumbbell', label: 'Dumbbell' },
+  { id: 'machine', label: 'Machine' },
+  { id: 'cable', label: 'Cable' },
+  { id: 'bodyweight', label: 'Bodyweight' },
+  { id: 'kettlebell', label: 'Kettlebell' },
+];
+
+function buildSections(query: string, allowed: Equipment[]): Section[] {
   const q = query.trim().toLowerCase();
   const filter = (e: Exercise) =>
     !q ||
     e.name.toLowerCase().includes(q) ||
     e.primaryMuscles.some((m) => muscleLabel(m).toLowerCase().includes(q));
 
+  const equipmentFiltered = filterExercisesByEquipment(EXERCISES, allowed);
   const sections: Section[] = [];
   for (const group of PRIMARY_GROUPS) {
-    const items = EXERCISES.filter(
+    const items = equipmentFiltered.filter(
       (e) => e.primaryMuscles.some(group.match) && filter(e),
     );
     if (items.length > 0) sections.push({ title: group.title, data: items });
@@ -73,7 +84,24 @@ export default function ExercisePickerSheet({ sheetRef, onAdd }: Props) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
 
-  const sections = useMemo(() => buildSections(query), [query]);
+  const availableEquipment = useWorkoutStore((s) => s.availableEquipment);
+  const setAvailableEquipment = useWorkoutStore((s) => s.setAvailableEquipment);
+
+  const sections = useMemo(
+    () => buildSections(query, availableEquipment),
+    [query, availableEquipment],
+  );
+
+  const toggleEquipment = useCallback(
+    (id: Equipment) => {
+      void Haptics.selectionAsync();
+      const next = availableEquipment.includes(id)
+        ? availableEquipment.filter((e) => e !== id)
+        : [...availableEquipment, id];
+      setAvailableEquipment(next);
+    },
+    [availableEquipment, setAvailableEquipment],
+  );
 
   const toggle = useCallback((id: string) => {
     void Haptics.selectionAsync();
@@ -211,6 +239,22 @@ export default function ExercisePickerSheet({ sheetRef, onAdd }: Props) {
 
       <Text style={styles.subCopy}>Pick exercises to add. Drag to reorder before starting.</Text>
 
+      <View style={styles.equipmentRow}>
+        {EQUIPMENT_CHIPS.map((chip) => {
+          const active = availableEquipment.includes(chip.id);
+          return (
+            <Pressable
+              key={chip.id}
+              onPress={() => toggleEquipment(chip.id)}
+              style={[styles.eqChip, active && styles.eqChipActive]}>
+              <Text style={[styles.eqChipText, active && styles.eqChipTextActive]}>
+                {chip.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <View style={styles.searchWrap}>
         <View style={styles.searchInner}>
           <MaterialCommunityIcons name="magnify" size={17} color={WORKOUT_THEME.fg3} />
@@ -290,6 +334,33 @@ const styles = StyleSheet.create({
   searchWrap: {
     paddingHorizontal: 16,
     paddingBottom: 14,
+  },
+  equipmentRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  eqChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: WORKOUT_THEME.surface3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: WORKOUT_THEME.border,
+  },
+  eqChipActive: {
+    backgroundColor: WORKOUT_THEME.fg,
+    borderColor: WORKOUT_THEME.fg,
+  },
+  eqChipText: {
+    fontFamily: SLEEP_FONTS.medium,
+    fontSize: 12,
+    color: WORKOUT_THEME.fg2,
+  },
+  eqChipTextActive: {
+    color: WORKOUT_THEME.bg,
   },
   searchInner: {
     flexDirection: 'row',

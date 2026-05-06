@@ -39,12 +39,27 @@ export type ExerciseCategory =
   | "cardio"
   | "full_body";
 
+export type Equipment =
+  | "barbell"
+  | "dumbbell"
+  | "machine"
+  | "cable"
+  | "bodyweight"
+  | "kettlebell"
+  | "bands"
+  | "other";
+
 export interface Exercise {
   id: string;
   name: string;
   category: ExerciseCategory;
   primaryMuscles: MuscleGroup[];
   secondaryMuscles: MuscleGroup[];
+  /**
+   * Optional in the data source — `getExerciseEquipment(id)` infers from the id
+   * when omitted, so legacy entries don't break.
+   */
+  equipment?: Equipment;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

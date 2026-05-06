@@ -3,7 +3,7 @@ import { randomUUID } from "expo-crypto";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { api } from "@lib/api";
-import type { WorkoutExerciseLog, WorkoutSession, WorkoutSet } from "@shared";
+import type { Equipment, WorkoutExerciseLog, WorkoutSession, WorkoutSet } from "@shared";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -28,6 +28,8 @@ export interface SessionMetadata {
 
 export type SyncStatus = "idle" | "syncing" | "error";
 
+export type LoggingMode = "quick" | "detailed";
+
 interface WorkoutStore {
   // Persisted session history (loaded from API)
   sessions: WorkoutSession[];
@@ -44,6 +46,14 @@ interface WorkoutStore {
   // Sync observability
   syncStatus: SyncStatus;
   lastSyncError: string | null;
+
+  // Logging UX preference — quick = one-tap "repeat / +2.5kg / skip"
+  loggingMode: LoggingMode;
+  setLoggingMode: (mode: LoggingMode) => void;
+
+  // Equipment available to the user. Empty array = no preference (show all).
+  availableEquipment: Equipment[];
+  setAvailableEquipment: (next: Equipment[]) => void;
 
   // Actions
   fetchSessions: (userId: string) => Promise<void>;
@@ -75,6 +85,11 @@ export const useWorkoutStore = create<WorkoutStore>()(
       syncQueue: [],
       syncStatus: "idle",
       lastSyncError: null,
+      loggingMode: "quick",
+      availableEquipment: [],
+
+      setLoggingMode: (mode) => set({ loggingMode: mode }),
+      setAvailableEquipment: (next) => set({ availableEquipment: next }),
 
       fetchSessions: async (userId: string) => {
         const state = get();
@@ -331,6 +346,8 @@ export const useWorkoutStore = create<WorkoutStore>()(
       partialize: (state) => ({
         activeSession: state.activeSession,
         syncQueue: state.syncQueue,
+        loggingMode: state.loggingMode,
+        availableEquipment: state.availableEquipment,
       }),
     },
   ),

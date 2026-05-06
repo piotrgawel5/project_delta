@@ -11,6 +11,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { WorkoutSet } from '@shared';
 import { SLEEP_FONTS, WORKOUT_THEME, tabularStyle } from '@constants';
 import { getExerciseById } from '@lib/workoutFixtures';
+import PlateCalculator from './PlateCalculator';
 
 const STEPPERS_KG = [-2.5, -1, 1, 2.5, 5] as const;
 
@@ -51,6 +52,7 @@ export default function FocusCard({
     lastCompleted?.reps != null ? '' : '',
   );
   const repsInputRef = useRef<TextInput | null>(null);
+  const [plateModalOpen, setPlateModalOpen] = useState(false);
 
   // Reset inputs when this exercise's completed set count changes (a set was logged).
   // We intentionally key on `sets.length` rather than `completed.length` to also
@@ -218,7 +220,21 @@ export default function FocusCard({
             <Text style={styles.stepperText}>{formatStep(v)} kg</Text>
           </Pressable>
         ))}
+        <Pressable
+          style={styles.stepper}
+          onPress={() => {
+            void Haptics.selectionAsync();
+            setPlateModalOpen(true);
+          }}>
+          <MaterialCommunityIcons name="weight" size={14} color={WORKOUT_THEME.fg2} />
+        </Pressable>
       </View>
+
+      <PlateCalculator
+        visible={plateModalOpen}
+        targetKg={parseFloat(weight) || lastCompleted?.weightKg || 0}
+        onClose={() => setPlateModalOpen(false)}
+      />
 
       {/* Complete CTA */}
       <Animated.View style={ctaStyle}>

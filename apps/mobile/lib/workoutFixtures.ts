@@ -1,4 +1,4 @@
-import type { Exercise } from "@shared";
+import type { Equipment, Exercise } from "@shared";
 
 export const EXERCISES: Exercise[] = [
   // ── CHEST ──────────────────────────────────────────────────────────────────
@@ -492,6 +492,104 @@ export const EXERCISES: Exercise[] = [
     primaryMuscles: ["forearms", "traps"],
     secondaryMuscles: ["abs", "quads", "glutes"],
   },
+
+  // ── BODYWEIGHT PROGRESSIONS (T2.1) ────────────────────────────────────────
+  {
+    id: "push_up",
+    name: "Push-Up",
+    category: "chest",
+    primaryMuscles: ["chest"],
+    secondaryMuscles: ["front_delts", "triceps"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "diamond_push_up",
+    name: "Diamond Push-Up",
+    category: "chest",
+    primaryMuscles: ["triceps"],
+    secondaryMuscles: ["chest", "front_delts"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "decline_push_up",
+    name: "Decline Push-Up",
+    category: "chest",
+    primaryMuscles: ["chest", "front_delts"],
+    secondaryMuscles: ["triceps"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "pike_push_up",
+    name: "Pike Push-Up",
+    category: "shoulders",
+    primaryMuscles: ["front_delts"],
+    secondaryMuscles: ["triceps", "side_delts"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "pull_up",
+    name: "Pull-Up",
+    category: "back",
+    primaryMuscles: ["lats"],
+    secondaryMuscles: ["biceps", "upper_back"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "chin_up",
+    name: "Chin-Up",
+    category: "back",
+    primaryMuscles: ["lats", "biceps"],
+    secondaryMuscles: ["upper_back"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "inverted_row",
+    name: "Inverted Row",
+    category: "back",
+    primaryMuscles: ["upper_back"],
+    secondaryMuscles: ["lats", "biceps"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "dip",
+    name: "Bodyweight Dip",
+    category: "chest",
+    primaryMuscles: ["triceps", "chest"],
+    secondaryMuscles: ["front_delts"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "pistol_squat",
+    name: "Pistol Squat",
+    category: "legs",
+    primaryMuscles: ["quads", "glutes"],
+    secondaryMuscles: ["hamstrings", "calves"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "bulgarian_split_squat_bw",
+    name: "Bulgarian Split Squat (BW)",
+    category: "legs",
+    primaryMuscles: ["quads", "glutes"],
+    secondaryMuscles: ["hamstrings"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "hanging_leg_raise",
+    name: "Hanging Leg Raise",
+    category: "core",
+    primaryMuscles: ["abs", "hip_flexors"],
+    secondaryMuscles: ["forearms"],
+    equipment: "bodyweight",
+  },
+  {
+    id: "plank",
+    name: "Plank",
+    category: "core",
+    primaryMuscles: ["abs"],
+    secondaryMuscles: ["obliques", "lower_back"],
+    equipment: "bodyweight",
+  },
 ];
 
 export const EXERCISE_CATEGORIES: { id: string; label: string }[] = [
@@ -513,4 +611,56 @@ export function getExerciseById(id: string): Exercise | undefined {
 export function getExercisesByCategory(category: string): Exercise[] {
   if (category === "all") return EXERCISES;
   return EXERCISES.filter((e) => e.category === category);
+}
+
+/**
+ * Resolves the equipment for an exercise. Uses the explicit `equipment` field
+ * when present; otherwise infers from the id naming convention so the existing
+ * 68-entry library doesn't need to be hand-tagged.
+ */
+export function getExerciseEquipment(exercise: Exercise): Equipment {
+  if (exercise.equipment) return exercise.equipment;
+  const id = exercise.id.toLowerCase();
+  if (id.includes("barbell")) return "barbell";
+  if (id.includes("dumbbell") || id === "farmers_carry") return "dumbbell";
+  if (id.includes("cable")) return "cable";
+  if (id.includes("machine") || id.includes("press_machine") || id.includes("smith")) return "machine";
+  if (id.includes("kettlebell") || id.includes("kb_")) return "kettlebell";
+  if (id.includes("band")) return "bands";
+  // The remaining originals (e.g. squats, deadlifts) overwhelmingly use a bar.
+  return "barbell";
+}
+
+export function filterExercisesByEquipment(
+  exercises: Exercise[],
+  allowed: Equipment[],
+): Exercise[] {
+  if (allowed.length === 0) return exercises;
+  const allowedSet = new Set(allowed);
+  return exercises.filter((e) => allowedSet.has(getExerciseEquipment(e)));
+}
+
+/**
+ * Find a substitute that hits the same primary muscles but with allowed
+ * equipment. Returns null when no swap is possible.
+ */
+export function findSubstitute(
+  exerciseId: string,
+  allowed: Equipment[],
+): Exercise | null {
+  const original = getExerciseById(exerciseId);
+  if (!original) return null;
+  if (allowed.length === 0) return original;
+  if (allowed.includes(getExerciseEquipment(original))) return original;
+
+  const allowedSet = new Set(allowed);
+  const primaryKey = original.primaryMuscles.slice().sort().join("|");
+
+  return (
+    EXERCISES.find((e) => {
+      if (e.id === exerciseId) return false;
+      if (!allowedSet.has(getExerciseEquipment(e))) return false;
+      return e.primaryMuscles.slice().sort().join("|") === primaryKey;
+    }) ?? null
+  );
 }
