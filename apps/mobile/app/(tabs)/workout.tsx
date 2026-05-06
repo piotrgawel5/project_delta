@@ -19,6 +19,8 @@ import ConsistencyGrid12 from '@components/workout/ConsistencyGrid12';
 import StatTwoUp from '@components/workout/StatTwoUp';
 import HistoryList from '@components/workout/HistoryList';
 import WorkoutEmptyState from '@components/workout/WorkoutEmptyState';
+import { MorningBriefCard } from '@components/home/MorningBriefCard';
+import { useMorningBrief } from '@lib/useMorningBrief';
 
 const SCREEN_PAD_X = 18;
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -57,6 +59,7 @@ export default function WorkoutScreen() {
   }, [drainSyncQueue]);
 
   const dateLabel = useMemo(() => formatToday(new Date()), []);
+  const morningBrief = useMorningBrief();
   const headline = activeSession ? 'Pick up where\nyou left off.' : 'Ready to train.';
 
   const startScale = useSharedValue(1);
@@ -86,6 +89,10 @@ export default function WorkoutScreen() {
         <Animated.View entering={FadeInDown.duration(350)} style={styles.titleBlock}>
           <Text style={styles.dateLabel}>{dateLabel}</Text>
           <Text style={styles.title}>{headline}</Text>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.duration(350).delay(60)} style={styles.briefSlot}>
+          <MorningBriefCard insight={morningBrief} />
         </Animated.View>
 
         {activeSession && (
@@ -165,6 +172,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
     letterSpacing: -1.2,
     lineHeight: 38,
+  },
+  briefSlot: {
+    marginTop: 18,
+    paddingHorizontal: SCREEN_PAD_X,
   },
   heroSlot: {
     marginTop: 22,
