@@ -103,6 +103,11 @@ throw new AppError('Not found', 404);
 | GET | /api/sleep/:userId/timeline/:date | JWT | Phase timeline for hypnogram |
 | GET | /api/profile | JWT | Get user profile |
 | PATCH | /api/profile | JWT | Update profile |
+| GET | /api/nutrition/logs/:userId | JWT | List logs (optional `from`/`to`) |
+| POST | /api/nutrition/logs/sync | JWT | Batch offline log sync (idempotent) |
+| DELETE | /api/nutrition/logs/:id | JWT | Delete a log |
+| GET | /api/nutrition/foods/search | JWT | Trigram search → OFF fallback |
+| GET | /api/nutrition/foods/barcode/:code | JWT | Barcode lookup → OFF (cached) |
 
 ## Non-Negotiable Rules
 

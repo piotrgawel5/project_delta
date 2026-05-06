@@ -87,9 +87,10 @@ just test    # Full test suite
 - No waterfall `useEffect` chains. Batch in Zustand with `Promise.all`. Cache guard: check `isLoaded` before fetching.
 - Never write directly to Supabase from components. All writes: Zustand → `POST /api/sleep/sync-batch`.
 
-### State (Zustand)
+### State (Zustand v5)
 - Granular selectors: `useSleepStore(s => s.data?.score)`. Never `useSleepStore()`.
 - No inline selector functions inside components (new reference per render = unnecessary re-render).
+- **Selectors must return stable references.** Returning a fresh `[]`/`{}`/computed object every call breaks `useSyncExternalStore`'s `Object.is` equality and triggers an infinite render loop ("Maximum update depth exceeded" → gray screen). Cache fallbacks at module scope (`const EMPTY: T[] = []; return s.foo[id] ?? EMPTY;`) and derive computed objects via `useMemo` in the component, never inside the selector.
 
 ### Types
 - No `any`. Use `unknown` + type guard or a Zod-validated type.

@@ -1,6 +1,8 @@
 # Mobile App State Management
 
-The application uses **Zustand** for state management, providing a lightweight and high-performance solution for managing global state across the mobile app.
+The application uses **Zustand v5** for state management.
+
+> **Critical Zustand v5 rule:** Selectors must return stable references when the underlying state hasn't changed. Returning a fresh `[]`, `{}`, or computed object on every call breaks `useSyncExternalStore` `Object.is` equality and triggers an infinite re-render loop. Cache fallbacks at module scope (`const EMPTY: T[] = []`) and derive computed objects via `useMemo` in the component, not in the selector.
 
 ## Stores
 
@@ -22,27 +24,41 @@ The application uses **Zustand** for state management, providing a lightweight a
 ### `useProfileStore`
 
 - **File**: `store/profileStore.ts`
-- **Purpose**: Handles user profile data and the multi-step onboarding process.
+- **Purpose**: User profile and onboarding form state.
 - **Key State**:
-  - `profile`: The current user's profile information (age, height, weight, etc.).
-  - `formData`: Temporary storage for onboarding inputs.
-  - `currentStep`: Tracks progress through the 9-step onboarding flow.
-- **Primary Actions**:
-  - `fetchProfile(userId)`: Retrieves user data from the `/api/profile` endpoint.
-  - `saveProfile(userId)`: Persists onboarding or edit-modal changes.
-  - `uploadAvatar(userId, uri)`: Converts local images to base64 and uploads to the server.
-  - `canChangeUsername()`: Logic to enforce a 7-day cooldown on username updates.
+  - `profile`: User profile (age, height, weight, `plan: 'free' | 'pro' | 'premium'`, etc.).
+  - `formData`, `currentStep`: Onboarding scratch state.
+- **Primary Actions**: `fetchProfile`, `saveProfile`, `uploadAvatar`, `canChangeUsername`.
 
 ### `useSleepStore`
 
 - **File**: `store/sleepStore.ts`
-- **Purpose**: Orchestrates sleep data fetching from Health Connect and synchronization with the backend.
+- **Purpose**: Sleep data + offline batch sync.
+- **Key State**: `recentHistory`, `isConnected`, `lastNightSleep`, sync queue.
+- **Primary Actions**: `fetchSleepData`, `syncPendingRecords`, `forceSaveManualSleep`.
+
+### `useWorkoutStore`
+
+- **File**: `store/workoutStore.ts`
+- **Purpose**: Workout sessions, sets, sync queue, logging mode preference.
 - **Key State**:
-  - `isConnected`: Status of Health Connect permissions.
-  - `weeklyHistory`: Array of sleep records for the dashboard charts.
-  - `lastNightSleep`: Summary of the most recent sleep session.
-- **Primary Actions**:
-  - `fetchSleepData(userId)`: Reads sleep sessions from Health Connect (Android only).
-  - `syncPendingRecords(userId)`: Batches local cached sleep data and pushes it to the API.
-  - `forceSaveManualSleep(...)`: Bypasses health sync to save a manual entry immediately.
-- **Optimization**: Uses a cooldown mechanism (via `sleepCache`) to prevent redundant API calls and Health Connect queries.
+  - `sessions: WorkoutSession[]`
+  - `activeSession`
+  - `loggingMode: 'quick' | 'detailed'` — persisted, drives `app/workout/active.tsx` layout
+  - `availableEquipment: Equipment[]` — persisted, drives picker chip filter
+  - `syncQueue`, `syncStatus`
+- **Primary Actions**: `startWorkout`, `logSet`, `finishWorkout`, `setLoggingMode`, `setAvailableEquipment`, `drainSyncQueue`.
+
+### `useNutritionStore`
+
+- **File**: `store/nutritionStore.ts`
+- **Purpose**: Nutrition logs by date, foods catalog cache, offline write queue.
+- **Key State**: `logsByDate`, `isLoaded`, `loadedForUserId`, `syncQueue`, `syncStatus`.
+- **Primary Actions**: `fetchLogs`, `logFood`, `removeLog`, `searchFoods`, `lookupBarcode`, `drainSyncQueue`.
+- **Selectors**:
+  - `selectLogsForDate(date)` — returns the logs array; uses a module-scope `EMPTY_LOGS` fallback to keep references stable.
+  - `computeMacrosForLogs(logs)` — **pure helper, NOT a selector**. Call inside `useMemo` over the logs array.
+
+### Removed: `useHealthStore`
+
+Health Connect data now flows directly through the sleep engine (`lib/sleep*.ts`); the empty `healthStore` was removed.

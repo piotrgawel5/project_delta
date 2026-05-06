@@ -47,8 +47,9 @@ lib/
 store/
   authStore.ts              → Auth state (Supabase session)
   sleepStore.ts             → Sleep data, sync queue, batch sync
-  profileStore.ts           → User profile
-  healthStore.ts            → Health Connect data
+  profileStore.ts           → User profile (incl. plan: free|pro|premium)
+  workoutStore.ts           → Sessions, sets, loggingMode, availableEquipment
+  nutritionStore.ts         → Logs by date, sync queue, food search
 
 modules/
   health-connect/           → Android Health Connect Kotlin bridge
