@@ -1,104 +1,186 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import {
-  FlatList,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import BottomSheet, {
+  BottomSheetFooter,
+  BottomSheetSectionList,
+  BottomSheetTextInput,
+  type BottomSheetFooterProps,
+} from '@gorhom/bottom-sheet';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Ionicons } from '@expo/vector-icons';
-import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
-import {
-  EXERCISE_CATEGORIES,
-  EXERCISES,
-  getExercisesByCategory,
-} from '@lib/workoutFixtures';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { SLEEP_FONTS, WORKOUT_THEME, tabularStyle } from '@constants';
+import { EXERCISES } from '@lib/workoutFixtures';
 import type { Exercise, MuscleGroup } from '@shared';
 
-const MUSCLE_LABEL: Partial<Record<MuscleGroup, string>> = {
-  chest: 'Chest',
-  front_delts: 'Front Delts',
-  side_delts: 'Side Delts',
-  rear_delts: 'Rear Delts',
-  biceps: 'Biceps',
-  triceps: 'Triceps',
-  lats: 'Lats',
-  upper_back: 'Upper Back',
-  lower_back: 'Lower Back',
-  quads: 'Quads',
-  hamstrings: 'Hamstrings',
-  glutes: 'Glutes',
-  abs: 'Abs',
-  calves: 'Calves',
-};
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+interface Props {
+  sheetRef: React.RefObject<BottomSheet | null>;
+  onAdd: (exerciseIds: string[]) => void;
+}
+
+interface Section {
+  title: string;
+  data: Exercise[];
+}
 
 function muscleLabel(m: MuscleGroup): string {
-  return MUSCLE_LABEL[m] ?? m.replace('_', ' ');
+  return m
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }
 
-const ExerciseRow = memo(function ExerciseRow({
-  exercise,
-  onAdd,
-}: {
-  exercise: Exercise;
-  onAdd: (id: string) => void;
-}) {
-  return (
-    <Pressable
-      onPress={() => {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        onAdd(exercise.id);
-      }}
-      style={({ pressed }) => [styles.exerciseRow, pressed && styles.exerciseRowPressed]}>
-      <View style={styles.exerciseInfo}>
-        <Text style={styles.exerciseName}>{exercise.name}</Text>
-        <View style={styles.muscleBadges}>
-          {exercise.primaryMuscles.slice(0, 2).map((m) => (
-            <View key={m} style={styles.muscleBadge}>
-              <Text style={styles.muscleBadgeText}>{muscleLabel(m)}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-      <View style={styles.addIconWrap}>
-        <Ionicons name="add" size={22} color={WORKOUT_THEME.accent} />
-      </View>
-    </Pressable>
-  );
-});
-
-interface ExercisePickerSheetProps {
-  sheetRef: React.RefObject<BottomSheet | null>;
-  onAdd: (exerciseId: string) => void;
+function recentLabel(ex: Exercise): string {
+  // Placeholder until exercise-history integration; show muscle group instead.
+  return ex.primaryMuscles.slice(0, 1).map(muscleLabel).join(' ');
 }
 
-export default function ExercisePickerSheet({ sheetRef, onAdd }: ExercisePickerSheetProps) {
-  const snapPoints = useMemo(() => ['60%', '92%'], []);
-  const [query, setQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('all');
-  const inputRef = useRef<TextInput>(null);
+const PRIMARY_GROUPS: { title: string; match: (m: MuscleGroup) => boolean }[] = [
+  { title: 'Chest', match: (m) => m === 'chest' },
+  { title: 'Back', match: (m) => m === 'lats' || m === 'upper_back' || m === 'lower_back' },
+  { title: 'Shoulders', match: (m) => m === 'front_delts' || m === 'side_delts' || m === 'rear_delts' },
+  { title: 'Arms', match: (m) => m === 'biceps' || m === 'triceps' },
+  { title: 'Legs', match: (m) => m === 'quads' || m === 'hamstrings' || m === 'glutes' || m === 'calves' },
+  { title: 'Core', match: (m) => m === 'abs' || m === 'obliques' },
+];
 
-  const filtered = useMemo(() => {
-    const byCategory = getExercisesByCategory(activeCategory);
-    if (!query.trim()) return byCategory;
-    const q = query.toLowerCase();
-    return byCategory.filter(
-      (e) =>
-        e.name.toLowerCase().includes(q) ||
-        e.primaryMuscles.some((m) => m.includes(q))
+function buildSections(query: string): Section[] {
+  const q = query.trim().toLowerCase();
+  const filter = (e: Exercise) =>
+    !q ||
+    e.name.toLowerCase().includes(q) ||
+    e.primaryMuscles.some((m) => muscleLabel(m).toLowerCase().includes(q));
+
+  const sections: Section[] = [];
+  for (const group of PRIMARY_GROUPS) {
+    const items = EXERCISES.filter(
+      (e) => e.primaryMuscles.some(group.match) && filter(e),
     );
-  }, [activeCategory, query]);
+    if (items.length > 0) sections.push({ title: group.title, data: items });
+  }
+  return sections;
+}
 
-  const handleAdd = useCallback(
-    (id: string) => {
-      onAdd(id);
-      sheetRef.current?.close();
+export default function ExercisePickerSheet({ sheetRef, onAdd }: Props) {
+  const snapPoints = useMemo(() => ['85%'], []);
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
+
+  const sections = useMemo(() => buildSections(query), [query]);
+
+  const toggle = useCallback((id: string) => {
+    void Haptics.selectionAsync();
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }, []);
+
+  const handleClear = useCallback(() => {
+    if (selected.length === 0) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelected([]);
+  }, [selected.length]);
+
+  const handleCancel = useCallback(() => {
+    sheetRef.current?.close();
+    setSelected([]);
+    setQuery('');
+  }, [sheetRef]);
+
+  const handleAdd = useCallback(() => {
+    if (selected.length === 0) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onAdd(selected);
+    setSelected([]);
+    setQuery('');
+    sheetRef.current?.close();
+  }, [selected, onAdd, sheetRef]);
+
+  const ctaScale = useSharedValue(1);
+  const ctaStyle = useAnimatedStyle(() => ({ transform: [{ scale: ctaScale.value }] }));
+
+  const renderFooter = useCallback(
+    (props: BottomSheetFooterProps) => (
+      <BottomSheetFooter {...props} bottomInset={0}>
+        <View style={styles.ctaWrap}>
+          <LinearGradient
+            colors={['rgba(14,14,16,0)', 'rgba(14,14,16,0.96)']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 0.4 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <AnimatedPressable
+            onPressIn={() => {
+              ctaScale.value = withTiming(0.97, { duration: 100 });
+            }}
+            onPressOut={() => {
+              ctaScale.value = withTiming(1, { duration: 100 });
+            }}
+            onPress={handleAdd}
+            disabled={selected.length === 0}
+            style={[
+              styles.cta,
+              selected.length === 0 && styles.ctaDisabled,
+              ctaStyle,
+            ]}>
+            <View style={styles.ctaLeft}>
+              <View style={styles.ctaCount}>
+                <Text style={styles.ctaCountText}>{selected.length}</Text>
+              </View>
+              <Text style={styles.ctaText}>Add to workout</Text>
+            </View>
+            <MaterialCommunityIcons name="arrow-right" size={17} color={WORKOUT_THEME.bg} />
+          </AnimatedPressable>
+        </View>
+      </BottomSheetFooter>
+    ),
+    [selected.length, handleAdd, ctaScale, ctaStyle],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Exercise }) => {
+      const idx = selected.indexOf(item.id);
+      const isSelected = idx !== -1;
+      const order = isSelected ? idx + 1 : null;
+      return (
+        <Pressable
+          onPress={() => toggle(item.id)}
+          style={[styles.row, isSelected && styles.rowSelected]}>
+          <View style={[styles.selector, isSelected && styles.selectorOn]}>
+            {isSelected ? (
+              <Text style={styles.orderText}>{order}</Text>
+            ) : (
+              <MaterialCommunityIcons name="plus" size={14} color={WORKOUT_THEME.fg3} />
+            )}
+          </View>
+          <View style={styles.rowBody}>
+            <Text style={styles.rowTitle} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <Text style={styles.rowMeta} numberOfLines={1}>
+              {recentLabel(item)}
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="dots-horizontal" size={18} color={WORKOUT_THEME.fg4} />
+        </Pressable>
+      );
     },
-    [onAdd, sheetRef]
+    [selected, toggle],
+  );
+
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: { title: string } }) => (
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionLabel}>{section.title}</Text>
+      </View>
+    ),
+    [],
   );
 
   return (
@@ -107,167 +189,231 @@ export default function ExercisePickerSheet({ sheetRef, onAdd }: ExercisePickerS
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
       backgroundStyle={styles.sheetBg}
-      handleIndicatorStyle={styles.handle}>
-      <View style={styles.inner}>
-        {/* Search */}
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={16} color={SLEEP_THEME.textMuted1} style={styles.searchIcon} />
-          <TextInput
-            ref={inputRef}
-            style={styles.searchInput}
+      handleIndicatorStyle={styles.handleIndicator}
+      footerComponent={renderFooter}>
+      <View style={styles.headerBar}>
+        <Pressable onPress={handleCancel} hitSlop={6}>
+          <Text style={styles.headerSide}>Cancel</Text>
+        </Pressable>
+        <Text style={styles.headerTitle}>Build session</Text>
+        <Pressable onPress={handleClear} hitSlop={6} disabled={selected.length === 0}>
+          <Text
+            style={[
+              styles.headerSide,
+              styles.headerClear,
+              selected.length === 0 && styles.headerClearDisabled,
+            ]}>
+            Clear
+          </Text>
+        </Pressable>
+      </View>
+
+      <Text style={styles.subCopy}>Pick exercises to add. Drag to reorder before starting.</Text>
+
+      <View style={styles.searchWrap}>
+        <View style={styles.searchInner}>
+          <MaterialCommunityIcons name="magnify" size={17} color={WORKOUT_THEME.fg3} />
+          <BottomSheetTextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search exercises..."
-            placeholderTextColor={SLEEP_THEME.textMuted2}
-            clearButtonMode="while-editing"
-            returnKeyType="search"
+            placeholder="Search 4,200+ exercises…"
+            placeholderTextColor={WORKOUT_THEME.fg4}
+            style={styles.searchInput}
+            autoCorrect={false}
           />
+          <View style={styles.filterChip}>
+            <MaterialCommunityIcons name="tune-variant" size={12} color={WORKOUT_THEME.fg3} />
+          </View>
         </View>
-
-        {/* Category filter */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categories}>
-          {EXERCISE_CATEGORIES.map((cat) => (
-            <Pressable
-              key={cat.id}
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setActiveCategory(cat.id);
-              }}
-              style={[
-                styles.categoryPill,
-                activeCategory === cat.id && styles.categoryPillActive,
-              ]}>
-              <Text
-                style={[
-                  styles.categoryPillText,
-                  activeCategory === cat.id && styles.categoryPillTextActive,
-                ]}>
-                {cat.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-
-        {/* Exercise list */}
-        <BottomSheetFlatList<Exercise>
-          data={filtered}
-          keyExtractor={(item: Exercise) => item.id}
-          renderItem={({ item }: { item: Exercise }) => <ExerciseRow exercise={item} onAdd={handleAdd} />}
-          contentContainerStyle={styles.listContent}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No exercises found</Text>
-          }
-        />
       </View>
+
+      <BottomSheetSectionList
+        sections={sections}
+        keyExtractor={(item: Exercise) => item.id}
+        renderItem={renderItem}
+        renderSectionHeader={renderSectionHeader}
+        stickySectionHeadersEnabled
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+      />
     </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  sheetBg: { backgroundColor: SLEEP_THEME.bottomSheetBg },
-  handle: { backgroundColor: SLEEP_THEME.border },
-  inner: { flex: 1 },
-  searchRow: {
+  sheetBg: {
+    backgroundColor: WORKOUT_THEME.surface1,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+  },
+  handleIndicator: {
+    width: 38,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+  },
+  headerBar: {
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: SLEEP_LAYOUT.screenPaddingH,
-    marginBottom: 12,
-    backgroundColor: SLEEP_THEME.cardBg,
-    borderRadius: SLEEP_LAYOUT.cardRadiusInner,
-    paddingHorizontal: 12,
-    height: 44,
+    justifyContent: 'space-between',
   },
-  searchIcon: { marginRight: 8 },
+  headerSide: {
+    fontFamily: SLEEP_FONTS.semiBold,
+    fontSize: 14,
+    color: WORKOUT_THEME.fg3,
+    minWidth: 50,
+  },
+  headerClear: {
+    color: WORKOUT_THEME.fg2,
+    textAlign: 'right',
+  },
+  headerClearDisabled: {
+    opacity: 0.4,
+  },
+  headerTitle: {
+    fontFamily: SLEEP_FONTS.bold,
+    fontSize: 16,
+    color: WORKOUT_THEME.fg,
+  },
+  subCopy: {
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+    fontFamily: SLEEP_FONTS.regular,
+    fontSize: 12.5,
+    color: WORKOUT_THEME.fg3,
+    lineHeight: 18,
+  },
+  searchWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  searchInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 14,
+    backgroundColor: WORKOUT_THEME.surface3,
+  },
   searchInput: {
     flex: 1,
-    fontFamily: SLEEP_FONTS.regular,
-    fontSize: 16,
-    color: SLEEP_THEME.textPrimary,
-    padding: 0,
-  },
-  categories: {
-    paddingHorizontal: SLEEP_LAYOUT.screenPaddingH,
-    paddingBottom: 12,
-    gap: 8,
-  },
-  categoryPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: SLEEP_THEME.cardBg,
-  },
-  categoryPillActive: {
-    backgroundColor: WORKOUT_THEME.accentDim,
-    borderWidth: 1,
-    borderColor: WORKOUT_THEME.accent,
-  },
-  categoryPillText: {
     fontFamily: SLEEP_FONTS.medium,
-    fontSize: 13,
-    lineHeight: 16,
-    color: SLEEP_THEME.textMuted1,
+    fontSize: 14.5,
+    color: WORKOUT_THEME.fg,
+    paddingVertical: 0,
   },
-  categoryPillTextActive: {
-    color: WORKOUT_THEME.accent,
+  filterChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: WORKOUT_THEME.surface4,
   },
   listContent: {
-    paddingHorizontal: SLEEP_LAYOUT.screenPaddingH,
-    paddingBottom: 40,
+    paddingBottom: 24,
   },
-  exerciseRow: {
+  sectionHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 8,
+    backgroundColor: WORKOUT_THEME.surface1,
+  },
+  sectionLabel: {
+    fontFamily: SLEEP_FONTS.semiBold,
+    fontSize: 10.5,
+    color: WORKOUT_THEME.fg3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  row: {
+    paddingHorizontal: 18,
+    paddingVertical: 11,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: SLEEP_THEME.border,
+    gap: 12,
   },
-  exerciseRowPressed: {
-    opacity: 0.6,
+  rowSelected: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
-  exerciseInfo: { flex: 1 },
-  exerciseName: {
-    fontFamily: SLEEP_FONTS.semiBold,
-    fontSize: 16,
-    lineHeight: 20,
-    color: SLEEP_THEME.textPrimary,
-    marginBottom: 4,
-  },
-  muscleBadges: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  muscleBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: SLEEP_THEME.elevatedBg,
-  },
-  muscleBadgeText: {
-    fontFamily: SLEEP_FONTS.regular,
-    fontSize: 11,
-    lineHeight: 14,
-    color: SLEEP_THEME.textMuted1,
-  },
-  addIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: WORKOUT_THEME.accentDim,
+  selector: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: WORKOUT_THEME.surface3,
+    borderWidth: 1,
+    borderColor: WORKOUT_THEME.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyText: {
+  selectorOn: {
+    backgroundColor: WORKOUT_THEME.fg,
+    borderColor: WORKOUT_THEME.fg,
+  },
+  orderText: {
+    fontFamily: SLEEP_FONTS.bold,
+    fontSize: 12,
+    color: WORKOUT_THEME.bg,
+    ...tabularStyle,
+  },
+  rowBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowTitle: {
+    fontFamily: SLEEP_FONTS.semiBold,
+    fontSize: 14.5,
+    color: WORKOUT_THEME.fg,
+  },
+  rowMeta: {
     fontFamily: SLEEP_FONTS.regular,
+    fontSize: 11.5,
+    color: WORKOUT_THEME.fg3,
+    marginTop: 1,
+    ...tabularStyle,
+  },
+  ctaWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 22,
+    paddingBottom: 22,
+  },
+  cta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: WORKOUT_THEME.fg,
+  },
+  ctaDisabled: {
+    opacity: 0.4,
+  },
+  ctaLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  ctaCount: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: WORKOUT_THEME.bg,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  ctaCountText: {
+    fontFamily: SLEEP_FONTS.bold,
+    fontSize: 12,
+    color: WORKOUT_THEME.fg,
+    ...tabularStyle,
+  },
+  ctaText: {
+    fontFamily: SLEEP_FONTS.bold,
     fontSize: 15,
-    color: SLEEP_THEME.textMuted2,
-    textAlign: 'center',
-    marginTop: 40,
+    color: WORKOUT_THEME.bg,
   },
 });

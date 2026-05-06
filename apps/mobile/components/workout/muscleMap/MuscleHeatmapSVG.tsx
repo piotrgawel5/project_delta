@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import Svg, { Circle, Path } from 'react-native-svg';
 import type { MuscleGroup, MuscleIntensity } from '@shared';
-import { SLEEP_THEME, WORKOUT_THEME } from '@constants';
+import { SLEEP_THEME } from '@constants';
 import AnimatedMusclePath from './AnimatedMusclePath';
 import {
   BODY_OUTLINE_BACK,
@@ -133,11 +133,21 @@ function MuscleHeatmapSVGComponent({
 
 export default memo(MuscleHeatmapSVGComponent);
 
-// Exported for convenience — matches the WORKOUT_THEME muscle* tokens
+// Local muscle-heatmap palette (decoupled from WORKOUT_THEME after the
+// monochrome workout redesign — these stay green-scale by design here).
+const MUSCLE_HEATMAP_PALETTE = {
+  untrained: 'rgba(255,255,255,0.06)',
+  light: '#1D8B41',
+  moderate: '#30D158',
+  heavy: '#FF9F0A',
+  overtrain: '#FF453A',
+} as const;
+
 export const INTENSITY_LABELS = ['Untrained', 'Light', 'Moderate', 'Heavy'] as const;
 export const INTENSITY_COLORS = [
-  WORKOUT_THEME.muscleUntrained,
-  WORKOUT_THEME.muscleLight,
-  WORKOUT_THEME.muscleModerate,
-  WORKOUT_THEME.muscleHeavy,
+  MUSCLE_HEATMAP_PALETTE.untrained,
+  MUSCLE_HEATMAP_PALETTE.light,
+  MUSCLE_HEATMAP_PALETTE.moderate,
+  MUSCLE_HEATMAP_PALETTE.heavy,
 ] as const;
+export const OVERTRAIN_COLOR = MUSCLE_HEATMAP_PALETTE.overtrain;

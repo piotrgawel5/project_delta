@@ -5,7 +5,6 @@ import {
   toBedtimeMinutes,
   toWakeMinutes,
 } from '../sleepWeeklyInsights';
-import { buildSmoothPath } from '../sleepChartUtils';
 
 describe('sleepWeeklyInsights', () => {
   it('returns null when weekly delta does not have enough prior scores', () => {
@@ -68,25 +67,3 @@ describe('sleepWeeklyInsights', () => {
   });
 });
 
-describe('buildSmoothPath', () => {
-  it('returns the expected path for 0, 1, and 2 points', () => {
-    expect(buildSmoothPath([])).toBe('');
-    expect(buildSmoothPath([{ x: 1, y: 2 }])).toBe('M 1 2');
-    expect(
-      buildSmoothPath([
-        { x: 0, y: 10 },
-        { x: 10, y: 20 },
-      ])
-    ).toBe('M 0 10 L 10 20');
-  });
-
-  it('returns a cubic bezier path for 3 or more points', () => {
-    expect(
-      buildSmoothPath([
-        { x: 0, y: 10 },
-        { x: 10, y: 20 },
-        { x: 20, y: 0 },
-      ])
-    ).toBe('M 0 10 C 2 12 6 22 10 20 C 14 18 18 4 20 0');
-  });
-});

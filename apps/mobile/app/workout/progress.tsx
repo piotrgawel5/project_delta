@@ -6,10 +6,16 @@ import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useWorkoutStore } from '@store/workoutStore';
-import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
+import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import { computeMuscleHeatmap, getNeglectedMuscles, isOvertrained } from '@lib/workoutAnalytics';
 import { MuscleHeatmapLarge } from '@components/workout/muscleMap';
 import type { MuscleGroup } from '@shared';
+
+// Local accent palette retained for the progress screen (out of scope of the
+// monochrome workout redesign — keeps the heatmap legend readable).
+const PROGRESS_ACCENT = '#30D158';
+const PROGRESS_ACCENT_DIM = 'rgba(48,209,88,0.15)';
+const PROGRESS_OVERTRAIN_BG = 'rgba(255,69,58,0.12)';
 
 const LOOKBACK_OPTIONS = [7, 14, 30] as const;
 type LookbackDays = (typeof LOOKBACK_OPTIONS)[number];
@@ -188,7 +194,7 @@ const styles = StyleSheet.create({
     backgroundColor: SLEEP_THEME.cardBg,
   },
   togglePillActive: {
-    backgroundColor: WORKOUT_THEME.accentDim,
+    backgroundColor: PROGRESS_ACCENT_DIM,
   },
   toggleText: {
     fontFamily: SLEEP_FONTS.medium,
@@ -197,7 +203,7 @@ const styles = StyleSheet.create({
     color: SLEEP_THEME.textMuted1,
   },
   toggleTextActive: {
-    color: WORKOUT_THEME.accent,
+    color: PROGRESS_ACCENT,
     fontFamily: SLEEP_FONTS.semiBold,
   },
   mapCard: {
@@ -232,7 +238,7 @@ const styles = StyleSheet.create({
     backgroundColor: SLEEP_THEME.elevatedBg,
   },
   tagDanger: {
-    backgroundColor: WORKOUT_THEME.muscleOvertrainBg,
+    backgroundColor: PROGRESS_OVERTRAIN_BG,
   },
   tagText: {
     fontFamily: SLEEP_FONTS.medium,

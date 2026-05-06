@@ -16,7 +16,7 @@ const WorkoutSetSchema = z.object({
 
 const WorkoutExerciseLogSchema = z.object({
   exerciseId: z.string().min(1),
-  sets: z.array(WorkoutSetSchema).min(1),
+  sets: z.array(WorkoutSetSchema),
   notes: z.string().max(500).nullable(),
 });
 

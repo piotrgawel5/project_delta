@@ -26,6 +26,8 @@ export interface SessionMetadata {
   notes: string | null;
 }
 
+export type SyncStatus = "idle" | "syncing" | "error";
+
 interface WorkoutStore {
   // Persisted session history (loaded from API)
   sessions: WorkoutSession[];
@@ -38,6 +40,10 @@ interface WorkoutStore {
 
   // Finished sessions waiting to reach the server — persisted to AsyncStorage
   syncQueue: WorkoutSession[];
+
+  // Sync observability
+  syncStatus: SyncStatus;
+  lastSyncError: string | null;
 
   // Actions
   fetchSessions: (userId: string) => Promise<void>;
@@ -67,6 +73,8 @@ export const useWorkoutStore = create<WorkoutStore>()(
       error: null,
       activeSession: null,
       syncQueue: [],
+      syncStatus: "idle",
+      lastSyncError: null,
 
       fetchSessions: async (userId: string) => {
         const state = get();
@@ -242,6 +250,9 @@ export const useWorkoutStore = create<WorkoutStore>()(
 
         const durationSeconds = Math.floor((finishMs - startMs - pausedMs) / 1000);
 
+        // Drop exercises with no logged sets — backend stores nothing for them
+        const cleanExercises = activeSession.exercises.filter((e) => e.sets.length > 0);
+
         const finishedSession: WorkoutSession = {
           id: activeSession.id,
           userId: activeSession.userId,
@@ -249,21 +260,34 @@ export const useWorkoutStore = create<WorkoutStore>()(
           startedAt: activeSession.startedAt,
           finishedAt,
           durationSeconds,
-          exercises: activeSession.exercises,
+          exercises: cleanExercises,
           notes: metadata?.notes ?? activeSession.notes ?? null,
           name: metadata?.name ?? null,
           feelRating: metadata?.feelRating ?? null,
           difficultyRating: metadata?.difficultyRating ?? null,
         };
 
-        // Optimistic update — add to local history immediately
+        // Optimistic local history update; keep activeSession until sync settles
+        // so the Active screen doesn't unmount while the finish sheet is animating.
         set({
           sessions: [finishedSession, ...sessions],
-          activeSession: null,
           syncQueue: [...syncQueue, finishedSession],
+          syncStatus: "syncing",
+          lastSyncError: null,
         });
 
-        void get().drainSyncQueue();
+        await get().drainSyncQueue();
+
+        const { syncStatus, lastSyncError } = get();
+        if (syncStatus === "error") {
+          // Surface to caller so the finish sheet can stay open and show the error.
+          throw new Error(lastSyncError ?? "Failed to sync workout");
+        }
+
+        // NOTE: do NOT clear activeSession here. The Active screen guards on
+        // `if (!activeSession) return null` and would unmount mid-save, ripping
+        // out the still-animating finish sheet. The screen calls
+        // `discardWorkout()` itself once it has navigated back.
       },
 
       discardWorkout: () => {
@@ -272,17 +296,32 @@ export const useWorkoutStore = create<WorkoutStore>()(
 
       drainSyncQueue: async () => {
         const { syncQueue } = get();
-        if (syncQueue.length === 0) return;
+        if (syncQueue.length === 0) {
+          set({ syncStatus: "idle", lastSyncError: null });
+          return;
+        }
+
+        set({ syncStatus: "syncing", lastSyncError: null });
 
         const remaining: WorkoutSession[] = [];
-        for (const session of syncQueue) {
-          try {
-            await api.post("/api/workout/sessions", { session });
-          } catch {
-            remaining.push(session);
+        let lastError: string | null = null;
+
+        try {
+          for (const session of syncQueue) {
+            try {
+              await api.post("/api/workout/sessions", { session });
+            } catch (err) {
+              remaining.push(session);
+              lastError = err instanceof Error ? err.message : "Network error";
+            }
           }
+        } finally {
+          set({
+            syncQueue: remaining,
+            syncStatus: remaining.length === 0 ? "idle" : "error",
+            lastSyncError: remaining.length === 0 ? null : lastError,
+          });
         }
-        set({ syncQueue: remaining });
       },
     }),
     {

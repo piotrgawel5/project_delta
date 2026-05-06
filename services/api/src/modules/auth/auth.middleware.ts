@@ -48,7 +48,7 @@ export const requireAuth = async (
         }
 
         // Attach user to request
-        (req as any).user = user;
+        req.user = user;
         next();
     } catch (error) {
         logger.error("Auth middleware error", error);

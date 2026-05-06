@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authController } from "./auth.controller";
 import { requireAuth } from "./auth.middleware";
-import { authLimiter } from "../../middleware/rateLimiter";
+import { authOptionsLimiter, authVerifyLimiter } from "../../middleware/rateLimiter";
 import { validate } from "../../middleware/validate";
 import { asyncHandler } from "../../utils/asyncHandler";
 import {
@@ -17,14 +17,14 @@ const router = Router();
 // Passkey Registration
 router.post(
     "/passkey/register/options",
-    authLimiter,
+    authOptionsLimiter,
     validate(passkeyRegisterOptionsSchema),
     asyncHandler((req, res) => authController.registerPasskeyOptions(req, res)),
 );
 
 router.post(
     "/passkey/register/verify",
-    authLimiter,
+    authVerifyLimiter,
     validate(passkeyVerifySchema),
     asyncHandler((req, res) => authController.registerPasskeyVerify(req, res)),
 );
@@ -32,13 +32,13 @@ router.post(
 // Passkey Login
 router.post(
     "/passkey/login/options",
-    authLimiter,
+    authOptionsLimiter,
     asyncHandler((req, res) => authController.loginPasskeyOptions(req, res)),
 );
 
 router.post(
     "/passkey/login/verify",
-    authLimiter,
+    authVerifyLimiter,
     validate(passkeyLoginVerifySchema),
     asyncHandler((req, res) => authController.loginPasskeyVerify(req, res)),
 );
@@ -46,14 +46,14 @@ router.post(
 // Email Authentication
 router.post(
     "/email/login",
-    authLimiter,
+    authVerifyLimiter,
     validate(emailAuthSchema),
     asyncHandler((req, res) => authController.loginEmail(req, res)),
 );
 
 router.post(
     "/email/signup",
-    authLimiter,
+    authVerifyLimiter,
     validate(emailAuthSchema),
     asyncHandler((req, res) => authController.signupEmail(req, res)),
 );
@@ -61,7 +61,7 @@ router.post(
 // Google Authentication
 router.post(
     "/google/login",
-    authLimiter,
+    authVerifyLimiter,
     validate(googleAuthSchema),
     asyncHandler((req, res) => authController.loginGoogle(req, res)),
 );

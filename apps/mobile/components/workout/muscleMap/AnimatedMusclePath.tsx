@@ -8,16 +8,17 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Path } from 'react-native-svg';
 import type { MuscleIntensity } from '@shared';
-import { WORKOUT_THEME } from '@constants';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 const INTENSITY_COLORS = [
-  WORKOUT_THEME.muscleUntrained,
-  WORKOUT_THEME.muscleLight,
-  WORKOUT_THEME.muscleModerate,
-  WORKOUT_THEME.muscleHeavy,
+  'rgba(255,255,255,0.06)',
+  '#1D8B41',
+  '#30D158',
+  '#FF9F0A',
 ] as const;
+const HEAVY_COLOR = '#FF9F0A';
+const OVERTRAIN_COLOR = '#FF453A';
 
 interface AnimatedMusclePathProps {
   d: string;
@@ -57,7 +58,7 @@ function AnimatedMusclePathComponent({
       ? interpolateColor(
           overtrainPulse.value,
           [0, 1],
-          [WORKOUT_THEME.muscleHeavy, WORKOUT_THEME.muscleOvertrain],
+          [HEAVY_COLOR, OVERTRAIN_COLOR],
         )
       : baseColor;
 

@@ -3,24 +3,18 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   FadeInUp,
   FadeOutDown,
-  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
+  withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
-import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME, WORKOUT_THEME } from '@constants';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SLEEP_FONTS, SLEEP_LAYOUT, WORKOUT_THEME, tabularStyle } from '@constants';
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-const CARD_PADDING = 20;
-const ARC_SIZE = 100;
-const ARC_RADIUS = 40;
-const ARC_STROKE = 5;
-const ARC_CIRCUMFERENCE = 2 * Math.PI * ARC_RADIUS;
-const SPRING = { damping: 18, stiffness: 240 } as const;
 const DEFAULT_SECONDS = 90;
+const BAR_HEIGHT = 70;
 
 interface RestTimerProps {
   isVisible: boolean;
@@ -28,26 +22,20 @@ interface RestTimerProps {
 }
 
 export default function RestTimer({ isVisible, onDismiss }: RestTimerProps) {
+  const insets = useSafeAreaInsets();
   const [secondsLeft, setSecondsLeft] = useState(DEFAULT_SECONDS);
   const totalRef = useRef(DEFAULT_SECONDS);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const addScale = useSharedValue(1);
 
-  // SVG arc progress driven by secondsLeft state
-  const progress = secondsLeft / totalRef.current;
-  const strokeDashoffset = ARC_CIRCUMFERENCE * (1 - Math.max(0, progress));
-
-  const arcColor =
-    secondsLeft <= 10
-      ? WORKOUT_THEME.restTimerDone
-      : secondsLeft <= 20
-        ? WORKOUT_THEME.restTimerWarning
-        : WORKOUT_THEME.restTimerActive;
-
-  const arcProps = useAnimatedProps(() => ({
-    strokeDashoffset,
-    stroke: arcColor,
+  const progress = useSharedValue(1);
+  const progressStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleX: progress.value }],
   }));
+
+  const skipScale = useSharedValue(1);
+  const addScale = useSharedValue(1);
+  const skipStyle = useAnimatedStyle(() => ({ transform: [{ scale: skipScale.value }] }));
+  const addStyle = useAnimatedStyle(() => ({ transform: [{ scale: addScale.value }] }));
 
   const clearTimer = useCallback(() => {
     if (intervalRef.current) {
@@ -61,6 +49,8 @@ export default function RestTimer({ isVisible, onDismiss }: RestTimerProps) {
       clearTimer();
       totalRef.current = seconds;
       setSecondsLeft(seconds);
+      progress.value = 1;
+      progress.value = withTiming(0, { duration: seconds * 1000 });
 
       intervalRef.current = setInterval(() => {
         setSecondsLeft((prev) => {
@@ -78,169 +68,158 @@ export default function RestTimer({ isVisible, onDismiss }: RestTimerProps) {
         });
       }, 1000);
     },
-    [clearTimer, onDismiss]
+    [clearTimer, onDismiss, progress],
   );
 
   useEffect(() => {
-    if (isVisible) {
-      startTimer(DEFAULT_SECONDS);
-    } else {
-      clearTimer();
-      setSecondsLeft(DEFAULT_SECONDS);
-    }
+    if (isVisible) startTimer(DEFAULT_SECONDS);
     return clearTimer;
   }, [isVisible, startTimer, clearTimer]);
 
-  const addButtonStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: addScale.value }],
-  }));
-
-  const handleAddTime = useCallback(() => {
+  const handleAdd30 = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    addScale.value = withSpring(0.85, SPRING);
+    addScale.value = withTiming(0.97, { duration: 80 });
     setTimeout(() => {
-      addScale.value = withSpring(1, SPRING);
-    }, 100);
-    setSecondsLeft((prev) => {
-      const next = prev + 30;
-      totalRef.current = Math.max(totalRef.current, next);
-      return next;
-    });
-  }, [addScale]);
+      addScale.value = withTiming(1, { duration: 80 });
+    }, 80);
+    const newTotal = totalRef.current + 30;
+    const newLeft = secondsLeft + 30;
+    totalRef.current = newTotal;
+    setSecondsLeft(newLeft);
+    progress.value = newLeft / newTotal;
+    progress.value = withTiming(0, { duration: newLeft * 1000 });
+  }, [secondsLeft, addScale, progress]);
 
-  const timeLabel = (() => {
-    const s = Math.max(0, secondsLeft);
-    const mins = Math.floor(s / 60);
-    const secs = s % 60;
-    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}`;
-  })();
+  const handleSkip = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    skipScale.value = withTiming(0.97, { duration: 80 });
+    setTimeout(() => {
+      skipScale.value = withTiming(1, { duration: 80 });
+    }, 80);
+    clearTimer();
+    onDismiss();
+  }, [clearTimer, onDismiss, skipScale]);
 
   if (!isVisible) return null;
 
+  const m = Math.floor(secondsLeft / 60);
+  const s = secondsLeft % 60;
+  const label = `${m}:${String(s).padStart(2, '0')}`;
+  const bottomOffset = SLEEP_LAYOUT.navbarHeight + SLEEP_LAYOUT.navbarBottom + insets.bottom + 12;
+
   return (
     <Animated.View
-      entering={FadeInUp.springify().damping(22).stiffness(200)}
-      exiting={FadeOutDown.duration(200)}
-      style={styles.container}>
-      {/* Arc progress */}
-      <View style={styles.arcWrap}>
-        <Svg width={ARC_SIZE} height={ARC_SIZE}>
-          {/* Track */}
-          <Circle
-            cx={ARC_SIZE / 2}
-            cy={ARC_SIZE / 2}
-            r={ARC_RADIUS}
-            stroke={SLEEP_THEME.border}
-            strokeWidth={ARC_STROKE}
-            fill="none"
-            strokeLinecap="round"
-          />
-          {/* Animated progress arc */}
-          <AnimatedCircle
-            cx={ARC_SIZE / 2}
-            cy={ARC_SIZE / 2}
-            r={ARC_RADIUS}
-            strokeWidth={ARC_STROKE}
-            fill="none"
-            strokeLinecap="round"
-            strokeDasharray={ARC_CIRCUMFERENCE}
-            rotation="-90"
-            origin={`${ARC_SIZE / 2}, ${ARC_SIZE / 2}`}
-            animatedProps={arcProps}
-          />
-        </Svg>
+      entering={FadeInUp.duration(220)}
+      exiting={FadeOutDown.duration(180)}
+      style={[styles.bar, { bottom: bottomOffset, height: BAR_HEIGHT }]}>
+      <BlurView intensity={24} tint="dark" style={StyleSheet.absoluteFill} />
+      <View style={styles.tint} />
 
-        <Text style={[styles.timeText, { color: arcColor }]}>{timeLabel}</Text>
-        <Text style={styles.arcLabel}>Rest</Text>
-      </View>
+      {/* Progress strip — scaled horizontally from full → 0 */}
+      <Animated.View style={[styles.progressStrip, progressStyle]} />
 
-      {/* Actions */}
-      <View style={styles.actions}>
-        <Animated.View style={addButtonStyle}>
-          <Pressable onPress={handleAddTime} hitSlop={12} style={styles.addBtn}>
-            <Text style={styles.addBtnText}>+30s</Text>
+      <View style={styles.foreground}>
+        <View style={styles.iconWrap}>
+          <MaterialCommunityIcons name="timer-outline" size={19} color={WORKOUT_THEME.fg} />
+        </View>
+        <View style={styles.textCol}>
+          <Text style={styles.eyebrow}>Rest</Text>
+          <Text style={styles.timeLabel}>{label}</Text>
+        </View>
+
+        <Animated.View style={addStyle}>
+          <Pressable onPress={handleAdd30} style={styles.add30}>
+            <Text style={styles.add30Text}>+30s</Text>
           </Pressable>
         </Animated.View>
 
-        <Pressable
-          onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            clearTimer();
-            onDismiss();
-          }}
-          hitSlop={12}
-          style={styles.skipBtn}>
-          <Text style={styles.skipText}>Skip</Text>
-        </Pressable>
+        <Animated.View style={skipStyle}>
+          <Pressable onPress={handleSkip} style={styles.skip}>
+            <Text style={styles.skipText}>Skip</Text>
+          </Pressable>
+        </Animated.View>
       </View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginHorizontal: SLEEP_LAYOUT.screenPaddingH,
-    backgroundColor: SLEEP_THEME.cardBg,
-    borderRadius: SLEEP_LAYOUT.cardRadiusOuter,
-    padding: CARD_PADDING,
+  bar: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: WORKOUT_THEME.borderStrong,
+    zIndex: 60,
+  },
+  tint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(22,22,24,0.78)',
+  },
+  progressStrip: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    transformOrigin: 'left',
+  },
+  foreground: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(48,209,88,0.20)',
+    gap: 12,
+    paddingHorizontal: 16,
   },
-  arcWrap: {
-    width: ARC_SIZE,
-    height: ARC_SIZE,
+  iconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  timeText: {
-    position: 'absolute',
+  textCol: {
+    flex: 1,
+  },
+  eyebrow: {
+    fontFamily: SLEEP_FONTS.semiBold,
+    fontSize: 11,
+    color: WORKOUT_THEME.fg3,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  timeLabel: {
     fontFamily: SLEEP_FONTS.bold,
     fontSize: 22,
-    lineHeight: 26,
-    textAlign: 'center',
-    top: ARC_SIZE / 2 - 18,
+    color: WORKOUT_THEME.fg,
+    marginTop: 2,
+    letterSpacing: -0.5,
+    ...tabularStyle,
   },
-  arcLabel: {
-    position: 'absolute',
-    bottom: 8,
-    fontFamily: SLEEP_FONTS.medium,
-    fontSize: 10,
-    lineHeight: 12,
-    color: SLEEP_THEME.textMuted2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  add30: {
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  actions: {
-    flex: 1,
-    gap: 10,
-  },
-  addBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: WORKOUT_THEME.accentDim,
-    alignSelf: 'flex-start',
-  },
-  addBtnText: {
+  add30Text: {
     fontFamily: SLEEP_FONTS.semiBold,
-    fontSize: 14,
-    lineHeight: 18,
-    color: WORKOUT_THEME.accent,
+    fontSize: 13,
+    color: WORKOUT_THEME.fg2,
   },
-  skipBtn: {
+  skip: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: SLEEP_THEME.elevatedBg,
-    alignSelf: 'flex-start',
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: WORKOUT_THEME.fg,
   },
   skipText: {
-    fontFamily: SLEEP_FONTS.medium,
-    fontSize: 14,
-    lineHeight: 18,
-    color: SLEEP_THEME.textMuted1,
+    fontFamily: SLEEP_FONTS.bold,
+    fontSize: 13,
+    color: WORKOUT_THEME.bg,
   },
 });
