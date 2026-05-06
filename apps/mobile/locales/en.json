@@ -1,0 +1,60 @@
+{
+  "onboarding": {
+    "welcome": {
+      "title": "Your three-pillar coach",
+      "body": "Sleep, training, and nutrition — connected so today's plan reflects last night's recovery."
+    },
+    "username": {
+      "title": "Pick a username",
+      "placeholder": "your_handle"
+    },
+    "weight": {
+      "title": "How much do you weigh?",
+      "kg": "kg",
+      "lbs": "lbs"
+    },
+    "goal": {
+      "title": "What's your goal?",
+      "lose_weight": "Lose weight",
+      "maintain": "Maintain",
+      "build_muscle": "Build muscle",
+      "improve_endurance": "Improve endurance",
+      "stay_healthy": "Stay healthy"
+    }
+  },
+  "morningBrief": {
+    "onTrack": {
+      "headline": "You are on track.",
+      "subheadline": "Stick to your plan today."
+    },
+    "lowSleep": {
+      "headline": "Sleep was short — protect your top set.",
+      "rec": "Deload top set 5–10% today."
+    },
+    "heavyLegs": {
+      "headline": "Expect ~3% lower performance today.",
+      "rec": "Reduce accessory work volume by ~20%."
+    },
+    "lowProtein": {
+      "headline": "Recovery may be the bottleneck.",
+      "rec": "Add ~30g protein to one meal today."
+    },
+    "lateMeal": {
+      "headline": "Late dinner showed up in your deep sleep.",
+      "rec": "Try eating dinner before 20:30 tonight."
+    }
+  },
+  "paywall": {
+    "title": "Unlock Delta Premium",
+    "annual": "Annual",
+    "monthly": "Monthly",
+    "perMonth": "/mo",
+    "skip": "Skip — start free",
+    "cta": "Start premium",
+    "valueProps": {
+      "hypnogram": "Full hypnogram with stage breakdown",
+      "morningBrief": "Cross-pillar Morning Brief",
+      "predictions": "Premium sleep predictions"
+    }
+  }
+}

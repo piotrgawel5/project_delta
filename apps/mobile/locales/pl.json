@@ -1,0 +1,60 @@
+{
+  "onboarding": {
+    "welcome": {
+      "title": "Twój trener trzech filarów",
+      "body": "Sen, trening i odżywianie — powiązane, aby dzisiejszy plan odzwierciedlał wczorajszą regenerację."
+    },
+    "username": {
+      "title": "Wybierz nazwę użytkownika",
+      "placeholder": "twoja_nazwa"
+    },
+    "weight": {
+      "title": "Ile ważysz?",
+      "kg": "kg",
+      "lbs": "funty"
+    },
+    "goal": {
+      "title": "Jaki jest twój cel?",
+      "lose_weight": "Schudnąć",
+      "maintain": "Utrzymać wagę",
+      "build_muscle": "Zbudować mięśnie",
+      "improve_endurance": "Poprawić wytrzymałość",
+      "stay_healthy": "Zachować zdrowie"
+    }
+  },
+  "morningBrief": {
+    "onTrack": {
+      "headline": "Jesteś na dobrej drodze.",
+      "subheadline": "Trzymaj się dzisiaj swojego planu."
+    },
+    "lowSleep": {
+      "headline": "Sen był krótki — chroń serię szczytową.",
+      "rec": "Zmniejsz obciążenie serii szczytowej o 5–10% dzisiaj."
+    },
+    "heavyLegs": {
+      "headline": "Spodziewaj się ~3% niższej wydolności dzisiaj.",
+      "rec": "Zmniejsz objętość ćwiczeń pomocniczych o ~20%."
+    },
+    "lowProtein": {
+      "headline": "Regeneracja może być wąskim gardłem.",
+      "rec": "Dodaj ~30g białka do jednego posiłku dzisiaj."
+    },
+    "lateMeal": {
+      "headline": "Późna kolacja wpłynęła na twój sen głęboki.",
+      "rec": "Spróbuj zjeść kolację przed 20:30 dzisiaj."
+    }
+  },
+  "paywall": {
+    "title": "Odblokuj Delta Premium",
+    "annual": "Rocznie",
+    "monthly": "Miesięcznie",
+    "perMonth": "/mies.",
+    "skip": "Pomiń — zacznij za darmo",
+    "cta": "Rozpocznij premium",
+    "valueProps": {
+      "hypnogram": "Pełny hipnogram z podziałem na fazy",
+      "morningBrief": "Wielofilarowe Poranne Podsumowanie",
+      "predictions": "Premium predykcje snu"
+    }
+  }
+}
