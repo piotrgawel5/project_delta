@@ -1,117 +1,152 @@
 // app/(tabs)/nutrition.tsx
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+//
+// SCAFFOLDING — minimal screen wiring the nutrition pillar end-to-end.
+// All visuals here are placeholders; the production design will replace this
+// file wholesale with the proper hero, ring, and meal sections per Figma.
+//
+// Wire-up in place:
+//   1. Fetches today's logs from `nutritionStore.fetchLogs(userId)` on mount.
+//   2. Renders `MacroRing` from selectMacrosForDate.
+//   3. Renders `MealList` from selectLogsForDate.
+//   4. Floating "+ Add" button opens `FoodSearchSheet` which calls
+//      `nutritionStore.logFood({ ... })` — optimistic + queued sync.
+//
+// Replacement guidance:
+//   - Keep the store action contract (logFood, fetchLogs, removeLog).
+//   - Keep `useAuthStore(s => s.user)` as the userId source.
+//   - If the production redesign needs a different layout, extract the data
+//     plumbing (effect + selectors) into a hook so visuals are pure.
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ACCENT = '#30D158';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { SLEEP_FONTS, SLEEP_LAYOUT, SLEEP_THEME } from '../../constants/theme';
+import { useAuthStore } from '@store/authStore';
+import {
+  computeMacrosForLogs,
+  selectLogsForDate,
+  useNutritionStore,
+} from '@store/nutritionStore';
+import { MacroRing } from '../../components/nutrition/MacroRing';
+import { MealList } from '../../components/nutrition/MealList';
+import { FoodSearchSheet } from '../../components/nutrition/FoodSearchSheet';
+import { MorningBriefCard } from '../../components/home/MorningBriefCard';
+import { useMorningBrief } from '@lib/useMorningBrief';
+import type { Food, MealType } from '@shared';
+
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export default function NutritionScreen() {
+  const user = useAuthStore((s) => s.user);
+  const today = useMemo(() => todayKey(), []);
+
+  const fetchLogs = useNutritionStore((s) => s.fetchLogs);
+  const logFood = useNutritionStore((s) => s.logFood);
+  const removeLog = useNutritionStore((s) => s.removeLog);
+  const searchFoods = useNutritionStore((s) => s.searchFoods);
+  const isLoaded = useNutritionStore((s) => s.isLoaded);
+
+  const logsSelector = useMemo(() => selectLogsForDate(today), [today]);
+  const logs = useNutritionStore(logsSelector);
+  const macros = useMemo(() => computeMacrosForLogs(logs), [logs]);
+
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const morningBrief = useMorningBrief();
+
+  useEffect(() => {
+    if (user?.id) void fetchLogs(user.id);
+  }, [user?.id, fetchLogs]);
+
+  const handleLog = async (food: Food, grams: number, meal: MealType) => {
+    if (!user?.id) return;
+    await logFood({ userId: user.id, date: today, mealType: meal, food, grams });
+  };
+
   return (
-    <View style={styles.container}>
-      {/* Background */}
-      <View style={styles.backgroundGradient}>
-        <LinearGradient
-          colors={['rgba(48, 209, 88, 0.1)', 'transparent']}
-          style={styles.gradientOrb}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-      </View>
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Nutrition</Text>
+        <Text style={styles.subtitle}>{today}</Text>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Nutrition</Text>
-          <Text style={styles.subtitle}>Track your daily intake</Text>
-        </View>
+        <MorningBriefCard insight={morningBrief} />
 
-        {/* Placeholder Content */}
-        <View style={styles.placeholder}>
-          <View style={styles.iconCircle}>
-            <MaterialCommunityIcons name="food-apple" size={48} color={ACCENT} />
-          </View>
-          <Text style={styles.placeholderTitle}>Coming Soon</Text>
-          <Text style={styles.placeholderText}>
-            Track meals, calories, macros, and more to optimize your nutrition.
-          </Text>
-        </View>
+        <MacroRing macros={macros} />
+
+        <View style={styles.spacer} />
+
+        <MealList logs={logs} onRemove={removeLog} />
+
+        {!isLoaded && logs.length === 0 && (
+          <Text style={styles.loading}>Loading…</Text>
+        )}
       </ScrollView>
-    </View>
+
+      <Pressable style={styles.fab} onPress={() => setSheetOpen(true)} accessibilityLabel="Add food">
+        <Text style={styles.fabText}>+ Add</Text>
+      </Pressable>
+
+      <FoodSearchSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onLog={handleLog}
+        searchFoods={searchFoods}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: SLEEP_THEME.screenBg,
   },
-  backgroundGradient: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-  },
-  gradientOrb: {
-    position: 'absolute',
-    width: SCREEN_WIDTH * 1.5,
-    height: SCREEN_WIDTH,
-    borderRadius: SCREEN_WIDTH,
-    top: -SCREEN_WIDTH * 0.3,
-    right: -SCREEN_WIDTH * 0.25,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 120,
-  },
-  header: {
-    marginBottom: 32,
+  content: {
+    paddingHorizontal: SLEEP_LAYOUT.screenPaddingH,
+    paddingTop: 24,
+    paddingBottom: 140,
+    gap: 12,
   },
   title: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: '#fff',
-    fontFamily: 'Poppins-Bold',
+    color: SLEEP_THEME.textPrimary,
+    fontFamily: SLEEP_FONTS.bold,
+    fontSize: 32,
   },
   subtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 4,
-    fontFamily: 'Inter-Regular',
+    color: SLEEP_THEME.textMuted1,
+    fontFamily: SLEEP_FONTS.regular,
+    fontSize: 14,
+    marginBottom: 8,
   },
-  placeholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
+  spacer: {
+    height: 8,
   },
-  iconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(48, 209, 88, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  placeholderTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 12,
-    fontFamily: 'Poppins-Bold',
-  },
-  placeholderText: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.5)',
+  loading: {
+    color: SLEEP_THEME.textMuted1,
+    fontFamily: SLEEP_FONTS.regular,
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 22,
-    paddingHorizontal: 40,
-    fontFamily: 'Inter-Regular',
+    paddingTop: 24,
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 100,
+    backgroundColor: SLEEP_THEME.success,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 999,
+  },
+  fabText: {
+    color: '#000000',
+    fontFamily: SLEEP_FONTS.semiBold,
+    fontSize: 14,
   },
 });
