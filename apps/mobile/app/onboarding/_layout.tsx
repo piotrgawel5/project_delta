@@ -23,6 +23,7 @@ export default function OnboardingLayout() {
         <Stack.Screen name="activity" />
         <Stack.Screen name="goal" />
         <Stack.Screen name="health" />
+        <Stack.Screen name="paywall" />
       </Stack>
     </GestureHandlerRootView>
   );

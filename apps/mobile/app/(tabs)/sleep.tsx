@@ -15,6 +15,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { useAuthStore } from '@store/authStore';
+import { useProfileStore } from '@store/profileStore';
 import { useSleepStore } from '@store/sleepStore';
 import { SLEEP_LAYOUT, SLEEP_THEME } from '@constants';
 import { getSleepScoreGrade } from '@lib/sleepColors';
@@ -29,7 +30,7 @@ import SleepEditLink from '../../components/sleep/redesign/SleepEditLink';
 import SleepEmptyState from '../../components/sleep/redesign/SleepEmptyState';
 import SleepHero from '../../components/sleep/redesign/SleepHero';
 import { FullScreenSkeleton } from '../../components/sleep/redesign/SleepSkeletons';
-import SleepStagesCard from '../../components/sleep/redesign/SleepStagesCard';
+import SleepTimelineSection from '../../components/sleep/SleepTimelineSection';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -90,6 +91,7 @@ export default function SleepScreen() {
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
   const { user } = useAuthStore();
+  const profile = useProfileStore((s) => s.profile);
   const recentHistory = useSleepStore((s) => s.recentHistory);
   const monthlyData = useSleepStore((s) => s.monthlyData);
   const fetchSleepDataRange = useSleepStore((s) => s.fetchSleepDataRange);
@@ -381,7 +383,14 @@ export default function SleepScreen() {
                   />
                 </Animated.View>
                 <Animated.View entering={FadeInDown.duration(400).delay(320)}>
-                  <SleepStagesCard />
+                  <SleepTimelineSection
+                    userId={user?.id ?? null}
+                    date={selectedDateKey}
+                    plan={profile?.plan ?? null}
+                    startTimeIso={currentData.historyItem?.start_time ?? null}
+                    endTimeIso={currentData.historyItem?.end_time ?? null}
+                    totalDurationMinutes={currentData.historyItem?.duration_minutes ?? null}
+                  />
                 </Animated.View>
                 <SleepEditLink onPress={() => setIsAddModalVisible(true)} />
               </>

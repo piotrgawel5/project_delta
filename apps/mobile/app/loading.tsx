@@ -3,8 +3,11 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Dimensions, Animated, Easing, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
+
+const PAYWALL_SEEN_KEY = '@delta:paywall_seen_at';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const ACCENT = '#30D158';
@@ -103,9 +106,16 @@ export default function LoadingScreen() {
         toValue: 0,
         duration: 200,
         useNativeDriver: true,
-      }).start(() => {
+      }).start(async () => {
         if (currentProfile?.onboarding_completed) {
-          router.replace('/(tabs)/nutrition');
+          const isFree = !currentProfile.plan || currentProfile.plan === 'free';
+          const seenAt = await AsyncStorage.getItem(PAYWALL_SEEN_KEY);
+          if (isFree && !seenAt) {
+            await AsyncStorage.setItem(PAYWALL_SEEN_KEY, new Date().toISOString());
+            router.replace('/onboarding/paywall');
+          } else {
+            router.replace('/(tabs)/workout');
+          }
         } else {
           // Double check: if we have NO profile and NO error, it's a new user.
           // If we had an error, we returned early above.
