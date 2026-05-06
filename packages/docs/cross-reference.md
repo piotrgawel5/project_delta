@@ -54,13 +54,61 @@ It replaces the need to trace imports across source files.
 
 ---
 
+## Workout
+
+**API module:** `services/api/src/modules/workout/`
+**Mobile files:** `apps/mobile/store/workoutStore.ts`, `apps/mobile/app/(tabs)/workout.tsx`, `apps/mobile/app/workout/active.tsx`, `apps/mobile/components/workout/*`
+
+| Endpoint | Called from mobile |
+|---|---|
+| GET /api/workout/sessions/:userId | `workoutStore.fetchSessions` |
+| POST /api/workout/sessions/sync | `workoutStore.drainSyncQueue` (offline batch) |
+| DELETE /api/workout/sessions/:id | `workoutStore.removeSession` |
+
+**Logging modes:** `workoutStore.loggingMode` (`quick` | `detailed`) drives `app/workout/active.tsx` layout. Quick mode → `QuickLogCard`. Detailed → `FocusCard` + plate calculator.
+**Equipment filter:** `workoutStore.availableEquipment` is checked by `ExercisePickerSheet` via `filterExercisesByEquipment` from `lib/workoutFixtures`.
+**Progressive overload:** `lib/workoutProgression.ts` is pure (no store coupling); `QuickLogCard` calls `suggestNextSession(sessionsForExercise, exerciseId)`.
+
+See `packages/docs/mobile/workout.md` for full pillar details.
+
+---
+
+## Nutrition
+
+**API module:** `services/api/src/modules/nutrition/`
+**Mobile files:** `apps/mobile/store/nutritionStore.ts`, `apps/mobile/app/(tabs)/nutrition.tsx`, `apps/mobile/components/nutrition/*`, `apps/mobile/lib/nutritionTDEE.ts`
+**Migration:** `services/supabase/migrations/20260505000000_create_nutrition_tables.sql` (`foods`, `nutrition_logs` with RLS + pg_trgm)
+
+| Endpoint | Called from mobile |
+|---|---|
+| GET /api/nutrition/logs/:userId | `nutritionStore.fetchLogs` |
+| POST /api/nutrition/logs/sync | `nutritionStore.drainSyncQueue` (offline batch, idempotent by client UUID) |
+| DELETE /api/nutrition/logs/:id | `nutritionStore.removeLog` |
+| GET /api/nutrition/foods/search | `nutritionStore.searchFoods` |
+| GET /api/nutrition/foods/barcode/:code | `nutritionStore.lookupBarcode` |
+
+**Selector rule:** Use `selectLogsForDate(date)` (stable empty-array ref). Compute macros via `useMemo(() => computeMacrosForLogs(logs), [logs])` — never as a Zustand selector (Zustand v5 unstable-selector loop).
+
+See `packages/docs/mobile/nutrition.md`.
+
+---
+
+## Morning Brief (cross-pillar)
+
+**Mobile-only.** Composes sleep/workout/nutrition state into a single `SleepInsight`-shaped card mounted at the top of the Workout and Nutrition tabs.
+
+**Files:** `apps/mobile/lib/morningBrief.ts`, `morningBriefSelectors.ts`, `useMorningBrief.ts`, `apps/mobile/components/home/MorningBriefCard.tsx`
+
+See `packages/docs/mobile/morning-brief.md`.
+
+---
+
 ## Health Data (mobile-only, no API)
 
 **Native module:** `apps/mobile/modules/health-connect/` (Android Health Connect bridge)
-**Store:** `apps/mobile/store/healthStore.ts`
 **Consumer:** `apps/mobile/lib/sleepAnalysis.ts` (uses health data as input to sleep score pipeline)
 
-Health Connect data never leaves the device via API. It feeds the client-side sleep engine only.
+Health Connect data never leaves the device via API. It feeds the client-side sleep engine only. (The legacy empty `healthStore` has been removed.)
 
 ---
 
